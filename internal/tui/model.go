@@ -1185,24 +1185,29 @@ func (m Model) noticeOverlays(width, height int) []Overlay {
 }
 
 func mascotBubble(text string, width int) []string {
-	if width < 24 {
-		width = 24
+	if width < 30 {
+		width = 30
 	}
-	textWidth := width - 10
+	inner := width - 2
+	art := []string{"o-o", "/|\\", "/ \\"}
+	artWidth := lipgloss.Width(art[0])
+	textWidth := inner - artWidth - 1
 	wrapped := wrapText(text, textWidth)
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
-	lines := []string{
-		"   ╭" + strings.Repeat("─", textWidth+2) + "╮",
+	lines := []string{"+" + strings.Repeat("-", inner) + "+"}
+	for i, line := range wrapped {
+		mark := strings.Repeat(" ", artWidth)
+		if i < len(art) {
+			mark = fitLine(art[i], artWidth, alignLeft)
+		}
+		lines = append(lines, "|"+mark+" "+fitLine(line, textWidth, alignLeft)+"|")
 	}
-	for _, line := range wrapped {
-		lines = append(lines, " ◖●●◗ │ "+fitLine(line, textWidth, alignLeft)+" │")
+	for i := len(wrapped); i < len(art); i++ {
+		lines = append(lines, "|"+fitLine(art[i], artWidth, alignLeft)+" "+strings.Repeat(" ", textWidth)+"|")
 	}
-	lines = append(lines,
-		"  /▔▔\\╰"+strings.Repeat("─", textWidth+2)+"╯",
-		"  \\__/  "+strings.Repeat(" ", textWidth),
-	)
+	lines = append(lines, "+"+strings.Repeat("-", inner)+"+")
 	return lines
 }
 
