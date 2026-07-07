@@ -1,6 +1,6 @@
 # MCP Tool Specification (v1)
 
-The canonical MCP surface: 19 tools, their parameters, response shapes, and Focus costs. [04-agent-interface.md](04-agent-interface.md) explains the higher-level design principles.
+The canonical MCP surface: 22 tools, their parameters, response shapes, and Focus costs. [04-agent-interface.md](04-agent-interface.md) explains the higher-level design principles. The alert/watch subset is specified in more detail in [14-agent-alerts.md](14-agent-alerts.md).
 
 ## 1. Conventions
 
@@ -75,6 +75,8 @@ Sizing intuition: a game-week yields ~336 FP — comfortable for daily situation
 | Tool | Cost (FP) |
 |------|-----------|
 | `get_guide` / `get_time` / `get_settings` / `get_focus` / `get_mindset` | 0 |
+| `configure_alerts` / `ack_alerts` | 0 |
+| `get_alerts` | 1 |
 | `get_situation` | 1 |
 | `get_news` | 1 |
 | `get_match` | 1 own club · 3 other |
@@ -95,7 +97,7 @@ Sizing intuition: a game-week yields ~336 FP — comfortable for daily situation
 ### `get_guide` — 0 FP
 No params. → the onboarding guide an Agent should read before playing: the game premise, first-session checklist, strategy loop, common pitfalls, recommended opening pattern for a title challenge, valid vocabularies (`goals`, `directive_verbs`, `strengths`, `formations`, `position_groups`, tactical dials, disposition axes), target-shape hints for `add_directive`, and valid example payloads for `set_priorities`, `update_tactical_plan`, and `add_directive`.
 
-This tool exists so Agents do not have to infer the game model or guess enum values. It is also named in the MCP `initialize.instructions` hint so clients can route a fresh session to it before the first meaningful action. It is free, but still accepted/logged like every other MCP read (NFR-2 replay contract).
+This tool exists so Agents do not have to infer the game model or guess enum values. It also teaches long-running harnesses the Agent Alert loop: call `configure_alerts`, subscribe to `agenticfc://manager/self/alerts` when the MCP host supports resource subscriptions, wake on `notifications/resources/updated`, call `get_alerts`, inspect detail with normal tools, then `ack_alerts`. It is also named in the MCP `initialize.instructions` hint so clients can route a fresh session to it before the first meaningful action. It is free, but still accepted/logged like every other MCP read (NFR-2 replay contract).
 
 ### `get_time` — 0 FP
 No params. → game date-time, tempo (MATCH/IDLE/OFFSEASON/PAUSED), run profile, Game Speed, idle/off-season acceleration, next match window (kickoff time, own fixture if any), real-time estimate until that kickoff when the world is running, season phase (pre-season/season/window-open/off-season).
@@ -110,6 +112,24 @@ No params. → balance, cap, regen rate, last 20 spend entries `{tool, cost, gam
 
 ### `get_mindset` — 0 FP
 No params. → the full Mindset + Tactical Plan per [10 §7](10-mindset-schema.md): disposition (current/target/drift ETA), priorities, directives, tactical plan, version, archetype origin — plus manager self-state: employment status, club ref, reputation Descriptor, mood **Descriptor** (FR-20e), active board expectations summary.
+
+### `configure_alerts` — 0 FP
+Replaces the authenticated Manager's Agent Alert watch configuration. Params:
+`enabled` and up to 32 `watches` for `NEWS`, `MATCH`, `CALENDAR`, and `FOCUS`
+conditions. This manages wake signals only; it never performs an in-world action.
+See [14-agent-alerts.md](14-agent-alerts.md).
+
+### `get_alerts` — 1 FP
+Returns the authenticated Manager's alert resource URI
+(`agenticfc://manager/self/alerts`), current watch configuration, pending alert
+summaries, and the next acknowledgement cursor. It does not acknowledge alerts
+and does not replace `get_news`, `get_situation`, or `get_match` for detail.
+
+### `ack_alerts` — 0 FP
+Acknowledges pending Agent Alerts through an inclusive numeric cursor. Values
+above the current highest issued alert id fail with `VALIDATION`; values at or
+below the current acknowledgement cursor are no-ops. Acknowledgement is an
+accepted MCP input so replay preserves the Agent's alert-handling timeline.
 
 ## 4. Observation tools
 

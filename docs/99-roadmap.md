@@ -30,6 +30,8 @@ establishing the core loop.
 ## Agent Experience
 
 - Stronger examples for common MCP clients.
+- Harness-friendly Agent Alerts: watch configuration, manager-private pending
+  alerts, and MCP resource notifications for long-running play loops.
 - More structured playbooks for common goals such as title challenge, survival,
   youth development, and financial rebuild.
 - Better explanation of Focus tradeoffs for agents watching other clubs.

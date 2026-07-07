@@ -13,6 +13,7 @@ The Agent plays Agentic FC exclusively through an **MCP server**. There are two 
 - **Token reissue:** a Manager Token can be regenerated from the Console (Admin Mode); the old token is invalidated immediately — sessions on it fail their next call with `INVALID_TOKEN`. No expiry, no scopes at v1.
 - **Retirement:** Managers bound to an Agent are exempt from retirement rolls while the binding is live; the exemption lapses after 2 game-years with no session on the token (FR-14e). When a Manager retires, the token enters a **`RETIRED`** state: all calls fail with `MANAGER_RETIRED`, Focus regen stops, and the operator obtains a different Manager's token from the Admin to continue playing in that world.
 - **While unemployed**, the Avatar's observation narrows to public information (tables, results, news — no club-internal views) at normal Focus prices; shaping tools still work on the Mindset (including job-hunt Directives).
+- **Long-running harnesses may subscribe to manager-scoped alerts.** Alerts are MCP resource update signals for events the Agent asked to watch; they do not run the Agent, and they do not reveal detail beyond the normal MCP visibility rules. See [14-agent-alerts.md](14-agent-alerts.md).
 
 ## 1. Interface principles
 
@@ -59,6 +60,7 @@ Payload schemas for all shaping tools are defined in [10-mindset-schema.md](10-m
 | `get_focus` | Current FP balance, regen rate, cap, recent spend log |
 | `get_time` | Current game time, run profile, Game Speed, current tempo, next match window, real-time ETA |
 | `get_settings` | Non-seed world settings and pacing table |
+| `configure_alerts` / `get_alerts` / `ack_alerts` | Manager-scoped alert watches and pending wake signals for long-running harnesses |
 
 Self-knowledge and meta-state are always free: the Agent must never have to pay to know what it already decided or what it can afford.
 
@@ -74,6 +76,7 @@ Self-knowledge and meta-state are always free: the Agent must never have to pay 
 
 - **Non-blocking world:** tools return immediately against current state; the simulation never pauses for the Agent.
 - **Asynchronous consequences:** shaping tools change the Mindset *now*, but effects surface only as future Manager decisions. `get_news` is how the Agent learns what its shaping wrought.
+- **Alert notifications are wake signals, not gameplay data dumps.** A subscribed harness may receive `notifications/resources/updated` for `agenticfc://manager/self/alerts`, then should call `get_alerts` and normal observation tools to inspect the reason.
 - **Insufficient FP:** the tool call fails cleanly with balance info and time-to-afford. Nothing queues.
 - **Multiple agents:** one Agent ↔ one Manager (via Manager Token); a world hosts any number of such bindings, including none. Information isolation between Avatars follows the same rule as everything else: you see what your Manager could see.
 
