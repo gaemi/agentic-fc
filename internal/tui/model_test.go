@@ -399,10 +399,13 @@ func TestMascotNoticeOverlay(t *testing.T) {
 	m.Notice = "Fresh story: Alderton appoint Lee Carter"
 	m.NoticeTTL = noticeTicks
 	v := m.View()
-	for _, want := range []string{"◖●●◗", "Fresh story", "Alderton"} {
+	for _, want := range []string{"o-o", "/|\\", "Fresh story", "Alderton"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("notice overlay missing %q:\n%s", want, v)
 		}
+	}
+	if strings.Contains(v, "◖") || strings.Contains(v, "▔") {
+		t.Fatalf("notice overlay still contains unstable wide glyphs:\n%s", v)
 	}
 
 	for range noticeTicks {
@@ -410,6 +413,27 @@ func TestMascotNoticeOverlay(t *testing.T) {
 	}
 	if m.Notice != "" || strings.Contains(m.View(), "Fresh story") {
 		t.Fatal("notice should expire after its TTL")
+	}
+}
+
+func TestNoticeOverlaySupportsKoreanText(t *testing.T) {
+	cases := []string{
+		"새 기사: Stanpool Rovers의 Ronnie Foster, 부상으로 수 주간 이탈.",
+		"새 기사: 가나다라마바 사아자차카타파하 가나다라마바 사아자차카타파하",
+	}
+	for _, text := range cases {
+		lines := mascotBubble(text, 34)
+		joined := strings.Join(lines, "\n")
+		for _, want := range []string{"o-o", "새 기사"} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("notice bubble missing %q:\n%s", want, joined)
+			}
+		}
+		for _, line := range lines {
+			if got := lipgloss.Width(line); got != 34 {
+				t.Fatalf("notice bubble line width = %d, want 34: %q", got, line)
+			}
+		}
 	}
 }
 
