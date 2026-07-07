@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -281,19 +282,167 @@ func (g *Gateway) renderNews(n *worldgen.NewsItem) map[string]any {
 
 func (g *Gateway) newsArticle(category, key string, params map[string]any, loc narrative.Locale) map[string]any {
 	title := g.renderMessageText(loc, key, params)
-	class := category
-	switch class {
+	articleClass := category
+	switch articleClass {
 	case "transfer", "match", "injury", "board", "decision", "career", "youth", "contract", "scout":
 	default:
-		class = "media"
+		articleClass = "media"
 	}
+	sourceClass := articleClass
 	articleParams := map[string]any{"headline": title}
-	return map[string]any{
-		"source": g.tr(loc, "news.article.source."+class),
-		"title":  title,
-		"deck":   g.tr2(loc, "news.article.deck."+class, articleParams),
-		"body":   g.tr2(loc, "news.article.body."+class, articleParams),
+	if key == "feed.matchday.preview" {
+		articleClass = "matchday.preview"
+		articleParams = g.matchdayPreviewArticleParams(loc, params, title)
 	}
+	if key == "feed.matchday.results" {
+		articleClass = "matchday.results"
+		articleParams = g.matchdayResultsArticleParams(loc, params, title)
+	}
+	return map[string]any{
+		"source": g.tr(loc, "news.article.source."+sourceClass),
+		"title":  title,
+		"deck":   g.tr2(loc, "news.article.deck."+articleClass, articleParams),
+		"body":   g.tr2(loc, "news.article.body."+articleClass, articleParams),
+	}
+}
+
+func (g *Gateway) matchdayPreviewArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+	out := copyArticleParams(params, title)
+	out["fixtures"] = g.matchdayFixtureLines(loc, params["fixtures"])
+	out["spotlight"] = g.matchdayFixtureSpotlight(loc, params["spotlight"])
+	return out
+}
+
+func (g *Gateway) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+	out := copyArticleParams(params, title)
+	out["results"] = g.matchdayResultLines(loc, params["results"])
+	out["table"] = g.matchdayTableLines(loc, params["table"])
+	out["story"] = g.matchdayStoryLine(loc, params["story"])
+	return out
+}
+
+func copyArticleParams(params map[string]any, title string) map[string]any {
+	out := make(map[string]any, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	out["headline"] = title
+	return out
+}
+
+func (g *Gateway) matchdayFixtureLines(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, g.tr2(loc, "term.matchday.fixture_line", row))
+	}
+	return joinNonEmpty(lines)
+}
+
+func (g *Gateway) matchdayFixtureSpotlight(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	if len(rows) == 0 {
+		return ""
+	}
+	return g.tr2(loc, "term.matchday.fixture_spotlight", rows[0])
+}
+
+func (g *Gateway) matchdayResultLines(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		key := "term.matchday.result_line"
+		if winner, ok := row["winner"].(string); ok && winner != "" {
+			key = "term.matchday.result_line.winner"
+		}
+		lines = append(lines, g.tr2(loc, key, row))
+	}
+	return joinNonEmpty(lines)
+}
+
+func (g *Gateway) matchdayTableLines(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	if len(rows) == 0 {
+		return g.tr(loc, "term.matchday.table_cup")
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, g.tr2(loc, "term.matchday.table_leader", row))
+	}
+	return joinNonEmpty(lines)
+}
+
+func (g *Gateway) matchdayStoryLine(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	if len(rows) == 0 {
+		return ""
+	}
+	story := rows[0]
+	lines := []string{}
+	margin, hasMargin := numericParam(story["best_margin"])
+	draws, hasDraws := numericParam(story["draws"])
+	if hasMargin && margin > 0 {
+		lines = append(lines, g.tr2(loc, "term.matchday.story_margin", story))
+	}
+	if hasDraws && draws > 0 {
+		lines = append(lines, g.tr2(loc, "term.matchday.story_draws", story))
+	}
+	if hasDraws && draws == 0 && hasMargin && margin > 0 {
+		lines = append(lines, g.tr(loc, "term.matchday.story_all_winners"))
+	}
+	if len(lines) == 0 {
+		// Defensive fallback for malformed persisted params; normal engine
+		// payloads always contain draws and best_margin.
+		lines = append(lines, g.tr(loc, "term.matchday.story_unavailable"))
+	}
+	return joinNonEmpty(lines)
+}
+
+func mapsFromAny(raw any) []map[string]any {
+	switch v := raw.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		return []map[string]any{v}
+	case []map[string]any:
+		return v
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			if row, ok := item.(map[string]any); ok {
+				out = append(out, row)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func numericParam(raw any) (float64, bool) {
+	switch v := raw.(type) {
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case float64:
+		return v, true
+	case json.Number:
+		got, err := v.Float64()
+		return got, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func joinNonEmpty(lines []string) string {
+	out := []string{}
+	for _, line := range lines {
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // headlines returns the newest visible items for the get_situation dashboard.

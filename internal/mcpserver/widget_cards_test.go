@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -175,6 +176,60 @@ func TestNewsCardRendersArticle(t *testing.T) {
 		if !strings.Contains(ko, want) {
 			t.Fatalf("ko news article card missing %q:\n%s", want, ko)
 		}
+	}
+}
+
+func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	params := map[string]any{
+		"count":        2,
+		"month":        8,
+		"day":          16,
+		"kickoff_time": "15:00",
+		"results": []map[string]any{
+			{"home": "AFC Castleden", "away": "Eastvale Town", "home_goals": 2, "away_goals": 1},
+			{"home": "Stanton Albion", "away": "Union Steindorf", "home_goals": 0, "away_goals": 0},
+		},
+		"table": []map[string]any{
+			{"division": 1, "club": "AFC Castleden", "points": 6},
+		},
+		"story": map[string]any{
+			"best_margin": 1,
+			"best_home":   "AFC Castleden",
+			"best_away":   "Eastvale Town",
+			"home_goals":  2,
+			"away_goals":  1,
+			"draws":       1,
+		},
+	}
+	article := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN)
+	for _, want := range []string{"Matchday round-up", "Results:", "Table picture:", "AFC Castleden 2-1 Eastvale Town", "Draws: 1"} {
+		if !strings.Contains(fmt.Sprint(article["body"]), want) && !strings.Contains(fmt.Sprint(article["title"]), want) {
+			t.Fatalf("matchday article missing %q: %+v", want, article)
+		}
+	}
+	ko := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleKO)
+	for _, want := range []string{"매치데이 라운드업", "결과:", "순위표 흐름:", "AFC Castleden 2-1 Eastvale Town", "무승부 1경기"} {
+		if !strings.Contains(fmt.Sprint(ko["body"]), want) && !strings.Contains(fmt.Sprint(ko["title"]), want) {
+			t.Fatalf("ko matchday article missing %q: %+v", want, ko)
+		}
+	}
+	for _, notWant := range []string{"Draws:", "Table picture:"} {
+		if strings.Contains(fmt.Sprint(ko["body"]), notWant) {
+			t.Fatalf("ko matchday article leaked English %q: %+v", notWant, ko)
+		}
+	}
+	params["story"] = map[string]any{
+		"best_margin": 2,
+		"best_home":   "AFC Castleden",
+		"best_away":   "Eastvale Town",
+		"home_goals":  3,
+		"away_goals":  1,
+		"draws":       0,
+	}
+	article = g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN)
+	if !strings.Contains(fmt.Sprint(article["body"]), "No draw softened the table movement") {
+		t.Fatalf("all-winners story missing: %+v", article)
 	}
 }
 

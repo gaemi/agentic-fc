@@ -29,10 +29,14 @@ const (
 	FeedWindowOpened  = "feed.window.opened"
 	FeedWindowClosed  = "feed.window.closed"
 	FeedSeasonEnded   = "feed.season.ended"
-	FeedKickoff       = "feed.match.kickoff"
-	FeedMatchResult   = "feed.match.result"
-	FeedCupResult     = "feed.cup.result"
-	FeedCupChampion   = "feed.cup.champion"
+	// Per-fixture match keys are still realtime ticker events. Persistent
+	// Media news groups those same windows under the matchday keys below.
+	FeedKickoff         = "feed.match.kickoff"
+	FeedMatchResult     = "feed.match.result"
+	FeedCupResult       = "feed.cup.result"
+	FeedMatchdayPreview = "feed.matchday.preview"
+	FeedMatchdayResults = "feed.matchday.results"
+	FeedCupChampion     = "feed.cup.champion"
 )
 
 func (e *Engine) emit(t sim.GameTime, key string, params map[string]any) {

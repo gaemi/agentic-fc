@@ -126,7 +126,10 @@ Managers have careers of their own, independent of any one club:
 Everything observable is rendered as **text**, in the voice of Championship Manager's classic text engine:
 
 - **News items:** what a Manager decided, transfers agreed, injuries, milestones.
-- **Press articles:** journalists react to results, streaks, controversies.
+- **Press articles:** journalists react to results, streaks, controversies. A
+  matchday produces preview and round-up articles that group fixtures/results
+  into a longer newspaper-style story instead of filing one tiny item per
+  kick-off or final whistle.
 - **Board & fan reactions:** sentiment expressed as quotes/statements, not bars.
 - **Live match commentary:** substitutions, chances, a winger skinning his man, the keeper's blunder — narrated minute by minute like a text commentator.
 
@@ -136,7 +139,7 @@ Three design rules, drawn from what made classic CM work ([90 §2, L1/L9/L10](90
 
 1. **Cadence is a first-class output.** Classic CM's drama came from *pacing* — a penalty line held on screen to build dread, tension ratcheted before a chance. The Narrative Renderer emits not just lines but **display timing and density**: dramatic moments linger, routine passages compress. (Even FM26's Dynamic Highlights reconverged on this.)
 2. **Text carries diagnosable signal, not just flavour.** CM3 deliberately wrote commentary managers could *learn from* ("why are we losing?"). Our commentary and summaries must let both the spectator and the Agent read tactical cause from the text and accompanying stats — the Agent consumes the same narrative humans enjoy.
-3. **Variety is budgeted from day one.** FM's longest-running complaint is repetitive press conferences. Template variety per event type is a real quality bar, not post-launch polish.
+3. **Variety is budgeted from day one.** FM's longest-running complaint is repetitive press conferences. Template variety per event type is a real quality bar, not post-launch polish. Match commentary uses event-family template pools (crosses, cut-backs, counters, set pieces, scrambles, long shots, quiet phases) so identical tactical situations do not read as the same line every time.
 
 ## 5. Time system
 
