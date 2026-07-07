@@ -7,7 +7,7 @@ Design for the Console — the human-facing TUI client (Viewer Mode / Admin Mode
 1. **Responsive by contract.** The Console adapts to terminal size on a fixed ladder of **Layout Tiers**. What appears at which tier is *specified, not improvised* — every screen has an explicit tier matrix (§4).
 2. **Smaller reduces simultaneity first, capability second.** From tier S upward, every *core* action (watch a match, read news, browse tables, run admin ops) is reachable; shrinking primarily collapses side-by-side panes into hotkey-switched tabs. Enhanced features (comparisons, multi-match tickers, momentum graphs) are genuinely tier-gated and appear only on larger terminals.
 3. **Live reflow.** Resizing the terminal re-tiers the UI immediately, preserving context (current screen, selection, scroll position). No restart, no flicker of state.
-4. **CM heritage.** The match screen is a direct descendant of classic CM's furniture — commentary stream + score/clock header + tabbed panels ([90 §2](90-reference-cm-fm.md)). Small terminals get CM's *actual* layout (one tab at a time); large terminals promote those tabs into simultaneous panes.
+4. **CM heritage.** Match broadcasts keep classic CM's useful furniture — commentary stream + score/clock header + compact panels ([90 §2](90-reference-cm-fm.md)) — but open from the fixtures/results list as focused pop-ups instead of a separate screen.
 5. **Keyboard-only, discoverable.** Every action has a key; a help overlay (`?`) lists context-relevant keys at every tier.
 
 ## 2. Layout Tiers
@@ -37,35 +37,25 @@ Mouse support is enabled where the terminal supports it: click tabs to switch sc
 
 ## 3. Screen inventory
 
-**Viewer Mode:** Media desk · League Tables · Club view · Live Match · Fixtures/Results · World overview (browse/switch focus freely — never pinned to one Manager).
+**Viewer Mode:** Media desk · League Tables · Club view · Fixtures/Results with live/replay match pop-ups · World overview (browse/switch focus freely — never pinned to one Manager).
 **Admin Mode adds:** World Init wizard · Settings · Managers & Tokens · World Status (ops/health).
 
 ## 4. Tier matrix per screen
 
-### 4.1 Live Match (the flagship screen)
+### 4.1 Fixtures / Results And Match Broadcasts
 
-| Element | S | M | L | XL |
-|---------|---|---|---|----|
-| Score + clock header (with possession bar) | ✔ (bar omitted if short) | ✔ | ✔ | ✔ |
-| Big scoreboard + goal flash | — | — | ✔ | ✔ |
-| **ASCII pitch** (event markers, [FR-35a](06-requirements.md)) | — *(commentary-only)* | compact strip *(toggle)* | ✔ band above commentary | ✔ larger band above commentary |
-| Commentary stream (cadence-paced, [FR-35a](06-requirements.md)) | ✔ full width | ✔ main pane | ✔ center pane | ✔ center pane |
-| Match stats/diagnostics panel | tab (hotkey) | side pane (toggle with ratings) | ✔ left pane | ✔ left pane |
-| Live player ratings (both teams) | tab | side pane (toggle) | ✔ right pane | ✔ right pane |
-| Lineups & subs log | tab | tab | tab | ✔ collapsible section |
-| Momentum sparkline | — | — | ✔ under header | ✔ under header |
-| Other-grounds ticker ("Latest Scores") | — | — | tall only | ✔ persistent column |
-| Commentary speed control | ✔ | ✔ | ✔ | ✔ |
+The Fixtures/Results screen is the match hub on every layout tier. It first
+presents a single list of past results, live fixtures, and upcoming fixtures,
+with live rows labeled in place. Selecting a live fixture opens a centered
+broadcast pop-up over the list; selecting a finished fixture opens the replay
+version of the same pop-up, with PgUp/PgDn and left/right rewind/advance
+controls.
 
-**The ASCII pitch** (§1.4 CM heritage, made spatial): the TUI Match tab draws
-live fixtures from `GET /v1/matches/live` with goal/chance/card/injury/sub/
-shootout markers. S stays pure commentary, M offers a compact toggleable pitch
-strip, and L/XL render the full field above commentary. L/XL also use the
-available space for a big scoreboard, latest-goal flash, momentum sparkline,
-ratings, public diagnostics, and other-grounds ticker. These elements are
-presentation over persisted live match facts; they add no simulation state and
-nothing to the world hash. The pitch stays deliberately abstract because the
-match engine samples key moments, not continuous ball position.
+The pop-up carries the score/clock header, public match stats and diagnostics,
+live ratings, and the rhythmic commentary stream ([FR-35a](06-requirements.md)).
+It deliberately drops the ASCII pitch: the useful surface is the score/state
+board plus commentary. Goal events produce a visible text flash in the pop-up
+without pretending the model is a continuous spatial simulation.
 
 ### 4.2 Media Desk
 
@@ -97,12 +87,20 @@ desk.
 |---------|---|---|---|----|
 | Single division table (scroll) | ✔ | ✔ | ✔ | ✔ |
 | Form / recent-results columns | — | ✔ | ✔ | ✔ |
-| Fixtures/results browser | ✔ stacked | ✔ stacked | ✔ split list/detail | ✔ split list/detail |
-| Finished match detail / replay log | ✔ | ✔ | ✔ | ✔ |
+| Fixtures/results browser | ✔ full list | ✔ full list | ✔ full list | ✔ full list |
+| Finished match detail / replay log | pop-up | pop-up | pop-up | pop-up |
 | Selected club mini-card | — | side pane | ✔ context pane | ✔ context pane |
 | Multiple divisions side by side | — | — | — | ✔ |
 
-The Fixtures/Results tab is a spectator archive as well as a forward schedule: it mixes finished results, archived results, and upcoming fixtures in one selectable list. The Console API accepts a bounded history `limit` (the TUI asks for a large spectator cap, currently 1000 rows) so a viewer can move through prior seasons instead of only the latest page. Finished current-season matches open a detail pane with score, shots, scorers, cards, substitutions, top ratings, and the preserved commentary log as a text replay; archived past-season results show the permanent factual ledger, with commentary honestly absent because season archival deliberately drops prose.
+The Fixtures/Results tab is a spectator archive as well as a forward schedule:
+it mixes finished results, live fixtures, archived results, and upcoming
+fixtures in one selectable list. The Console API accepts a bounded history
+`limit` (the TUI asks for a large spectator cap, currently 1000 rows) so a
+viewer can move through prior seasons instead of only the latest page. Finished
+current-season matches open a replay pop-up with score, shots, scorers, cards,
+substitutions, top ratings, and the preserved commentary log; archived
+past-season results show the permanent factual ledger, with commentary honestly
+absent because season archival deliberately drops prose.
 
 ### 4.4 Club / Manager / Player views
 

@@ -19,7 +19,6 @@ const (
 	tabTable
 	tabClubs
 	tabFixtures
-	tabMatch
 	tabCount
 )
 
@@ -28,6 +27,15 @@ const (
 	scrollPageLines    = 8
 	scrollWheelLines   = 4
 	pollInterval       = 2 * time.Second
+)
+
+type matchModalKind string
+
+const (
+	modalNone    matchModalKind = ""
+	modalLive    matchModalKind = "live"
+	modalReplay  matchModalKind = "replay"
+	modalWaiting matchModalKind = "waiting"
 )
 
 // Model is the viewer's Bubble Tea model. Client may be nil in tests —
@@ -49,26 +57,19 @@ type Model struct {
 	FixtureIdx    int
 	MatchDetail   MatchDetail
 	ReplayOffset  int
+	MatchModal    matchModalKind
+	MatchModalID  int64
 	Matches       []LiveMatchView
 	MatchIdx      int
 	Notice        string
 	NoticeTTL     int
 	LatestNewsID  int64
 	LiveCount     int
-	// PitchHidden is the M-tier toggle (docs/07 §4.1: the pitch strip is an
-	// enhanced element — 'p' collapses it back to pure commentary).
-	PitchHidden bool
-	// PaneMode is the stats/ratings selector 'r' cycles (docs/07 §4.1). On S
-	// it swaps the commentary area (0 commentary · 1 stats · 2 ratings); on M
-	// it picks the side pane (0 stats · 1 ratings · 2 hidden). L/XL show both
-	// panes persistently and ignore it.
-	PaneMode int
-
-	Tab    int
-	Tier   int
-	Width  int
-	Height int
-	Err    string
+	Tab           int
+	Tier          int
+	Width         int
+	Height        int
+	Err           string
 }
 
 func NewModel(c *Client) Model {
@@ -248,22 +249,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "esc":
+			if m.MatchModal != modalNone {
+				m.closeMatchModal()
+				return m, nil
+			}
 		case "1":
 			m.Tab = tabMedia
+			m.closeMatchModal()
 			m.clearNotice()
 		case "2":
 			m.Tab = tabTable
+			m.closeMatchModal()
 			m.clearNotice()
 		case "3":
 			m.Tab = tabClubs
+			m.closeMatchModal()
 			m.clearNotice()
 		case "4":
 			m.Tab = tabFixtures
+			m.closeMatchModal()
 			m.clearNotice()
-		case "5":
-			m.Tab = tabMatch
-			m.clearNotice()
+		case "enter", " ":
+			if m.Tab == tabFixtures && m.MatchModal == modalNone {
+				return m.openSelectedFixture()
+			}
 		case "up", "k":
+			if m.MatchModal != modalNone {
+				if m.MatchModal == modalReplay {
+					m.ReplayOffset = scrollBack(m.ReplayOffset, scrollWheelLines)
+				}
+				break
+			}
 			switch m.Tab {
 			case tabMedia:
 				if m.NewsIdx > 0 {
@@ -279,11 +296,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.FixtureIdx > 0 {
 					m.FixtureIdx--
 					m.ReplayOffset = 0
-					m.MatchDetail = MatchDetail{}
-					return m, m.fetchMatch()
 				}
 			}
 		case "down", "j":
+			if m.MatchModal != modalNone {
+				if m.MatchModal == modalReplay {
+					m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollWheelLines)
+				}
+				break
+			}
 			switch m.Tab {
 			case tabMedia:
 				if m.NewsIdx+1 < len(m.News) {
@@ -299,8 +320,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.FixtureIdx+1 < len(m.Fixtures) {
 					m.FixtureIdx++
 					m.ReplayOffset = 0
-					m.MatchDetail = MatchDetail{}
-					return m, m.fetchMatch()
 				}
 			}
 		case "tab":
@@ -312,34 +331,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.PlayerIdx = (m.PlayerIdx + len(m.Club.Squad) - 1) % len(m.Club.Squad)
 			}
 		case "pgup":
+			if m.MatchModal == modalReplay {
+				m.ReplayOffset = scrollBack(m.ReplayOffset, scrollPageLines)
+				break
+			}
 			switch m.Tab {
 			case tabMedia:
 				m.ArticleOffset = scrollBack(m.ArticleOffset, scrollPageLines)
-			case tabFixtures:
-				m.ReplayOffset = scrollBack(m.ReplayOffset, scrollPageLines)
 			}
 		case "pgdown":
+			if m.MatchModal == modalReplay {
+				m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollPageLines)
+				break
+			}
 			switch m.Tab {
 			case tabMedia:
 				m.ArticleOffset = scrollForward(m.ArticleOffset, m.articleScrollLineCount(), scrollPageLines)
-			case tabFixtures:
-				m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollPageLines)
-			}
-		case "p":
-			// Match-screen keys only act there — a toggle pressed on another
-			// tab must not silently rearrange hidden Match state.
-			if m.Tab == tabMatch {
-				m.PitchHidden = !m.PitchHidden
-			}
-		case "r":
-			if m.Tab == tabMatch {
-				m.PaneMode = (m.PaneMode + 1) % 3
 			}
 		case "left":
-			if m.Tab == tabMatch {
+			if m.MatchModal == modalWaiting {
+				break
+			}
+			if m.MatchModal == modalLive {
 				if n := len(m.Matches); n > 0 {
 					m.MatchIdx = (m.MatchIdx + n - 1) % n // wrap: cycling, not clamping
+					m.MatchModalID = m.Matches[m.MatchIdx].Fixture
+					if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+						m.FixtureIdx = idx
+					}
 				}
+				break
+			}
+			if m.MatchModal == modalReplay {
+				m.ReplayOffset = scrollBack(m.ReplayOffset, scrollPageLines)
 				break
 			}
 			if (m.Tab == tabTable || m.Tab == tabFixtures) && m.Tier > 1 {
@@ -347,10 +371,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(m.fetchTable(), m.fetchFixtures())
 			}
 		case "right":
-			if m.Tab == tabMatch {
+			if m.MatchModal == modalWaiting {
+				break
+			}
+			if m.MatchModal == modalLive {
 				if n := len(m.Matches); n > 0 {
 					m.MatchIdx = (m.MatchIdx + 1) % n
+					m.MatchModalID = m.Matches[m.MatchIdx].Fixture
+					if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+						m.FixtureIdx = idx
+					}
 				}
+				break
+			}
+			if m.MatchModal == modalReplay {
+				m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollPageLines)
 				break
 			}
 			if (m.Tab == tabTable || m.Tab == tabFixtures) && (m.World.Divisions == 0 || m.Tier < m.World.Divisions) {
@@ -400,14 +435,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.FixtureIdx >= len(m.Fixtures) {
 			m.FixtureIdx = 0
 		}
-		if len(m.Fixtures) > 0 {
-			selected := m.Fixtures[m.FixtureIdx]
-			if selected.Status == "RESULT" && m.MatchDetail.Fixture != selected.ID {
-				return m, m.fetchMatch()
+		if m.MatchModal == modalReplay && m.MatchModalID != 0 {
+			if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+				m.FixtureIdx = idx
 			}
-			if selected.Status != "RESULT" {
-				m.MatchDetail = MatchDetail{}
-				m.ReplayOffset = 0
+		}
+		if m.MatchModal == modalWaiting {
+			if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+				m.FixtureIdx = idx
+				if m.Fixtures[idx].Status == "RESULT" {
+					m.MatchModal = modalReplay
+					m.MatchDetail = MatchDetail{}
+					m.ReplayOffset = 0
+					return m, m.fetchMatch()
+				}
+			} else {
+				m.closeMatchModal()
+				m.setNotice(m.ui("ui.match.ended"))
 			}
 		}
 	case MatchMsg:
@@ -421,7 +465,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.LiveCount = len(msg)
 		m.Matches = msg
-		if m.MatchIdx >= len(m.Matches) {
+		if m.MatchModal == modalLive {
+			if idx := m.liveIndexForFixture(m.MatchModalID); idx >= 0 {
+				m.MatchIdx = idx
+			} else {
+				return m.liveModalFinished()
+			}
+		} else if m.MatchIdx >= len(m.Matches) {
 			m.MatchIdx = 0
 		}
 	case ErrMsg:
@@ -456,34 +506,47 @@ func (m *Model) ageNotice() {
 	}
 }
 
+func (m *Model) closeMatchModal() {
+	m.MatchModal = modalNone
+	m.MatchModalID = 0
+}
+
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress {
 		return m, nil
 	}
 	if msg.Button == tea.MouseButtonWheelUp {
+		if m.MatchModal == modalReplay {
+			m.ReplayOffset = scrollBack(m.ReplayOffset, scrollWheelLines)
+			return m, nil
+		}
 		switch m.Tab {
 		case tabMedia:
 			m.ArticleOffset = scrollBack(m.ArticleOffset, scrollWheelLines)
-		case tabFixtures:
-			m.ReplayOffset = scrollBack(m.ReplayOffset, scrollWheelLines)
 		}
 		return m, nil
 	}
 	if msg.Button == tea.MouseButtonWheelDown {
+		if m.MatchModal == modalReplay {
+			m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollWheelLines)
+			return m, nil
+		}
 		switch m.Tab {
 		case tabMedia:
 			m.ArticleOffset = scrollForward(m.ArticleOffset, m.articleScrollLineCount(), scrollWheelLines)
-		case tabFixtures:
-			m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollWheelLines)
 		}
 		return m, nil
 	}
 	if msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
+	if m.MatchModal != modalNone {
+		return m, nil
+	}
 	if msg.Y == 2 {
 		if tab, ok := m.clickedTab(msg.X); ok {
 			m.Tab = tab
+			m.closeMatchModal()
 			m.clearNotice()
 			return m, nil
 		}
@@ -556,26 +619,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.PlayerIdx = idx
 		}
 	case tabFixtures:
-		listWidth := bodyWidth
-		if bodyWidth >= 120 {
-			listWidth = bodyWidth / 2
-			if listWidth < 56 {
-				listWidth = 56
-			}
-			if listWidth > 78 {
-				listWidth = 78
-			}
-		}
-		if msg.X < bodyX || msg.X >= bodyX+listWidth {
+		if msg.X < bodyX || msg.X >= bodyX+bodyWidth {
 			return m, nil
 		}
 		row := msg.Y - bodyY - 3
 		maxRows := m.Height - 10
 		if idx, ok := clickedListIndex(row, m.FixtureIdx, len(m.Fixtures), maxRows); ok {
 			m.FixtureIdx = idx
-			m.ReplayOffset = 0
-			m.MatchDetail = MatchDetail{}
-			return m, m.fetchMatch()
+			return m.openSelectedFixture()
 		}
 	}
 	return m, nil
@@ -597,7 +648,7 @@ func (m Model) clickedTab(x int) (int, bool) {
 
 func (m Model) tabSpans() []tabSpan {
 	division := strings.ReplaceAll(m.ui("ui.header.division"), "{tier}", fmt.Sprint(m.Tier))
-	names := []string{m.ui("ui.tab.media"), m.ui("ui.tab.table"), m.ui("ui.tab.clubs"), m.ui("ui.tab.fixtures"), m.ui("ui.tab.match")}
+	names := m.tabNames()
 	x := lipgloss.Width(division) + 3 + 1 // +1 for the frame's left border.
 	spans := make([]tabSpan, 0, len(names))
 	for i, n := range names {
@@ -712,8 +763,6 @@ func (m Model) View() string {
 		body = m.viewClubs(bodyWidth, bodyHeight)
 	case tabFixtures:
 		body = m.viewFixtures(bodyWidth, bodyHeight)
-	case tabMatch:
-		body = m.viewMatch(tier, bodyWidth, bodyHeight)
 	default:
 		body = m.viewMedia(bodyWidth, bodyHeight)
 	}
@@ -725,6 +774,10 @@ func (m Model) View() string {
 	if m.Err != "" {
 		err = styleDim.Render(truncate(m.ui("ui.error.prefix")+" "+m.Err, bodyWidth))
 	}
+	overlays := m.noticeOverlays(width, height)
+	if ov, ok := m.matchModalOverlay(width, height); ok {
+		overlays = append(overlays, ov)
+	}
 	return appFrame{
 		Width:    width,
 		Height:   height,
@@ -734,12 +787,274 @@ func (m Model) View() string {
 		Body:     body,
 		Error:    err,
 		Footer:   footer,
-		Overlays: m.noticeOverlays(width, height),
+		Overlays: overlays,
 	}.Render()
 }
 
+func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
+	if m.MatchModal == modalNone {
+		return Overlay{}, false
+	}
+	boxWidth := clampInt(width-10, 48, 118)
+	if width-4 < boxWidth {
+		boxWidth = width - 4
+	}
+	boxHeight := clampInt(height-8, 10, 28)
+	if height-4 < boxHeight {
+		boxHeight = height - 4
+	}
+	if boxWidth < 20 || boxHeight < 6 {
+		return Overlay{}, false
+	}
+	var text string
+	switch m.MatchModal {
+	case "live":
+		text = m.liveMatchModal(boxWidth, boxHeight)
+	case "waiting":
+		text = m.waitingMatchModal(boxWidth, boxHeight)
+	default:
+		text = m.replayMatchModal(boxWidth, boxHeight)
+	}
+	x := (width - boxWidth) / 2
+	y := (height - boxHeight) / 2
+	if x < 1 {
+		x = 1
+	}
+	if y < 4 {
+		y = 4
+	}
+	return textOverlay(x, y, 90, text), true
+}
+
+func (m Model) waitingMatchModal(width, height int) string {
+	title := m.ui("ui.match.live")
+	lines := []string{m.ui("ui.match.waiting_result")}
+	if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+		f := m.Fixtures[idx]
+		title = strings.TrimSpace(f.Home + " - " + f.Away)
+		lines = []string{
+			fmt.Sprintf("%s · %s", f.KickoffText, f.Competition),
+			m.ui("ui.match.waiting_result"),
+		}
+	}
+	return modalBox(width, height, title, lines)
+}
+
+func (m Model) liveMatchModal(width, height int) string {
+	if len(m.Matches) == 0 {
+		return modalBox(width, height, m.ui("ui.match.live"), []string{m.ui("ui.match.none")})
+	}
+	idx := m.MatchIdx
+	if idx < 0 || idx >= len(m.Matches) {
+		idx = 0
+	}
+	mv := m.Matches[idx]
+	title := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
+	lines := []string{
+		fmt.Sprintf("%d' · %s · %d/%d · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close")),
+	}
+	if flash := m.goalFlashLine(mv, width-2); flash != "" {
+		lines = append(lines, flash)
+	}
+	lines = append(lines,
+		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), mv.Stats.HomeShots, mv.Stats.AwayShots),
+		fmt.Sprintf("%s H %d · A %d   %s H %d · A %d",
+			m.ui("ui.match.stat.cards"), mv.Stats.HomeCards, mv.Stats.AwayCards,
+			m.ui("ui.match.stat.subs"), mv.Stats.HomeSubs, mv.Stats.AwaySubs),
+	)
+	if mix := m.chanceMixLabel(mv.Stats.ChanceTypes, 3); mix != "" {
+		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
+	}
+	lines = append(lines, m.diagnosticLines(mv.Stats.Diagnostics, width-4, 3)...)
+	contentRows := height - 2
+	commentRows := 6
+	if contentRows < 12 {
+		commentRows = 4
+	}
+	if commentRows > contentRows/2 {
+		commentRows = contentRows / 2
+	}
+	ratingRows := contentRows - len(lines) - commentRows - 2
+	if len(mv.Ratings) > 0 && ratingRows > 1 {
+		lines = append(lines, "", m.ui("ui.match.ratings"))
+		written := 0
+		side := ""
+		for _, r := range balancedRatings(mv.Ratings, 2) {
+			if written >= ratingRows {
+				break
+			}
+			if r.Side != side {
+				side = r.Side
+				club := mv.Home
+				if r.Side == "AWAY" {
+					club = mv.Away
+				}
+				lines = append(lines, club)
+				written++
+				if written >= ratingRows {
+					break
+				}
+			}
+			lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
+			written++
+		}
+	}
+	lines = append(lines, "", m.ui("ui.match.replay"))
+	commentRows = contentRows - len(lines)
+	if commentRows < 3 {
+		commentRows = 3
+	}
+	commentary := mv.Commentary
+	if len(commentary) > commentRows {
+		commentary = commentary[len(commentary)-commentRows:]
+	}
+	for i, line := range commentary {
+		prefix := "  "
+		if i == len(commentary)-1 {
+			prefix = "▸ "
+		}
+		lines = append(lines, prefix+line)
+	}
+	return modalBox(width, height, title, lines)
+}
+
+func (m Model) replayMatchModal(width, height int) string {
+	f := Fixture{}
+	if m.MatchModalID != 0 {
+		if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+			f = m.Fixtures[idx]
+		}
+	} else if len(m.Fixtures) > 0 && m.FixtureIdx >= 0 && m.FixtureIdx < len(m.Fixtures) {
+		f = m.Fixtures[m.FixtureIdx]
+	}
+	targetID := f.ID
+	if targetID == 0 {
+		targetID = m.MatchModalID
+	}
+	if m.MatchDetail.Fixture == 0 || (targetID != 0 && m.MatchDetail.Fixture != targetID) {
+		title := strings.TrimSpace(f.Home + " - " + f.Away)
+		if title == "-" || title == "" {
+			title = m.ui("ui.fixture.replay")
+		}
+		return modalBox(width, height, title, []string{m.ui("ui.match.loading")})
+	}
+	md := m.MatchDetail
+	title := fmt.Sprintf("%s %d-%d %s", md.Home, md.HomeGoals, md.AwayGoals, md.Away)
+	lines := []string{
+		fmt.Sprintf("%s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help")),
+		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), md.HomeShots, md.AwayShots),
+	}
+	if mix := m.chanceMixLabel(md.ChanceTypes, 3); mix != "" {
+		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
+	}
+	if md.Winner != "" {
+		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
+	}
+	if len(md.Scorers) > 0 {
+		lines = append(lines, "", m.ui("ui.match.scorers"))
+		for _, e := range md.Scorers {
+			lines = append(lines, fmt.Sprintf("%d' %s · %s", e.Minute, e.Club, e.Player))
+		}
+	}
+	appendEvents := func(title string, events []MatchEvent) {
+		if len(events) == 0 {
+			return
+		}
+		lines = append(lines, "", title)
+		for _, e := range events {
+			detail := e.Player
+			if e.Detail != "" {
+				detail += " " + e.Detail
+			}
+			lines = append(lines, fmt.Sprintf("%d' %s · %s", e.Minute, e.Club, detail))
+		}
+	}
+	appendEvents(m.ui("ui.match.cards"), md.Cards)
+	if len(md.Subs) > 0 {
+		lines = append(lines, "", m.ui("ui.match.subs"))
+		for _, s := range md.Subs {
+			on := s.On
+			if on == "" {
+				on = "-"
+			}
+			lines = append(lines, fmt.Sprintf("%d' %s · %s -> %s %s", s.Minute, s.Club, s.Off, on, s.Reason))
+		}
+	}
+	if len(md.Ratings) > 0 {
+		lines = append(lines, "", m.ui("ui.match.ratings"))
+		for i, r := range md.Ratings {
+			if i >= 5 {
+				break
+			}
+			lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
+		}
+	}
+	lines = append(lines, "", m.ui("ui.match.replay"))
+	commentRows := height - len(lines) - 4
+	if commentRows < 3 {
+		commentRows = 3
+	}
+	start := m.ReplayOffset
+	if start < 0 || start >= len(md.Commentary) {
+		start = 0
+	}
+	for i := start; i < len(md.Commentary) && len(lines) < height-2; i++ {
+		lines = append(lines, "▸ "+md.Commentary[i])
+		if len(lines) >= height-2 || i-start+1 >= commentRows {
+			break
+		}
+	}
+	if len(md.Commentary) == 0 && md.Archived {
+		lines = append(lines, m.ui("ui.match.replay.archived"))
+	}
+	return modalBox(width, height, title, lines)
+}
+
+func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
+	if len(mv.Markers) == 0 {
+		return ""
+	}
+	latest := mv.Markers[len(mv.Markers)-1]
+	if latest.Kind != "GOAL" {
+		return ""
+	}
+	side := mv.Home
+	if latest.Side == "AWAY" {
+		side = mv.Away
+	}
+	msg := fmt.Sprintf("  %s  %d'  %s  ", strings.ToUpper(m.ui("ui.match.goalflash")), latest.Minute, side)
+	if lipgloss.Width(msg) > width {
+		msg = truncate(msg, width)
+	}
+	pad := width - lipgloss.Width(msg)
+	left := pad / 2
+	right := pad - left
+	return strings.Repeat("█", left) + msg + strings.Repeat("█", right)
+}
+
+func modalBox(width, height int, title string, lines []string) string {
+	content := width - 2
+	out := []string{"╔" + fitLine(title, content, alignCenter) + "╗"}
+	for _, line := range lines {
+		for _, wrapped := range wrapText(line, content) {
+			out = append(out, "║"+fitLine(wrapped, content, alignLeft)+"║")
+			if len(out) >= height-1 {
+				break
+			}
+		}
+		if len(out) >= height-1 {
+			break
+		}
+	}
+	for len(out) < height-1 {
+		out = append(out, "║"+strings.Repeat(" ", content)+"║")
+	}
+	out = append(out, "╚"+strings.Repeat("═", content)+"╝")
+	return strings.Join(out, "\n")
+}
+
 func (m Model) noticeOverlays(width, height int) []Overlay {
-	if m.Notice == "" || width < 72 || height < 18 {
+	if m.Notice == "" || width < layout.MinCols || height < layout.MinRows {
 		return nil
 	}
 	boxWidth := 34
@@ -790,7 +1105,7 @@ func (m Model) viewTooSmall() string {
 
 func (m Model) tabBar(_ int) string {
 	division := strings.ReplaceAll(m.ui("ui.header.division"), "{tier}", fmt.Sprint(m.Tier))
-	names := []string{m.ui("ui.tab.media"), m.ui("ui.tab.table"), m.ui("ui.tab.clubs"), m.ui("ui.tab.fixtures"), m.ui("ui.tab.match")}
+	names := m.tabNames()
 	parts := make([]string, tabCount)
 	for i, n := range names {
 		label := fmt.Sprintf("%d %s", i+1, n)
@@ -801,6 +1116,10 @@ func (m Model) tabBar(_ int) string {
 		}
 	}
 	return division + "   " + strings.Join(parts, "  ")
+}
+
+func (m Model) tabNames() []string {
+	return []string{m.ui("ui.tab.media"), m.ui("ui.tab.table"), m.ui("ui.tab.clubs"), m.ui("ui.tab.fixtures")}
 }
 
 func (m Model) viewMedia(width, height int) string {
@@ -1278,30 +1597,7 @@ func (m Model) viewFixtures(width, height int) string {
 	if len(m.Fixtures) == 0 {
 		return styleDim.Render(m.ui("ui.fixtures.empty"))
 	}
-	if width >= 120 {
-		listWidth := width / 2
-		if listWidth < 56 {
-			listWidth = 56
-		}
-		if listWidth > 78 {
-			listWidth = 78
-		}
-		detailWidth := width - listWidth - 1
-		list := lipgloss.NewStyle().Width(listWidth).Render(m.fixtureList(listWidth, height))
-		detail := lipgloss.NewStyle().Width(detailWidth).Render(m.fixtureDetail(detailWidth, height))
-		return lipgloss.JoinHorizontal(lipgloss.Top, list, " ", detail)
-	}
-	listRows := height / 2
-	if listRows < 8 {
-		listRows = 8
-	}
-	if listRows > height-6 {
-		listRows = height - 6
-	}
-	if listRows < 1 {
-		listRows = height
-	}
-	return m.fixtureList(width, listRows) + "\n" + m.fixtureDetail(width, height-listRows-1)
+	return m.fixtureList(width, height)
 }
 
 func (m Model) fixtureList(width, height int) string {
@@ -1325,7 +1621,9 @@ func (m Model) fixtureList(width, height int) string {
 			mark = ">"
 		}
 		fixture := f.Home + " - " + f.Away
-		if f.Status == "RESULT" {
+		if mv, ok := m.liveMatchForFixture(f.ID); ok {
+			fixture = fmt.Sprintf("%s %d-%d %s", f.Home, mv.HomeGoals, mv.AwayGoals, f.Away)
+		} else if f.Status == "RESULT" {
 			fixture = fmt.Sprintf("%s %d-%d %s", f.Home, f.HomeGoals, f.AwayGoals, f.Away)
 		}
 		rows = append(rows, []string{mark, m.fixtureStatus(f), f.KickoffText, roundCell(f), fixture})
@@ -1334,6 +1632,9 @@ func (m Model) fixtureList(width, height int) string {
 }
 
 func (m Model) fixtureStatus(f Fixture) string {
+	if _, ok := m.liveMatchForFixture(f.ID); ok {
+		return m.ui("ui.fixture.live")
+	}
 	if f.Status == "RESULT" {
 		if f.Archived {
 			return m.ui("ui.fixture.archived")
@@ -1346,6 +1647,77 @@ func (m Model) fixtureStatus(f Fixture) string {
 	return m.ui("ui.fixture.scheduled")
 }
 
+func (m Model) liveMatchForFixture(id int64) (LiveMatchView, bool) {
+	for _, mv := range m.Matches {
+		if mv.Fixture == id {
+			return mv, true
+		}
+	}
+	return LiveMatchView{}, false
+}
+
+func (m Model) liveIndexForFixture(id int64) int {
+	for i, mv := range m.Matches {
+		if mv.Fixture == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m Model) fixtureIndexByID(id int64) int {
+	for i, f := range m.Fixtures {
+		if f.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
+	if len(m.Fixtures) == 0 || m.FixtureIdx < 0 || m.FixtureIdx >= len(m.Fixtures) {
+		return m, nil
+	}
+	f := m.Fixtures[m.FixtureIdx]
+	if idx := m.liveIndexForFixture(f.ID); idx >= 0 {
+		m.MatchIdx = idx
+		m.MatchModal = modalLive
+		m.MatchModalID = f.ID
+		m.MatchDetail = MatchDetail{}
+		m.ReplayOffset = 0
+		return m, nil
+	}
+	if f.Status == "RESULT" {
+		m.MatchModal = modalReplay
+		m.MatchModalID = f.ID
+		m.ReplayOffset = 0
+		if m.MatchDetail.Fixture == f.ID {
+			return m, nil
+		}
+		m.MatchDetail = MatchDetail{}
+		return m, m.fetchMatch()
+	}
+	m.setNotice(m.ui("ui.fixture.scheduled_notice"))
+	return m, nil
+}
+
+func (m Model) liveModalFinished() (tea.Model, tea.Cmd) {
+	if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
+		f := m.Fixtures[idx]
+		m.FixtureIdx = idx
+		if f.Status == "RESULT" {
+			m.MatchModal = modalReplay
+			m.MatchModalID = f.ID
+			m.MatchDetail = MatchDetail{}
+			m.ReplayOffset = 0
+			return m, m.fetchMatch()
+		}
+	}
+	m.MatchModal = modalWaiting
+	m.setNotice(m.ui("ui.match.ended"))
+	return m, m.fetchFixtures()
+}
+
 func roundCell(f Fixture) string {
 	if f.Round != 0 {
 		return intCell(f.Round)
@@ -1354,106 +1726,6 @@ func roundCell(f Fixture) string {
 		return "S" + intCell(f.Season)
 	}
 	return ""
-}
-
-func (m Model) fixtureDetail(width, height int) string {
-	if len(m.Fixtures) == 0 {
-		return ""
-	}
-	f := m.Fixtures[m.FixtureIdx]
-	if f.Status != "RESULT" {
-		lines := []string{
-			styleHeader.Render(truncate(f.Home+" - "+f.Away, width)),
-			styleDim.Render(truncate(f.KickoffText+" · "+f.Competition, width)),
-			"",
-			truncate(m.ui("ui.fixture.scheduled_detail"), width),
-		}
-		if len(lines) > height {
-			lines = lines[:height]
-		}
-		return strings.Join(lines, "\n")
-	}
-	md := m.MatchDetail
-	if md.Fixture != f.ID {
-		return styleDim.Render(truncate(m.ui("ui.match.loading"), width))
-	}
-	lines := []string{
-		styleHeader.Render(truncate(fmt.Sprintf("%s %d-%d %s", md.Home, md.HomeGoals, md.AwayGoals, md.Away), width)),
-		styleDim.Render(truncate(md.KickoffText+" · "+md.Competition+" · "+m.fixtureStatus(f), width)),
-		fmt.Sprintf("%s %d  %s %d", m.ui("ui.match.stat.shots"), md.HomeShots, m.ui("ui.match.away"), md.AwayShots),
-	}
-	if mix := m.chanceMixLabel(md.ChanceTypes, 3); mix != "" {
-		lines = append(lines, truncate(fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix), width))
-	}
-	for _, line := range m.diagnosticLines(md.Diagnostics, width, 3) {
-		lines = append(lines, line)
-	}
-	if md.Winner != "" {
-		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
-	}
-	lines = append(lines, "")
-	appendEvents := func(title string, events []MatchEvent) {
-		if len(events) == 0 {
-			return
-		}
-		lines = append(lines, styleDim.Render(truncate(title, width)))
-		for _, e := range events {
-			detail := e.Player
-			if e.Detail != "" {
-				detail += " " + e.Detail
-			}
-			lines = append(lines, truncate(fmt.Sprintf("%d' %s · %s", e.Minute, e.Club, detail), width))
-		}
-	}
-	appendEvents(m.ui("ui.match.scorers"), md.Scorers)
-	appendEvents(m.ui("ui.match.cards"), md.Cards)
-	if len(md.Subs) > 0 {
-		lines = append(lines, styleDim.Render(truncate(m.ui("ui.match.subs"), width)))
-		for _, s := range md.Subs {
-			on := s.On
-			if on == "" {
-				on = "-"
-			}
-			lines = append(lines, truncate(fmt.Sprintf("%d' %s · %s -> %s %s", s.Minute, s.Club, s.Off, on, s.Reason), width))
-		}
-	}
-	if len(md.Ratings) > 0 {
-		lines = append(lines, styleDim.Render(truncate(m.ui("ui.match.ratings"), width)))
-		limit := 5
-		if len(md.Ratings) < limit {
-			limit = len(md.Ratings)
-		}
-		for i := 0; i < limit; i++ {
-			r := md.Ratings[i]
-			lines = append(lines, truncate(fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name), width))
-		}
-	}
-	if len(md.Commentary) > 0 {
-		lines = append(lines, "", styleDim.Render(truncate(m.ui("ui.match.replay"), width)))
-		remaining := height - len(lines)
-		if remaining < 1 {
-			remaining = 1
-		}
-		start := m.ReplayOffset
-		if start < 0 {
-			start = 0
-		}
-		if start >= len(md.Commentary) {
-			start = 0
-		}
-		for i := start; i < len(md.Commentary) && len(lines) < height; i++ {
-			lines = append(lines, truncate(md.Commentary[i], width))
-		}
-		if start+remaining < len(md.Commentary) {
-			lines = append(lines, styleDim.Render(truncate(m.ui("ui.match.replay.more"), width)))
-		}
-	} else if md.Archived {
-		lines = append(lines, "", styleDim.Render(truncate(m.ui("ui.match.replay.archived"), width)))
-	}
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	return strings.Join(lines, "\n")
 }
 
 // truncate trims s to n display CELLS (not runes — Korean and other
@@ -1526,207 +1798,6 @@ func wrapParagraphs(s string, width int) []string {
 		return []string{""}
 	}
 	return out
-}
-
-// The Live Match screen (docs/07 §4.1): score header, the ASCII pitch band,
-// the commentary tail, and — per tier — the stats/ratings/momentum/ticker
-// furniture. The pitch is the enhanced element and degrades FIRST: tier S is
-// pure commentary (classic CM text layout; 'r' swaps in the stats or ratings
-// block), M draws a compact toggleable strip plus ONE side pane ('r' cycles
-// stats → ratings → hidden), L adds the momentum line and both panes (ticker
-// when tall), XL keeps a persistent ticker column. It reads only what the
-// Console API already carries — presentation, never sim state.
-func (m Model) viewMatch(tier layout.Tier, width, height int) string {
-	if len(m.Matches) == 0 {
-		return styleDim.Render(m.ui("ui.match.none"))
-	}
-	mv := m.Matches[m.MatchIdx]
-
-	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("%s %d - %d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)))
-	b.WriteString(styleDim.Render(fmt.Sprintf("  %d'  %s  (%d/%d)",
-		mv.Minute, mv.Competition, m.MatchIdx+1, len(m.Matches))))
-	b.WriteString("\n")
-	used := 1 // score line inside the framed content area
-
-	if tier >= layout.TierL && width >= 100 {
-		board := m.renderScoreboard(width, mv)
-		b.WriteString(board)
-		used += strings.Count(board, "\n")
-		if flash := m.renderGoalFlash(width, mv); flash != "" {
-			b.WriteString(flash)
-			used += strings.Count(flash, "\n")
-		}
-	}
-
-	// Momentum sparkline under the header — L/XL only (§4.1 matrix).
-	if tier >= layout.TierL && len(mv.Momentum) > 0 {
-		b.WriteString(styleDim.Render(m.ui("ui.match.momentum")+" "+momentumGlyphs(mv.Momentum)) + "\n")
-		used++
-	}
-
-	// Side furniture per tier: S swaps the main block, M gets one pane,
-	// L/XL get both (+ticker XL always, L only when tall).
-	var left, right, ticker string
-	paneRows := height - used
-	if paneRows < 4 {
-		paneRows = 4
-	}
-	switch tier {
-	case layout.TierS:
-		if m.PaneMode == 1 {
-			return b.String() + m.paneStats(mv)
-		}
-		if m.PaneMode == 2 {
-			return b.String() + m.paneRatings(mv, paneRows)
-		}
-	case layout.TierM:
-		if m.PaneMode == 0 {
-			right = m.paneStats(mv)
-		} else if m.PaneMode == 1 {
-			right = m.paneRatings(mv, paneRows)
-		}
-	case layout.TierL:
-		left, right = m.paneStats(mv), m.paneRatings(mv, paneRows)
-		if m.Height >= tickerMinRowsL {
-			ticker = m.paneTicker(paneRows)
-		}
-	case layout.TierXL:
-		left, right = m.paneStats(mv), m.paneRatings(mv, paneRows)
-		ticker = m.paneTicker(paneRows)
-	}
-
-	// Centre column: pitch band + commentary tail, sized to what the panes
-	// leave over.
-	centerWidth := width
-	for _, pane := range []string{left, right, ticker} {
-		if pane != "" {
-			centerWidth -= paneWidth + 1
-		}
-	}
-	if centerWidth < 24 {
-		centerWidth = 24
-	}
-	rows := 0
-	switch {
-	case tier == layout.TierM && !m.PitchHidden:
-		rows = pitchRowsStrip
-	case tier == layout.TierL:
-		rows = pitchRowsFull
-	case tier == layout.TierXL:
-		rows = pitchRowsTall
-	}
-	var center strings.Builder
-	if rows > 0 {
-		width := centerWidth - 2
-		if width > pitchMaxWidth {
-			width = pitchMaxWidth
-		}
-		center.WriteString(renderPitch(width, rows, mv.Markers))
-		center.WriteString(styleDim.Render(m.ui("ui.match.legend")) + "\n")
-		used += rows + 1
-	}
-	max := height - used
-	if max < 4 {
-		max = 4
-	}
-	lines := mv.Commentary
-	center.WriteString(m.renderCommentaryLog(centerWidth, max, lines))
-
-	cols := []string{}
-	if left != "" {
-		cols = append(cols, lipgloss.NewStyle().Width(paneWidth).Render(left))
-	}
-	cols = append(cols, lipgloss.NewStyle().Width(centerWidth).Render(center.String()))
-	if right != "" {
-		cols = append(cols, lipgloss.NewStyle().Width(paneWidth).Render(right))
-	}
-	if ticker != "" {
-		cols = append(cols, lipgloss.NewStyle().Width(paneWidth).Render(ticker))
-	}
-	if len(cols) == 1 {
-		return b.String() + center.String()
-	}
-	return b.String() + lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-}
-
-func (m Model) renderCommentaryLog(width, maxRows int, lines []string) string {
-	if maxRows <= 0 {
-		return ""
-	}
-	if width < 16 {
-		if len(lines) > maxRows {
-			lines = lines[len(lines)-maxRows:]
-		}
-		return strings.Join(lines, "\n")
-	}
-	content := width - 2
-	out := []string{styleDim.Render("┌" + fitLine(m.ui("ui.match.replay"), content, alignCenter) + "┐")}
-	available := maxRows - 2
-	if available < 1 {
-		available = 1
-	}
-	if len(lines) > available {
-		lines = lines[len(lines)-available:]
-	}
-	for _, line := range lines {
-		out = append(out, "│"+fitLine(truncate(line, content), content, alignLeft)+"│")
-	}
-	for len(out) < maxRows-1 {
-		out = append(out, "│"+strings.Repeat(" ", content)+"│")
-	}
-	out = append(out, styleDim.Render("└"+strings.Repeat("─", content)+"┘"))
-	if len(out) > maxRows {
-		out = out[:maxRows]
-	}
-	return strings.Join(out, "\n")
-}
-
-// Side-pane geometry (docs/07 §4.1). The ticker needs a tall L terminal; XL
-// keeps it persistently.
-const (
-	paneWidth      = 26
-	tickerMinRowsL = 40
-)
-
-// momentumGlyphs renders the sparkline: one glyph per 10-minute bucket, home
-// pressure up, away pressure down.
-func momentumGlyphs(buckets []int) string {
-	var b strings.Builder
-	for _, v := range buckets {
-		switch {
-		case v > 2:
-			b.WriteRune('▲')
-		case v > 0:
-			b.WriteRune('△')
-		case v < -2:
-			b.WriteRune('▼')
-		case v < 0:
-			b.WriteRune('▽')
-		default:
-			b.WriteRune('·')
-		}
-	}
-	return b.String()
-}
-
-// paneStats renders the Match stats block: shots, cards, subs — home | away.
-func (m Model) paneStats(mv LiveMatchView) string {
-	var b strings.Builder
-	b.WriteString(styleHeader.Render(m.ui("ui.match.stats")) + "\n")
-	row := func(label string, home, away int) {
-		b.WriteString(fmt.Sprintf("%s %3d %3d\n", fitLine(label, 12, alignLeft), home, away))
-	}
-	row(m.ui("ui.match.stat.shots"), mv.Stats.HomeShots, mv.Stats.AwayShots)
-	row(m.ui("ui.match.stat.cards"), mv.Stats.HomeCards, mv.Stats.AwayCards)
-	row(m.ui("ui.match.stat.subs"), mv.Stats.HomeSubs, mv.Stats.AwaySubs)
-	if mix := m.chanceMixLabel(mv.Stats.ChanceTypes, 2); mix != "" {
-		b.WriteString(fmt.Sprintf("%s %s\n", fitLine(m.ui("ui.match.stat.chance_mix"), 12, alignLeft), mix))
-	}
-	for _, line := range m.diagnosticLines(mv.Stats.Diagnostics, paneWidth, 4) {
-		b.WriteString(line + "\n")
-	}
-	return b.String()
 }
 
 func (m Model) diagnosticLines(d MatchDiagnostics, width, limit int) []string {
@@ -1817,277 +1888,33 @@ func (m Model) chanceTypeLabel(key string) string {
 	return strings.ToLower(strings.ReplaceAll(key, "_", " "))
 }
 
-// paneRatings renders the live ratings rows (both sides, server-sorted),
-// trimmed to the available height.
-func (m Model) paneRatings(mv LiveMatchView, maxRows int) string {
-	var b strings.Builder
-	b.WriteString(styleHeader.Render(m.ui("ui.match.ratings")) + "\n")
-	side := ""
-	written := 1
-	for _, r := range mv.Ratings {
-		if written >= maxRows {
-			break
-		}
-		if r.Side != side {
-			side = r.Side
-			name := mv.Home
-			if side == "AWAY" {
-				name = mv.Away
-			}
-			b.WriteString(styleDim.Render(truncate(name, paneWidth-2)) + "\n")
-			written++
-		}
-		b.WriteString(fmt.Sprintf("%d.%d %s\n", r.RatingX10/10, r.RatingX10%10, truncate(r.Name, paneWidth-5)))
-		written++
+func balancedRatings(ratings []LiveRating, perSide int) []LiveRating {
+	if perSide <= 0 {
+		return nil
 	}
-	return b.String()
-}
-
-// paneTicker renders the other grounds' latest scores.
-func (m Model) paneTicker(maxRows int) string {
-	var b strings.Builder
-	b.WriteString(styleHeader.Render(m.ui("ui.match.latest")) + "\n")
-	written := 1
-	for i, other := range m.Matches {
-		if i == m.MatchIdx {
+	out := make([]LiveRating, 0, perSide*2)
+	counts := map[string]int{}
+	for _, r := range ratings {
+		if r.Side != "HOME" && r.Side != "AWAY" {
 			continue
 		}
-		if written >= maxRows {
-			break
+		if counts[r.Side] >= perSide {
+			continue
 		}
-		b.WriteString(fmt.Sprintf("%s %d-%d %s %d'\n",
-			truncate(other.Home, 8), other.HomeGoals, other.AwayGoals,
-			truncate(other.Away, 8), other.Minute))
-		written++
+		out = append(out, r)
+		counts[r.Side]++
 	}
-	if written == 1 {
-		b.WriteString(styleDim.Render(truncate(m.ui("ui.match.none"), paneWidth-1)) + "\n")
-	}
-	return b.String()
+	return out
 }
 
-// Pitch band geometry (docs/07 §4.1 tier matrix).
-const (
-	pitchRowsStrip = 5  // M: compact strip
-	pitchRowsFull  = 9  // L: full band
-	pitchRowsTall  = 11 // XL: expanded band
-	pitchMaxWidth  = 100
-)
-
-// renderPitch draws the abstract CM-style field: border, halfway line, centre
-// spot, goalmouths — with the recent event markers overlaid. Home attacks
-// RIGHT: a home goal lands in the right goalmouth, an away goal in the left;
-// midfield events sit on their side of the halfway line. Markers stagger down
-// the rows oldest→newest so the latest event reads at the bottom. Deliberately
-// zones-and-glyphs, not ball physics — the engine samples key moments.
-func renderPitch(width, rows int, markers []LiveMarker) string {
-	if width < 24 {
-		width = 24
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
 	}
-	grid := make([][]rune, rows)
-	for r := range grid {
-		line := make([]rune, width)
-		for c := range line {
-			line[c] = ' '
-		}
-		grid[r] = line
-	}
-	for c := 0; c < width; c++ {
-		grid[0][c], grid[rows-1][c] = '-', '-'
-	}
-	for r := 0; r < rows; r++ {
-		grid[r][0], grid[r][width-1] = '|', '|'
-	}
-	grid[0][0], grid[0][width-1] = '+', '+'
-	grid[rows-1][0], grid[rows-1][width-1] = '+', '+'
-	mid := width / 2
-	for r := 1; r < rows-1; r++ {
-		grid[r][mid] = ':'
-	}
-	gy := rows / 2
-	grid[gy][mid] = 'o' // centre spot
-	grid[gy][1], grid[gy][width-2] = '[', ']'
-
-	show := markers
-	if len(show) > rows-2 {
-		show = show[len(show)-(rows-2):]
-	}
-	for i, mk := range show {
-		col := mid
-		switch mk.Side {
-		case "HOME": // attacking right
-			col = width * 3 / 4
-		case "AWAY": // attacking left
-			col = width / 4
-		}
-		if mk.Kind == "GOAL" {
-			switch mk.Side {
-			case "HOME":
-				col = width - 3
-			case "AWAY":
-				col = 2
-			}
-		}
-		row := 1 + i%(rows-2)
-		grid[row][col] = markerGlyph(mk.Kind)
-	}
-
-	var b strings.Builder
-	for _, line := range grid {
-		b.WriteString(string(line))
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func markerGlyph(kind string) rune {
-	switch kind {
-	case "GOAL":
-		return 'G'
-	case "CHANCE":
-		return 'o'
-	case "CARD":
-		return 'x'
-	case "INJURY":
-		return '+'
-	case "SUB":
-		return 's'
-	case "SHOOTOUT":
-		return '!'
-	}
-	return '.'
-}
-
-func (m Model) renderScoreboard(width int, mv LiveMatchView) string {
-	inner := width
-	if inner > 118 {
-		inner = 118
-	}
-	score := joinBigSegments(bigNumber(mv.HomeGoals), bigHyphen(), bigNumber(mv.AwayGoals))
-	top := fitLine("┌"+strings.Repeat("─", inner-2)+"┐", width, alignCenter)
-	bottom := fitLine("└"+strings.Repeat("─", inner-2)+"┘", width, alignCenter)
-	home := truncate(mv.Home, 20)
-	away := truncate(mv.Away, 20)
-	title := fitLine(home+"  "+m.uiMissingSafe("ui.match.scoreboard")+"  "+away, inner-2, alignCenter)
-	lines := []string{top, fitLine("│"+title+"│", width, alignCenter)}
-	for _, row := range score {
-		lines = append(lines, fitLine("│"+fitLine(row, inner-2, alignCenter)+"│", width, alignCenter))
-	}
-	lines = append(lines, bottom)
-	return strings.Join(lines, "\n") + "\n"
-}
-
-func (m Model) uiMissingSafe(key string) string {
-	v := m.ui(key)
-	if v == key {
-		return ""
+	if v > hi {
+		return hi
 	}
 	return v
-}
-
-func (m Model) renderGoalFlash(width int, mv LiveMatchView) string {
-	goal := latestGoal(mv.Markers)
-	if goal == nil {
-		return ""
-	}
-	side := mv.Home
-	if goal.Side == "AWAY" {
-		side = mv.Away
-	}
-	msg := fmt.Sprintf(">>>  %s  %d'  %s  <<<", strings.ToUpper(m.ui("ui.match.goalflash")), goal.Minute, side)
-	inner := minInt(width, 96)
-	if inner < 24 {
-		inner = width
-	}
-	burst := []string{
-		strings.Repeat("▓", inner),
-		"▓" + fitLine("✦ ✦ ✦", inner-2, alignCenter) + "▓",
-		"▓" + fitLine(msg, inner-2, alignCenter) + "▓",
-		"▓" + fitLine(strings.ToUpper(m.ui("ui.match.scoreboard")+" "+m.ui("ui.match.goalflash")), inner-2, alignCenter) + "▓",
-		strings.Repeat("▓", inner),
-	}
-	for i := range burst {
-		burst[i] = styleHeader.Render(fitLine(burst[i], width, alignCenter))
-	}
-	return strings.Join(burst, "\n") + "\n"
-}
-
-func latestGoal(markers []LiveMarker) *LiveMarker {
-	if len(markers) == 0 {
-		return nil
-	}
-	last := &markers[len(markers)-1]
-	if last.Kind != "GOAL" {
-		return nil
-	}
-	return last
-}
-
-func bigNumber(n int) []string {
-	if n < 0 {
-		n = 0
-	}
-	out := []string{"", "", "", "", ""}
-	for i, r := range fmt.Sprint(n) {
-		g := bigDigit(r)
-		for row := range out {
-			if i > 0 {
-				out[row] += " "
-			}
-			out[row] += g[row]
-		}
-	}
-	return out
-}
-
-func joinBigSegments(parts ...[]string) []string {
-	out := []string{"", "", "", "", ""}
-	for i, part := range parts {
-		for row := range out {
-			if i > 0 {
-				out[row] += "   "
-			}
-			out[row] += part[row]
-		}
-	}
-	return out
-}
-
-func bigHyphen() []string {
-	return []string{"     ", "     ", "█████", "     ", "     "}
-}
-
-func bigDigit(r rune) []string {
-	switch r {
-	case '0':
-		return []string{"█████", "█   █", "█   █", "█   █", "█████"}
-	case '1':
-		return []string{"  █  ", " ██  ", "  █  ", "  █  ", "█████"}
-	case '2':
-		return []string{"█████", "    █", "█████", "█    ", "█████"}
-	case '3':
-		return []string{"█████", "    █", " ████", "    █", "█████"}
-	case '4':
-		return []string{"█   █", "█   █", "█████", "    █", "    █"}
-	case '5':
-		return []string{"█████", "█    ", "█████", "    █", "█████"}
-	case '6':
-		return []string{"█████", "█    ", "█████", "█   █", "█████"}
-	case '7':
-		return []string{"█████", "    █", "   █ ", "  █  ", "  █  "}
-	case '8':
-		return []string{"█████", "█   █", "█████", "█   █", "█████"}
-	case '9':
-		return []string{"█████", "█   █", "█████", "    █", "█████"}
-	}
-	return []string{"     ", "     ", "     ", "     ", "     "}
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func maxInt(a, b int) int {
