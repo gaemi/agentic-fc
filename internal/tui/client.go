@@ -1,0 +1,333 @@
+// Package tui is the Console's Bubble Tea implementation (docs/07):
+// Viewer Mode over the Console API. The Console is catalog-free — every
+// string it shows was rendered server-side for the session locale
+// (docs/07 §6); this package only lays text out.
+package tui
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gaemi/agentic-fc/internal/narrative"
+)
+
+// Client talks to the Console API.
+type Client struct {
+	Base   string
+	Locale narrative.Locale
+	HTTP   *http.Client
+}
+
+func NewClient(base string, loc narrative.Locale) *Client {
+	return &Client{
+		Base:   strings.TrimRight(base, "/"),
+		Locale: loc,
+		HTTP:   &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (c *Client) get(path string, out any) error {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	resp, err := c.HTTP.Get(c.Base + path + sep + "locale=" + string(c.Locale))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// The server localizes error bodies (FR-35c); surface that text.
+		var apiErr struct {
+			Error string `json:"error"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&apiErr) == nil && apiErr.Error != "" {
+			return fmt.Errorf("%s", apiErr.Error)
+		}
+		return fmt.Errorf("%s: HTTP %d", path, resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// WorldInfo mirrors GET /v1/world.
+type WorldInfo struct {
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	TempoLabel string `json:"tempo_label"`
+	ClockText  string `json:"clock_text"`
+	Divisions  int    `json:"divisions"`
+}
+
+func (c *Client) World() (WorldInfo, error) {
+	var w WorldInfo
+	err := c.get("/v1/world", &w)
+	return w, err
+}
+
+// UIStrings mirrors GET /v1/ui.
+func (c *Client) UIStrings() (map[string]string, error) {
+	var out struct {
+		Strings map[string]string `json:"strings"`
+	}
+	err := c.get("/v1/ui", &out)
+	return out.Strings, err
+}
+
+// NewsArticle mirrors GET /v1/news.
+type NewsArticle struct {
+	ID       int64   `json:"id"`
+	GameTime int64   `json:"game_time"`
+	TimeText string  `json:"time_text"`
+	Category string  `json:"category"`
+	Source   string  `json:"source"`
+	Title    string  `json:"title"`
+	Deck     string  `json:"deck"`
+	Body     string  `json:"body"`
+	Refs     []int64 `json:"refs"`
+}
+
+func (c *Client) News(limit int) ([]NewsArticle, error) {
+	var out struct {
+		Items []NewsArticle `json:"items"`
+	}
+	err := c.get(fmt.Sprintf("/v1/news?limit=%d", limit), &out)
+	return out.Items, err
+}
+
+// TableRow / Table mirror GET /v1/tables.
+type TableRow struct {
+	ClubID int64  `json:"club_id"`
+	Pos    int    `json:"pos"`
+	Club   string `json:"club"`
+	Played int    `json:"played"`
+	Won    int    `json:"won"`
+	Drawn  int    `json:"drawn"`
+	Lost   int    `json:"lost"`
+	GF     int    `json:"gf"`
+	GA     int    `json:"ga"`
+	Points int    `json:"points"`
+}
+
+type Table struct {
+	Tier  int        `json:"tier"`
+	Label string     `json:"label"`
+	Rows  []TableRow `json:"rows"`
+}
+
+func (c *Client) Table(tier int) (Table, error) {
+	var t Table
+	err := c.get(fmt.Sprintf("/v1/tables?tier=%d", tier), &t)
+	return t, err
+}
+
+// Clubs mirror GET /v1/clubs and /v1/clubs/{id}.
+type ClubSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Short     string `json:"short"`
+	Tier      int    `json:"tier"`
+	Region    string `json:"region"`
+	Stadium   string `json:"stadium"`
+	Capacity  int    `json:"capacity"`
+	Manager   string `json:"manager"`
+	Caretaker bool   `json:"caretaker"`
+	Security  string `json:"security"`
+}
+
+type Player struct {
+	ID                   int64          `json:"id"`
+	Name                 string         `json:"name"`
+	Age                  int            `json:"age"`
+	HeightCm             int            `json:"height_cm"`
+	WeightKg             int            `json:"weight_kg"`
+	Position             string         `json:"position"`
+	Group                string         `json:"group"`
+	Foot                 string         `json:"foot"`
+	WeakFoot             int            `json:"weak_foot"`
+	WeakFootLabel        string         `json:"weak_foot_label"`
+	Youth                bool           `json:"youth"`
+	FamiliarityLabel     string         `json:"familiarity_label"`
+	Attributes           map[string]int `json:"attributes"`
+	ContractExpirySeason int            `json:"contract_expiry_season"`
+}
+
+type ClubDetail struct {
+	ClubSummary
+	PredictedFinish      int               `json:"predicted_finish"`
+	BoardObjectiveFinish int               `json:"board_objective_finish"`
+	Board                map[string]string `json:"board"`
+	Finances             map[string]string `json:"finances"`
+	Squad                []Player          `json:"squad"`
+}
+
+func (c *Client) Clubs() ([]ClubSummary, error) {
+	var out []ClubSummary
+	err := c.get("/v1/clubs", &out)
+	return out, err
+}
+
+func (c *Client) Club(id int64) (ClubDetail, error) {
+	var out ClubDetail
+	err := c.get(fmt.Sprintf("/v1/clubs/%d", id), &out)
+	return out, err
+}
+
+// Fixture mirrors GET /v1/fixtures.
+type Fixture struct {
+	ID          int64  `json:"id"`
+	Status      string `json:"status"`
+	Competition string `json:"competition"`
+	Round       int    `json:"round"`
+	KickoffText string `json:"kickoff_text"`
+	Season      int    `json:"season"`
+	Archived    bool   `json:"archived"`
+	Home        string `json:"home"`
+	Away        string `json:"away"`
+	HomeGoals   int    `json:"home_goals"`
+	AwayGoals   int    `json:"away_goals"`
+	HasReplay   bool   `json:"has_replay"`
+}
+
+func (c *Client) Fixtures(tier, limit int) ([]Fixture, error) {
+	var fx []Fixture
+	err := c.get(fmt.Sprintf("/v1/fixtures?tier=%d&limit=%d", tier, limit), &fx)
+	return fx, err
+}
+
+type MatchEvent struct {
+	Minute int    `json:"minute"`
+	Club   string `json:"club"`
+	Player string `json:"player"`
+	Detail string `json:"detail"`
+}
+
+type MatchSub struct {
+	Minute int    `json:"minute"`
+	Club   string `json:"club"`
+	Off    string `json:"off"`
+	On     string `json:"on"`
+	Reason string `json:"reason"`
+}
+
+type MatchDiagnostics struct {
+	ShotQuality    map[string]int `json:"shot_quality"`
+	AerialDuels    map[string]int `json:"aerial_duels"`
+	AerialWins     map[string]int `json:"aerial_wins"`
+	PressTurnovers map[string]int `json:"press_turnovers"`
+	SetPieceThreat map[string]int `json:"set_piece_threat"`
+	TacticalTilt   map[string]int `json:"tactical_tilt"`
+}
+
+type MatchDetail struct {
+	Fixture     int64            `json:"fixture"`
+	Status      string           `json:"status"`
+	Archived    bool             `json:"archived"`
+	Season      int              `json:"season"`
+	Competition string           `json:"competition"`
+	Round       int              `json:"round"`
+	KickoffText string           `json:"kickoff_text"`
+	Home        string           `json:"home"`
+	Away        string           `json:"away"`
+	HomeGoals   int              `json:"home_goals"`
+	AwayGoals   int              `json:"away_goals"`
+	Winner      string           `json:"winner"`
+	HomeShots   int              `json:"home_shots"`
+	AwayShots   int              `json:"away_shots"`
+	ChanceTypes map[string]int   `json:"chance_types"`
+	Diagnostics MatchDiagnostics `json:"diagnostics"`
+	Scorers     []MatchEvent     `json:"scorers"`
+	Cards       []MatchEvent     `json:"cards"`
+	Subs        []MatchSub       `json:"subs"`
+	Ratings     []LiveRating     `json:"ratings"`
+	Commentary  []string         `json:"commentary"`
+}
+
+func (c *Client) Match(id int64) (MatchDetail, error) {
+	var md MatchDetail
+	err := c.get(fmt.Sprintf("/v1/matches/%d", id), &md)
+	return md, err
+}
+
+// LiveMarker / LiveMatchView mirror GET /v1/matches/live (docs/07 §4.1).
+type LiveMarker struct {
+	Minute int    `json:"minute"`
+	Kind   string `json:"kind"` // GOAL | CHANCE | CARD | INJURY | SUB
+	Side   string `json:"side"` // HOME | AWAY | NONE
+}
+
+// LiveStats / LiveRating mirror the §4.1 side-pane blocks.
+type LiveStats struct {
+	HomeShots   int              `json:"home_shots"`
+	AwayShots   int              `json:"away_shots"`
+	HomeCards   int              `json:"home_cards"`
+	AwayCards   int              `json:"away_cards"`
+	HomeSubs    int              `json:"home_subs"`
+	AwaySubs    int              `json:"away_subs"`
+	ChanceTypes map[string]int   `json:"chance_types"`
+	Diagnostics MatchDiagnostics `json:"diagnostics"`
+}
+
+type LiveRating struct {
+	Side      string `json:"side"` // HOME | AWAY
+	Name      string `json:"name"`
+	RatingX10 int    `json:"rating_x10"`
+}
+
+type LiveMatchView struct {
+	Fixture     int64        `json:"fixture"`
+	Competition string       `json:"competition"`
+	Home        string       `json:"home"`
+	Away        string       `json:"away"`
+	HomeGoals   int          `json:"home_goals"`
+	AwayGoals   int          `json:"away_goals"`
+	Minute      int          `json:"minute"`
+	Commentary  []string     `json:"commentary"`
+	Markers     []LiveMarker `json:"markers"`
+	Stats       LiveStats    `json:"stats"`
+	Ratings     []LiveRating `json:"ratings"`
+	Momentum    []int        `json:"momentum"`
+}
+
+func (c *Client) LiveMatches() ([]LiveMatchView, error) {
+	var out struct {
+		Matches []LiveMatchView `json:"matches"`
+	}
+	err := c.get("/v1/matches/live", &out)
+	return out.Matches, err
+}
+
+// StreamFeed follows GET /v1/feed (SSE), invoking onLine per feed line
+// until ctx ends or the stream drops (caller reconnects).
+func (c *Client) StreamFeed(ctx context.Context, onLine func(narrative.Line)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.Base+"/v1/feed?locale="+string(c.Locale), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{}).Do(req) // no timeout: long-lived stream
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		text := scanner.Text()
+		data, ok := strings.CutPrefix(text, "data: ")
+		if !ok {
+			continue // heartbeats, blanks
+		}
+		var line narrative.Line
+		if err := json.Unmarshal([]byte(data), &line); err != nil {
+			continue // system events have a different shape; skip quietly
+		}
+		if line.Message.Text != "" {
+			onLine(line)
+		}
+	}
+	return scanner.Err()
+}

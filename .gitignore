@@ -1,0 +1,7 @@
+.claude/settings.local.json
+/bin/
+/data/
+/data-fast/
+*.test
+*.out
+coverage.*

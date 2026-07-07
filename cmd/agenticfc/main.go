@@ -1,0 +1,696 @@
+// agenticfc is the core daemon: one process per world, hosting the Simulation
+// Core, the MCP gateway, and the Console API.
+//
+// World bootstrap is currently CLI-flag based. A future Admin Mode can layer a
+// Console workflow over the same world-generation path.
+// World state persists as an atomic JSON snapshot (FR-28): the daemon
+// resumes where it left off, and a crash mid-save leaves the previous
+// snapshot intact. Rolls are audited to audit.jsonl (FR-29).
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/gaemi/agentic-fc/internal/consoleapi"
+	"github.com/gaemi/agentic-fc/internal/engine"
+	"github.com/gaemi/agentic-fc/internal/mcpserver"
+	"github.com/gaemi/agentic-fc/internal/narrative"
+	"github.com/gaemi/agentic-fc/internal/sim"
+	"github.com/gaemi/agentic-fc/internal/store"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
+)
+
+func main() {
+	dataDir := flag.String("data", "./data", "world data directory")
+	consoleAddr := flag.String("console-addr", "127.0.0.1:7420", "Console API listen address")
+	mcpAddr := flag.String("mcp-addr", "127.0.0.1:7421", "MCP listen address (HTTP transport)")
+	preset := flag.String("preset", "classic", "world preset: compact|classic|deep|sprawling (new worlds only)")
+	seed := flag.Uint64("seed", 0, "world seed, 0 = random (new worlds only)")
+	worldName := flag.String("world-name", "", "world display name, empty = generated (new worlds only)")
+	profile := flag.String("profile", "default", "run profile: default|fast|slow|custom (new worlds only)")
+	speed := flag.Int("speed", 0, "override match speed: 5|15|30|60 (new worlds only)")
+	idleAccel := flag.Int("idle-accel", 0, "override in-season idle acceleration: 2..64 × game speed (new worlds only)")
+	offseasonAccel := flag.Int("offseason-accel", 0, "override off-season acceleration: 2..240 × game speed (new worlds only)")
+	start := flag.Bool("start", false, "begin running immediately")
+	snapshotEvery := flag.Duration("snapshot-interval", time.Minute, "periodic snapshot cadence (real time)")
+	widgetMode := flag.String("widget-mode", "apps", "MCP UI mode: apps (official MCP Apps resource) | meta/content (compatibility fallbacks)")
+	flag.Parse()
+	explicitFlags := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { explicitFlags[f.Name] = true })
+
+	runProfile, err := resolveRunProfile(*profile, sim.Speed(*speed), explicitFlags["speed"],
+		*idleAccel, explicitFlags["idle-accel"], *offseasonAccel, explicitFlags["offseason-accel"])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	adminToken, firstLaunch, err := ensureAdminToken(*dataDir)
+	if err != nil {
+		log.Fatalf("admin token: %v", err)
+	}
+	if firstLaunch {
+		// Printed once at daemon first launch — this is how the operator
+		// obtains Admin Mode before any world exists (docs/05 A7, FR-34).
+		fmt.Printf("Admin Token (first launch — store it safely): %s\n", adminToken)
+	} else {
+		fmt.Println("Admin token loaded.")
+	}
+
+	fstore := &store.FileStore{Dir: *dataDir}
+	manifestPath := filepath.Join(*dataDir, "manifest.json")
+
+	loaded, err := loadOrGenerate(fstore, manifestPath, *preset, *seed, *worldName, runProfile, *start)
+	if err != nil {
+		log.Fatal(err)
+	}
+	world := loaded.world
+
+	hub := consoleapi.NewHub(narrative.Default)
+	eng := engine.New(world, loaded.queue, store.NewFileAuditLog(*dataDir))
+	eng.SetSink(hub)
+	eng.ResumeAt(loaded.now)
+	inputLog, err := store.NewFileInputLog(*dataDir)
+	if err != nil {
+		log.Fatalf("input log: %v", err)
+	}
+	host := newWorldHost(world, eng, fstore, inputLog, loaded.creds, hub, world.Config)
+	if loaded.resumed && inputLog.Seq() > loaded.lastIngressSeq {
+		lost := inputLog.Seq() - loaded.lastIngressSeq
+		// Inputs logged after the last snapshot are not reflected in the
+		// resumed state. Full WAL replay is future recovery work; until then
+		// this must be loud, never silent.
+		log.Printf("WARNING: %d logged input(s) newer than the snapshot watermark "+
+			"(seq %d > %d) are NOT reflected in the resumed world", lost,
+			inputLog.Seq(), loaded.lastIngressSeq)
+	}
+	gateway := mcpserver.New(host, inputLog, narrative.Default, loaded.creds)
+	gateway.SetWidgetMode(*widgetMode) // human-facing UI cards; locale follows the system language (FR-35c)
+	host.gateway = gateway             // single owner of the cred set (admin listing + auth)
+
+	// The run intent (a resumed world returns to its persisted state; --start forces).
+	// Used both to start the world below and as the manifest's start_state — computing
+	// it here, before host.Start(), keeps a startup manifest rewrite from stamping
+	// "ready" onto a world that is about to resume running. After host.Start()
+	// this equals host.started.Load(), so the reconciler reads it safely
+	// on the snapshot cadence too.
+	willRun := *start || loaded.started || world.Config.StartRunning
+
+	// Runtime token minting (FR-34): managers spawned mid-run — caretakers now, and
+	// newgen backfills later — enter the world without a credential. The reconciler
+	// diffs the world against the cred set, mints a token for each tokenless ACTIVE
+	// manager, persists it to the manifest, THEN registers it for auth (persist
+	// before expose — a token is never usable before it is durable). Tokens are
+	// crypto-random and off-hash, so this never perturbs the world (NFR-2); it runs
+	// outside the deterministic core, driven only from this single goroutine (the
+	// startup backfill below and the snapshot cadence — never concurrently).
+	reconcileTokens := func() {
+		var pending []worldgen.ManagerCredential
+		host.Locked(func() { pending = gateway.TokenlessManagers(host.World()) })
+		if len(pending) == 0 {
+			return
+		}
+		for i := range pending {
+			token, err := worldgen.MintManagerToken(rand.Reader)
+			if err != nil {
+				log.Printf("token mint: %v", err) // retried next reconcile
+				return
+			}
+			pending[i].Token = token
+		}
+		manifest := manifestFrom(world, willRun, append(gateway.Credentials(), pending...))
+		if err := writeManifest(manifestPath, manifest); err != nil {
+			log.Printf("token reconcile: manifest write failed, deferring: %v", err)
+			return // not exposed — stays tokenless, retried next reconcile
+		}
+		gateway.AddCredentials(pending)
+		for _, c := range pending {
+			log.Printf("minted Manager Token for %s (manager %d, %s)", c.ManagerName, c.ManagerID, c.ClubName)
+		}
+	}
+	// If loading pruned orphan credentials (a crash left the manifest ahead of the
+	// resumed snapshot — Gateway.New drops creds whose manager is gone), purge them
+	// from the durable manifest now so disk agrees with the in-memory cred set.
+	// Startup, pre-serving — no race.
+	if len(gateway.Credentials()) < len(loaded.creds) {
+		if err := writeManifest(manifestPath, manifestFrom(world, willRun, gateway.Credentials())); err != nil {
+			log.Printf("manifest orphan purge: %v", err)
+		}
+	}
+	// Backfill any tokenless managers a resumed snapshot already carries (a prior run
+	// may have installed caretakers after its last manifest write, or crashed between
+	// the snapshot and the manifest rewrite).
+	reconcileTokens()
+
+	// Snapshot promptly after accepted agent inputs — shrinks the
+	// logged-but-unsnapshotted crash window to roughly the debounce.
+	dirty := make(chan struct{}, 1)
+	gateway.OnAccepted = func() {
+		select {
+		case dirty <- struct{}{}:
+		default:
+		}
+	}
+
+	hash, _ := world.Hash()
+	fmt.Printf("world: %s · seed %d · %d clubs · %s · hash %s…\n",
+		world.Config.Name, world.Config.Seed, len(world.Clubs),
+		eng.Now(), hash[:12])
+	fmt.Printf("pacing: profile %s · match %dx · idle %dx · offseason %dx\n",
+		configRunProfile(world.Config), world.Config.GameSpeed,
+		world.Config.IdleAcceleration, world.Config.OffseasonAccel)
+	fmt.Printf("manager tokens: %s (0600)\n", manifestPath)
+	fmt.Printf("Console API: http://%s  ·  MCP: http://%s\n", *consoleAddr, *mcpAddr)
+
+	if willRun {
+		if err := host.Start(); err != nil {
+			log.Fatalf("start: %v", err)
+		}
+	}
+	fmt.Printf("state: %s\n", host.State())
+
+	api := &consoleapi.Server{
+		AdminToken: adminToken,
+		Host:       host,
+		Feed:       hub,
+		Catalogs:   narrative.Default,
+	}
+	srv := &http.Server{Addr: *consoleAddr, Handler: api.Routes()}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("console api: %v", err)
+		}
+	}()
+
+	// MCP gateway: Manager-Token bearer auth in front of the streamable
+	// transport (docs/04 §0; INVALID_TOKEN surfaces as 401 here).
+	mcpSrv := gateway.MCPServer()
+	mcpHandler := auth.RequireBearerToken(gateway.VerifyToken, nil)(
+		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil))
+	mcpHTTP := &http.Server{Addr: *mcpAddr, Handler: mcpHandler}
+	go func() {
+		if err := mcpHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("mcp gateway: %v", err)
+		}
+	}()
+
+	// Periodic snapshots: cheap insurance between the pause/shutdown saves.
+	snapCtx, snapCancel := context.WithCancel(context.Background())
+	go func() {
+		ticker := time.NewTicker(*snapshotEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-snapCtx.Done():
+				return
+			case <-ticker.C:
+			case <-dirty:
+				// Debounce: absorb the burst, then persist once.
+				time.Sleep(2 * time.Second)
+				for {
+					select {
+					case <-dirty:
+						continue
+					default:
+					}
+					break
+				}
+			}
+			// Mint tokens for any managers the runner spawned since the last pass
+			// (caretakers on a sacking), then persist — same cadence, one goroutine.
+			reconcileTokens()
+			if err := host.SaveSnapshot(); err != nil {
+				log.Printf("snapshot: %v", err)
+			}
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	fmt.Println("shutting down")
+	snapCancel()
+	host.Shutdown()
+	if err := host.SaveSnapshot(); err != nil {
+		log.Printf("final snapshot: %v", err)
+	}
+	_ = mcpHTTP.Close()
+	_ = srv.Close()
+}
+
+type loadResult struct {
+	world          *worldgen.World
+	queue          *sim.Queue
+	creds          []worldgen.ManagerCredential
+	now            sim.GameTime
+	started        bool
+	resumed        bool
+	lastIngressSeq uint64
+}
+
+type runProfile struct {
+	Name                  string
+	Speed                 sim.Speed
+	IdleAcceleration      int
+	OffseasonAcceleration int
+}
+
+func resolveRunProfile(name string, speed sim.Speed, speedSet bool, idleAccel int, idleSet bool,
+	offseasonAccel int, offseasonSet bool) (runProfile, error) {
+
+	p, err := baseRunProfile(name)
+	if err != nil {
+		return runProfile{}, err
+	}
+	if speedSet {
+		p.Speed = speed
+	}
+	if idleSet {
+		p.IdleAcceleration = idleAccel
+	}
+	if offseasonSet {
+		p.OffseasonAcceleration = offseasonAccel
+	}
+	if speedSet || idleSet || offseasonSet {
+		p.Name = "custom"
+	}
+	cfg := worldgen.DefaultConfig(1)
+	cfg.RunProfile = p.Name
+	cfg.GameSpeed = p.Speed
+	cfg.IdleAcceleration = p.IdleAcceleration
+	cfg.OffseasonAccel = p.OffseasonAcceleration
+	if err := cfg.Validate(); err != nil {
+		return runProfile{}, err
+	}
+	return p, nil
+}
+
+func baseRunProfile(name string) (runProfile, error) {
+	switch name {
+	case "default":
+		return runProfile{
+			Name:                  "default",
+			Speed:                 sim.Speed15,
+			IdleAcceleration:      sim.DefaultIdleAcceleration,
+			OffseasonAcceleration: sim.DefaultOffseasonAcceleration,
+		}, nil
+	case "fast":
+		return runProfile{
+			Name:                  "fast",
+			Speed:                 sim.Speed30,
+			IdleAcceleration:      32,
+			OffseasonAcceleration: 192,
+		}, nil
+	case "slow":
+		return runProfile{
+			Name:                  "slow",
+			Speed:                 sim.Speed15,
+			IdleAcceleration:      6,
+			OffseasonAcceleration: 36,
+		}, nil
+	case "custom":
+		return runProfile{
+			Name:                  "custom",
+			Speed:                 sim.Speed15,
+			IdleAcceleration:      sim.DefaultIdleAcceleration,
+			OffseasonAcceleration: sim.DefaultOffseasonAcceleration,
+		}, nil
+	default:
+		return runProfile{}, fmt.Errorf("unknown run profile %q", name)
+	}
+}
+
+func configRunProfile(cfg worldgen.WorldConfig) string {
+	if cfg.RunProfile == "" {
+		return "custom"
+	}
+	return cfg.RunProfile
+}
+
+// loadOrGenerate resumes the persisted world if one exists (FR-28) —
+// generation flags are ignored then — or generates a fresh one.
+//
+// Creation order is snapshot FIRST, manifest second: if the process dies
+// between the two, the next launch resumes the world (missing manifest is
+// a loud warning, and tokens are recoverable via admin regeneration,
+// FR-34a). The reverse order would let a crash silently regenerate a
+// different world — an FR-28a violation.
+func loadOrGenerate(fstore *store.FileStore, manifestPath, preset string,
+	seed uint64, worldName string, profile runProfile, start bool) (*loadResult, error) {
+
+	snap, err := fstore.LoadSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("loading snapshot: %w", err)
+	}
+	if snap != nil {
+		creds, err := readManifestCredentials(manifestPath)
+		if err != nil {
+			log.Printf("manifest: %v (admin manager listing will be empty)", err)
+		}
+		fmt.Println("world: resumed from snapshot (generation flags ignored)")
+		return &loadResult{
+			world:          snap.World,
+			queue:          sim.RestoreQueue(snap.Queue, snap.QueueNextSeq),
+			creds:          creds,
+			now:            snap.Now,
+			started:        snap.Started,
+			resumed:        true,
+			lastIngressSeq: snap.LastIngressSeq,
+		}, nil
+	}
+
+	if seed == 0 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return nil, fmt.Errorf("rolling seed: %w", err)
+		}
+		seed = binary.LittleEndian.Uint64(b[:])
+	}
+	cfg, err := presetConfig(preset, seed)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Name = worldName
+	cfg.RunProfile = profile.Name
+	cfg.GameSpeed = profile.Speed
+	cfg.IdleAcceleration = profile.IdleAcceleration
+	cfg.OffseasonAccel = profile.OffseasonAcceleration
+	cfg.StartRunning = start
+
+	res, err := worldgen.Generate(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("world generation: %w", err)
+	}
+	events, nextSeq := res.Queue.Snapshot()
+	if err := fstore.SaveSnapshot(&store.Snapshot{
+		Now: 0, World: res.World, Queue: events, QueueNextSeq: nextSeq,
+	}); err != nil {
+		return nil, fmt.Errorf("initial snapshot: %w", err)
+	}
+	if err := writeManifest(manifestPath, res.Manifest); err != nil {
+		return nil, fmt.Errorf("manifest: %w", err)
+	}
+	return &loadResult{
+		world: res.World,
+		queue: res.Queue,
+		creds: res.Manifest.Managers,
+	}, nil
+}
+
+func presetConfig(name string, seed uint64) (worldgen.WorldConfig, error) {
+	switch name {
+	case "compact":
+		return worldgen.PresetCompact(seed), nil
+	case "classic":
+		return worldgen.PresetClassic(seed), nil
+	case "deep":
+		return worldgen.PresetDeep(seed), nil
+	case "sprawling":
+		return worldgen.PresetSprawling(seed), nil
+	default:
+		return worldgen.WorldConfig{}, fmt.Errorf("unknown preset %q", name)
+	}
+}
+
+// manifestFrom assembles the credential handover for the current world + cred set.
+// The metadata is derivable from the world, so a manifest rewrite (runtime token
+// mint, orphan purge) never needs to re-read the prior file — the credential set is
+// the only moving part.
+func manifestFrom(w *worldgen.World, started bool, creds []worldgen.ManagerCredential) *worldgen.Manifest {
+	startState := "ready"
+	if started {
+		startState = "running"
+	}
+	return &worldgen.Manifest{
+		WorldName:  w.Config.Name,
+		Seed:       w.Config.Seed,
+		StartState: startState,
+		Managers:   creds,
+	}
+}
+
+// writeManifest persists the credential handover (0600 — it holds tokens).
+// The tokens go into a brand-new random-named 0600 temp file (CreateTemp
+// guarantees both) which is renamed over the target: no pre-existing file
+// of any permission ever holds the credentials for any window.
+func writeManifest(path string, m *worldgen.Manifest) error {
+	b, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".manifest-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil { // durable before the rename
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+func readManifestCredentials(path string) ([]worldgen.ManagerCredential, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var m worldgen.Manifest
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m.Managers, nil
+}
+
+// worldHost owns the running world: the runner goroutine is the single
+// writer; the Console API reads under the shared RWMutex (docs/05 A1).
+type worldHost struct {
+	mu      sync.RWMutex
+	snapMu  sync.Mutex // serializes snapshot writers
+	world   *worldgen.World
+	eng     *engine.Engine
+	runner  *engine.Runner
+	fstore  *store.FileStore
+	inputs  store.InputLog
+	creds   []worldgen.ManagerCredential
+	gateway *mcpserver.Gateway // single owner of the runtime cred set (set post-construction)
+	hub     *consoleapi.Hub
+
+	started atomic.Bool
+	cancel  context.CancelFunc
+	done    chan struct{}
+}
+
+func newWorldHost(world *worldgen.World, eng *engine.Engine, fstore *store.FileStore,
+	inputs store.InputLog, creds []worldgen.ManagerCredential, hub *consoleapi.Hub,
+	cfg worldgen.WorldConfig) *worldHost {
+
+	h := &worldHost{
+		world:  world,
+		eng:    eng,
+		fstore: fstore,
+		inputs: inputs,
+		creds:  creds,
+		hub:    hub,
+		done:   make(chan struct{}),
+	}
+	h.runner = &engine.Runner{
+		Engine: eng,
+		Pacer: engine.Pacer{
+			Speed:                 cfg.GameSpeed,
+			IdleAcceleration:      cfg.IdleAcceleration,
+			OffseasonAcceleration: cfg.OffseasonAccel,
+		},
+		Sleep: engine.SleepReal,
+		Guard: &h.mu,
+	}
+	return h
+}
+
+func (h *worldHost) Locked(read func()) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	read()
+}
+
+// LockedWrite serializes MCP intent writes with the runner (docs/05 A1:
+// world systems have one writer; MCP touches only Mindset/Focus state).
+func (h *worldHost) LockedWrite(fn func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	fn()
+}
+
+// Paused reports frozen game time: never-started worlds and the admin
+// maintenance pause both halt the clock (and with it, Focus regen).
+func (h *worldHost) Paused() bool {
+	return !h.started.Load() || h.runner.Paused()
+}
+
+// RealUntil estimates wall-clock time until game time t at current pacing.
+func (h *worldHost) RealUntil(t sim.GameTime) time.Duration {
+	return h.eng.RealDuration(h.runner.Pacer, h.eng.Now(), t)
+}
+
+func (h *worldHost) World() *worldgen.World { return h.world }
+func (h *worldHost) Engine() *engine.Engine { return h.eng }
+
+func (h *worldHost) State() string {
+	switch {
+	case !h.started.Load():
+		return "ready"
+	case h.runner.Paused():
+		return "paused"
+	default:
+		return "running"
+	}
+}
+
+func (h *worldHost) Tempo() sim.Tempo {
+	if !h.started.Load() || h.runner.Paused() {
+		return sim.TempoPaused
+	}
+	return h.eng.TempoAt(h.eng.Now())
+}
+
+func (h *worldHost) Start() error {
+	if !h.started.CompareAndSwap(false, true) {
+		return errors.New("world already started")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+	go func() {
+		defer close(h.done)
+		// Run to the far horizon; the daemon lives until signalled.
+		if err := h.runner.Run(ctx, sim.GameTime(1)<<62); err != nil &&
+			!errors.Is(err, context.Canceled) {
+			log.Printf("runner stopped: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (h *worldHost) SetPaused(p bool) error {
+	if !h.started.Load() {
+		return errors.New("world not started")
+	}
+	h.runner.SetPaused(p)
+	if p {
+		// A paused world is a safe point — snapshot it (FR-28).
+		if err := h.SaveSnapshot(); err != nil {
+			log.Printf("pause snapshot: %v", err)
+		}
+	}
+	return nil
+}
+
+func (h *worldHost) Seed() uint64 { return h.world.Config.Seed }
+
+// Credentials delegates to the gateway once it is wired — the gateway is the
+// single owner of the mutable cred set (runtime spawns append to it), so the admin
+// listing and MCP auth never drift. Before wiring (a window with no serving), the
+// generation-time creds are the source.
+func (h *worldHost) Credentials() []worldgen.ManagerCredential {
+	if h.gateway != nil {
+		return h.gateway.Credentials()
+	}
+	return h.creds
+}
+
+// SaveSnapshot persists the current state under the read lock (the runner
+// is the only writer; RLock excludes it mid-step). snapMu serializes
+// concurrent savers (periodic timer vs pause vs shutdown) so a later
+// state can never be overwritten by an earlier one still in flight.
+func (h *worldHost) SaveSnapshot() error {
+	h.snapMu.Lock()
+	defer h.snapMu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	events, nextSeq := h.eng.Queue().Snapshot()
+	return h.fstore.SaveSnapshot(&store.Snapshot{
+		Now:            h.eng.Now(),
+		Started:        h.started.Load(),
+		World:          h.world,
+		Queue:          events,
+		QueueNextSeq:   nextSeq,
+		LastIngressSeq: h.inputs.Seq(),
+	})
+}
+
+// Shutdown stops the runner (if running) and waits for it to exit.
+func (h *worldHost) Shutdown() {
+	if h.cancel != nil {
+		h.cancel()
+		<-h.done
+	}
+}
+
+// ensureAdminToken generates the Admin Token at daemon first launch and
+// persists it (0600) in the data directory; later launches reuse it.
+func ensureAdminToken(dataDir string) (token string, firstLaunch bool, err error) {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return "", false, err
+	}
+	// MkdirAll doesn't chmod an existing directory; the data dir holds
+	// tokens and the full hidden-state snapshot, so re-tighten it.
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		return "", false, err
+	}
+	path := filepath.Join(dataDir, "admin.token")
+	if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
+		// Re-tighten in case the mode drifted since creation.
+		if err := os.Chmod(path, 0o600); err != nil {
+			return "", false, err
+		}
+		return string(b), false, nil
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", false, err
+	}
+	token = hex.EncodeToString(buf)
+	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
+		return "", false, err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", false, err
+	}
+	return token, true, nil
+}

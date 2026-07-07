@@ -1,0 +1,289 @@
+package mcpserver
+
+import (
+	"fmt"
+
+	"github.com/gaemi/agentic-fc/internal/focus"
+	"github.com/gaemi/agentic-fc/internal/mindset"
+	"github.com/gaemi/agentic-fc/internal/narrative"
+)
+
+// Per-tool widget renderers. Each summarizes the AGENT'S
+// action from the (already-masked) envelope only — never a world re-fetch (so
+// FR-22 can't reopen) — with chrome + descriptors rendered through narrative
+// keys in the spectator's locale (en+ko). Descriptor values are localized from
+// their KEY, never scraped from the envelope's English text.
+
+// envData / envList pull the (masked) result payload out of the envelope.
+func envData(env map[string]any) map[string]any {
+	d, _ := env["data"].(map[string]any)
+	return d
+}
+
+func envList(env map[string]any, key string) []map[string]any {
+	if d := envData(env); d != nil {
+		if r, ok := d[key].([]map[string]any); ok {
+			return r
+		}
+	}
+	return nil
+}
+
+func mstr(m map[string]any, key string) string {
+	if m != nil {
+		if s, ok := m[key].(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// moneyDisplay reads the human string out of a money map ({amount, display}).
+func moneyDisplay(v any) string {
+	if m, ok := v.(map[string]any); ok {
+		return mstr(m, "display")
+	}
+	return ""
+}
+
+// descText localizes a Descriptor by re-rendering its KEY in the target locale —
+// the envelope's `text` is English (FR-22a) and must never be scraped for i18n.
+func (g *Gateway) descText(loc narrative.Locale, desc any) string {
+	if m, ok := desc.(map[string]any); ok {
+		if k := mstr(m, "key"); k != "" {
+			return g.tr(loc, k)
+		}
+	}
+	return ""
+}
+
+// row appends a labelled row only when the value is non-empty (a card never
+// shows a blank field for an envelope section that wasn't returned).
+func (c *widgetCard) row(label, value string) {
+	if value != "" {
+		c.rows = append(c.rows, widgetRow{label: label, value: value})
+	}
+}
+
+// changeRow is row for a decided change (highlighted value); it thins the same
+// way — a blank value (e.g. an unset dial in a zero-value plan) is omitted.
+func (c *widgetCard) changeRow(label, value string) {
+	if value != "" {
+		c.rows = append(c.rows, widgetRow{label: label, value: value, change: true})
+	}
+}
+
+// countRow renders a numeric envelope field; a missing or wrong-typed value
+// (never a struct/list dump or "<nil>") is omitted.
+func (c *widgetCard) countRow(label string, v any) {
+	switch v.(type) {
+	case int, int64, float64:
+		c.row(label, fmt.Sprint(v))
+	}
+}
+
+func situationCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetSituation), env)
+	c.headline = g.tr(loc, "widget.headline.situation")
+	d := envData(env)
+	if phase := d["season_phase"]; phase != nil {
+		c.row(g.tr(loc, "widget.row.phase"), fmt.Sprint(phase))
+	}
+	c.row(g.tr(loc, "widget.row.headlines"), fmt.Sprint(len(envList(env, "headlines"))))
+	if urgent, ok := d["urgent"].(map[string]any); ok {
+		if board, ok := urgent["board"].(map[string]any); ok {
+			c.row(g.tr(loc, "widget.row.board"), g.descText(loc, board["confidence"]))
+		}
+	}
+	return renderCard(c)
+}
+
+func newsCard(g *Gateway, loc narrative.Locale, _ getNewsIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.read", string(focus.GetNews), env)
+	c.headline = g.tr(loc, "widget.headline.news")
+	items := envList(env, "items")
+	c.row(g.tr(loc, "widget.row.items"), fmt.Sprint(len(items)))
+	if len(items) == 0 {
+		c.headline = g.tr(loc, "widget.headline.news.empty")
+		return renderCard(c)
+	}
+	top := items[0]
+	if headline, ok := top["headline"].(map[string]any); ok {
+		params, _ := headline["params"].(map[string]any)
+		article := g.newsArticle(fmt.Sprint(top["category"]), mstr(headline, "key"), params, loc)
+		c.headline = mstr(article, "title")
+		c.row(g.tr(loc, "widget.row.source"), mstr(article, "source"))
+		c.row(g.tr(loc, "widget.row.category"), fmt.Sprint(top["category"]))
+		c.body = append(c.body, mstr(article, "deck"), mstr(article, "body"))
+	} else if article, ok := top["article"].(map[string]any); ok {
+		c.headline = mstr(article, "title")
+		c.row(g.tr(loc, "widget.row.source"), mstr(article, "source"))
+		c.row(g.tr(loc, "widget.row.category"), fmt.Sprint(top["category"]))
+		c.body = append(c.body, mstr(article, "deck"), mstr(article, "body"))
+	}
+	return renderCard(c)
+}
+
+func clubCard(g *Gateway, loc narrative.Locale, _ getClubIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetClub), env)
+	c.headline = g.tr(loc, "widget.headline.club")
+	d := envData(env)
+	c.row(g.tr(loc, "widget.row.club"), clubName(d["club"]))
+	if div, ok := d["division"]; ok {
+		c.row(g.tr(loc, "widget.row.division"), fmt.Sprint(div))
+	}
+	if board, ok := d["board"].(map[string]any); ok {
+		c.row(g.tr(loc, "widget.row.board"), g.descText(loc, board["confidence"]))
+	}
+	if sq, ok := d["squad"].([]map[string]any); ok {
+		c.row(g.tr(loc, "widget.row.players"), fmt.Sprint(len(sq)))
+	}
+	return renderCard(c)
+}
+
+func squadCard(g *Gateway, loc narrative.Locale, _ getSquadIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetSquad), env)
+	c.headline = g.tr(loc, "widget.headline.squad")
+	players := envList(env, "players")
+	c.row(g.tr(loc, "widget.row.players"), fmt.Sprint(len(players)))
+	if len(players) > 0 {
+		c.row(g.tr(loc, "widget.row.sample"), mstr(players[0], "name"))
+	}
+	return renderCard(c)
+}
+
+func personCard(g *Gateway, loc narrative.Locale, _ getPersonIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetPerson), env)
+	d := envData(env)
+	// A manager envelope carries a "manager" key; a player one carries "player".
+	// Read the kind from the RESULT, not the request, so the headline can't lie.
+	if _, isManager := d["manager"]; isManager {
+		c.headline = g.tr(loc, "widget.headline.manager")
+	} else {
+		c.headline = g.tr(loc, "widget.headline.person")
+	}
+	c.row(g.tr(loc, "widget.row.name"), mstr(d, "name"))
+	c.row(g.tr(loc, "widget.row.position"), mstr(d, "position"))
+	if age, ok := d["age"]; ok {
+		c.row(g.tr(loc, "widget.row.age"), fmt.Sprint(age))
+	}
+	c.row(g.tr(loc, "widget.row.club"), clubName(d["club"]))
+	if cond, ok := d["condition"]; ok {
+		c.row(g.tr(loc, "widget.row.condition"), fmt.Sprint(cond))
+	}
+	return renderCard(c)
+}
+
+func matchCard(g *Gateway, loc narrative.Locale, _ getMatchIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetMatch), env)
+	c.headline = g.tr(loc, "widget.headline.match")
+	d := envData(env)
+	if home, away := clubName(d["home"]), clubName(d["away"]); home != "" || away != "" {
+		c.row(g.tr(loc, "widget.row.fixture"), g.tr2(loc, "widget.match.vs", map[string]any{"home": home, "away": away}))
+	}
+	if status := mstr(d, "status"); status != "" {
+		c.row(g.tr(loc, "widget.row.status"), g.tr(loc, "widget.match."+status))
+	}
+	// Only a complete score renders — a thin/scheduled envelope with one goal
+	// field (or neither) omits the row rather than printing "2–<nil>".
+	if hg, okH := d["home_goals"]; okH {
+		if ag, okA := d["away_goals"]; okA {
+			c.row(g.tr(loc, "widget.row.score"), fmt.Sprintf("%v–%v", hg, ag))
+		}
+	}
+	c.row(g.tr(loc, "widget.row.competition"), mstr(d, "competition"))
+	return renderCard(c)
+}
+
+func searchCard(g *Gateway, loc narrative.Locale, _ searchPlayersIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.SearchPlayers), env)
+	c.headline = g.tr(loc, "widget.headline.search")
+	players := envList(env, "players")
+	c.row(g.tr(loc, "widget.row.found"), fmt.Sprint(len(players)))
+	if len(players) > 0 {
+		top := players[0]
+		v := mstr(top, "name")
+		if vb, ok := top["value_band"].(map[string]any); ok {
+			if band := moneyDisplay(vb["low"]) + "–" + moneyDisplay(vb["high"]); band != "–" {
+				v += " · " + band
+			}
+		}
+		c.row(g.tr(loc, "widget.row.top"), v)
+	}
+	return renderCard(c)
+}
+
+func scoutCard(g *Gateway, loc narrative.Locale, _ scoutIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.scouted", string(focus.Scout), env)
+	c.headline = g.tr(loc, "widget.headline.scout")
+	c.row(g.tr(loc, "widget.row.due"), mstr(envData(env), "report_due"))
+	return renderCard(c)
+}
+
+// ---- shaping-write renderers ----
+//
+// These read the DECISION from the result envelope (the mindset types the call
+// produced), so they show "what the manager changed". Row labels AND enum
+// values (goals, verbs, strengths, tactical dials) are localized via the
+// enum.* catalog vocabularies;
+// formations and position codes stay as-is (universal football notation).
+// enumLabel falls back to the raw token for any missing entry, so a new enum
+// value degrades to the old behavior instead of erroring (FR-35c discipline);
+// the drift test keeps the vocabularies complete.
+
+// enumLabel localizes a domain token via its enum.<class>.<TOKEN> entry.
+func (g *Gateway) enumLabel(loc narrative.Locale, class, token string) string {
+	if token == "" {
+		return ""
+	}
+	key := "enum." + class + "." + token
+	if s := g.Catalogs.Render(loc, key, nil); s != key {
+		return s
+	}
+	return token
+}
+
+func prioritiesCard(g *Gateway, loc narrative.Locale, _ setPrioritiesIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.SetPriorities), env)
+	c.headline = g.tr(loc, "widget.headline.priorities")
+	if ps, ok := envData(env)["priorities"].([]mindset.Priority); ok {
+		c.row(g.tr(loc, "widget.row.count"), fmt.Sprint(len(ps)))
+		for _, p := range ps {
+			if p.Rank == 1 {
+				c.changeRow(g.tr(loc, "widget.row.top_priority"), g.enumLabel(loc, "goal", string(p.Goal)))
+				break
+			}
+		}
+	}
+	return renderCard(c)
+}
+
+func addDirectiveCard(g *Gateway, loc narrative.Locale, _ addDirectiveIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.AddDirective), env)
+	c.headline = g.tr(loc, "widget.headline.directive_add")
+	d := envData(env)
+	if dir, ok := d["directive"].(mindset.Directive); ok {
+		c.changeRow(g.tr(loc, "widget.row.directive"),
+			g.enumLabel(loc, "verb", string(dir.Verb))+" · "+g.enumLabel(loc, "strength", string(dir.Strength)))
+	}
+	c.countRow(g.tr(loc, "widget.row.active"), d["active_directives"])
+	return renderCard(c)
+}
+
+func removeDirectiveCard(g *Gateway, loc narrative.Locale, _ removeDirectiveIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.RemoveDirective), env)
+	c.headline = g.tr(loc, "widget.headline.directive_remove")
+	c.countRow(g.tr(loc, "widget.row.active"), envData(env)["active_directives"])
+	return renderCard(c)
+}
+
+func tacticalCard(g *Gateway, loc narrative.Locale, _ updateTacticalPlanIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.UpdateTacticalPlan), env)
+	c.headline = g.tr(loc, "widget.headline.tactical")
+	if tp, ok := envData(env)["tactical_plan"].(mindset.TacticalPlan); ok {
+		c.row(g.tr(loc, "widget.row.formation"), tp.Formation)
+		c.changeRow(g.tr(loc, "widget.row.mentality"), g.enumLabel(loc, "mentality", tp.Mentality))
+		c.changeRow(g.tr(loc, "widget.row.pressing"), g.enumLabel(loc, "pressing", tp.Pressing))
+	}
+	return renderCard(c)
+}
