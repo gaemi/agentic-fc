@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"sort"
 
@@ -124,14 +126,7 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 	}
 	e.emitKickoff(ev)
 	e.issueMatchAlerts(ev.Due, f, "OWN_KICKOFF")
-	e.addNews(worldgen.NewsItem{
-		GameTime: ev.Due, Category: "match", Key: FeedKickoff,
-		Params: map[string]any{
-			"home": e.clubName(f.HomeID), "away": e.clubName(f.AwayID),
-			"round": f.Round, "competition": f.Competition,
-		},
-		ClubIDs: []int64{f.HomeID, f.AwayID},
-	})
+	e.addMatchdayPreviewNews(ev.Due, f.Competition, f.DivisionTier)
 
 	homeXI, homeBench := e.selectSquad(f.HomeID, ev.Due, e.tacticalFor(f.HomeID))
 	awayXI, awayBench := e.selectSquad(f.AwayID, ev.Due, e.tacticalFor(f.AwayID))
@@ -220,7 +215,9 @@ func (e *Engine) rollMomentOutcome(lm *worldgen.LiveMatch, at sim.GameTime, r *r
 		// Quiet passage — connective tissue so the feed never goes dead.
 		e.comment(lm, at, pickKey(r,
 			"comment.quiet.1", "comment.quiet.2", "comment.quiet.3", "comment.quiet.4",
-			"comment.quiet.5", "comment.quiet.6", "comment.quiet.7"), nil)
+			"comment.quiet.5", "comment.quiet.6", "comment.quiet.7", "comment.quiet.8",
+			"comment.quiet.9", "comment.quiet.10", "comment.quiet.11", "comment.quiet.12",
+			"comment.quiet.13", "comment.quiet.14", "comment.quiet.15"), nil)
 	}
 	if r.Float64() < cardRatePerMoment {
 		e.bookOne(lm, at, r)
@@ -270,10 +267,7 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	}
 	if r.Float64() >= pGoal {
 		// A chance that came to nothing — saved or off target.
-		e.comment(lm, at, pickKey(r,
-			"comment.chance.1", "comment.chance.2", "comment.chance.3", "comment.chance.4",
-			"comment.chance.5", "comment.chance.6", "comment.chance.7", "comment.chance.8",
-			"comment.save.1", "comment.save.2", "comment.save.3", "comment.save.4"),
+		e.comment(lm, at, pickKeyFrom(r, missCommentKeys(chanceType)),
 			map[string]any{"player": name, "club": e.clubName(atkClub)})
 		return
 	}
@@ -285,9 +279,7 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	lm.Scorers = append(lm.Scorers, worldgen.MatchEvent{
 		Minute: lm.Clock, PlayerID: scorer, ClubID: atkClub,
 	})
-	e.comment(lm, at, pickKey(r,
-		"comment.goal.1", "comment.goal.2", "comment.goal.3", "comment.goal.4",
-		"comment.goal.5", "comment.goal.6", "comment.goal.7", "comment.goal.8"),
+	e.comment(lm, at, pickKeyFrom(r, goalCommentKeys(chanceType)),
 		map[string]any{
 			"player": name, "club": e.clubName(atkClub),
 			"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
@@ -444,6 +436,48 @@ func injuryNewsKey(band string) string {
 		return "news.injury.weeks"
 	default:
 		return "news.injury.month"
+	}
+}
+
+func missCommentKeys(chanceType string) []string {
+	switch chanceType {
+	case chanceCrossHeader:
+		return []string{"comment.chance.cross.1", "comment.chance.cross.2", "comment.chance.cross.3", "comment.save.cross.1"}
+	case chanceCutback:
+		return []string{"comment.chance.cutback.1", "comment.chance.cutback.2", "comment.chance.cutback.3", "comment.save.cutback.1"}
+	case chanceThroughBall:
+		return []string{"comment.chance.through.1", "comment.chance.through.2", "comment.chance.through.3", "comment.save.through.1"}
+	case chanceLongShot:
+		return []string{"comment.chance.long.1", "comment.chance.long.2", "comment.chance.long.3", "comment.save.long.1"}
+	case chanceSetPieceHeader:
+		return []string{"comment.chance.setpiece.1", "comment.chance.setpiece.2", "comment.chance.setpiece.3", "comment.save.setpiece.1"}
+	case chanceCounter:
+		return []string{"comment.chance.counter.1", "comment.chance.counter.2", "comment.chance.counter.3", "comment.save.counter.1"}
+	case chanceScramble:
+		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.save.scramble.1"}
+	default:
+		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.save.scramble.1"}
+	}
+}
+
+func goalCommentKeys(chanceType string) []string {
+	switch chanceType {
+	case chanceCrossHeader:
+		return []string{"comment.goal.cross.1", "comment.goal.cross.2", "comment.goal.cross.3"}
+	case chanceCutback:
+		return []string{"comment.goal.cutback.1", "comment.goal.cutback.2", "comment.goal.cutback.3"}
+	case chanceThroughBall:
+		return []string{"comment.goal.through.1", "comment.goal.through.2", "comment.goal.through.3"}
+	case chanceLongShot:
+		return []string{"comment.goal.long.1", "comment.goal.long.2", "comment.goal.long.3"}
+	case chanceSetPieceHeader:
+		return []string{"comment.goal.setpiece.1", "comment.goal.setpiece.2", "comment.goal.setpiece.3"}
+	case chanceCounter:
+		return []string{"comment.goal.counter.1", "comment.goal.counter.2", "comment.goal.counter.3"}
+	case chanceScramble:
+		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3"}
+	default:
+		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3"}
 	}
 }
 
@@ -726,6 +760,8 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 		"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
 		"competition": lm.Competition,
 	}
+	// Per-fixture result events still feed the realtime ticker. Persistent
+	// Media news is grouped into matchday round-ups below.
 	// A cup tie names the club that advanced (decisive or on penalties) in the
 	// headline itself; the league line has no winner to name. Separate keys keep
 	// the {winner} placeholder out of league renders (a missing param renders
@@ -739,13 +775,265 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 	if f, ok := e.fixtures[lm.FixtureID]; ok {
 		e.issueMatchAlerts(ev.Due, f, "OWN_FULL_TIME")
 	}
-	e.addNews(worldgen.NewsItem{
-		GameTime: ev.Due, Category: "match", Key: resultKey,
-		Params: params, ClubIDs: []int64{lm.HomeID, lm.AwayID},
-	})
-	return e.log(ev, "match", map[string]any{
+	matchdayNews := e.addMatchdayResultsNews(ev.Due, lm.Kickoff, lm.Competition, lm.DivisionTier)
+	factors := map[string]any{
 		"result": []int{lm.HomeGoals, lm.AwayGoals}, "fixture": lm.FixtureID,
-	}, "full_time", 0, 0)
+	}
+	if matchdayNews != nil {
+		factors["matchday_news"] = matchdayNews
+	}
+	return e.log(ev, "match", factors, "full_time", 0, 0)
+}
+
+func (e *Engine) addMatchdayPreviewNews(kickoff sim.GameTime, competition string, division int) {
+	if e.newsExists(FeedMatchdayPreview, kickoff, competition, division) {
+		return
+	}
+	fixtures := e.fixturesAt(kickoff, competition, division)
+	if len(fixtures) == 0 {
+		return
+	}
+	params := e.matchdayBaseParams(kickoff, competition, division, len(fixtures))
+	params["fixtures"] = e.fixturePayloads(fixtures)
+	params["spotlight"] = e.fixturePayload(fixtures[0])
+	e.addNews(worldgen.NewsItem{
+		GameTime: kickoff, Category: "match", Key: FeedMatchdayPreview,
+		Params: params, ClubIDs: fixtureClubRefs(fixtures),
+	})
+}
+
+func (e *Engine) addMatchdayResultsNews(at, kickoff sim.GameTime, competition string, division int) map[string]any {
+	if e.newsExists(FeedMatchdayResults, kickoff, competition, division) {
+		return nil
+	}
+	fixtures := e.fixturesAt(kickoff, competition, division)
+	if len(fixtures) == 0 {
+		return nil
+	}
+	results := e.resultsAt(kickoff, competition, division)
+	// Generated fixtures currently always produce exactly one result. Until the
+	// engine has terminal postponed/cancelled fixture states, matchday round-ups
+	// are emitted only when every generated fixture in this window has a result;
+	// deferrals are recorded in the full-time audit factors below.
+	if len(results) != len(fixtures) {
+		return map[string]any{
+			"status":      "deferred",
+			"reason":      "result_count_mismatch",
+			"kickoff":     int64(kickoff),
+			"competition": competition,
+			"division":    division,
+			"fixtures":    len(fixtures),
+			"results":     len(results),
+		}
+	}
+	params := e.matchdayBaseParams(kickoff, competition, division, len(results))
+	params["results"] = e.resultPayloads(results)
+	params["table"] = e.tableSnapshotPayloads(results)
+	params["story"] = e.resultStoryPayload(results)
+	e.addNews(worldgen.NewsItem{
+		GameTime: at, Category: "match", Key: FeedMatchdayResults,
+		Params: params, ClubIDs: fixtureClubRefs(fixtures),
+	})
+	return nil
+}
+
+func (e *Engine) newsExists(key string, kickoff sim.GameTime, competition string, division int) bool {
+	// World.News is appended in monotonic GameTime order; the backward scan can
+	// stop once it reaches news older than the target match window.
+	for i := len(e.world.News) - 1; i >= 0; i-- {
+		n := e.world.News[i]
+		if n.GameTime < kickoff {
+			break
+		}
+		if n.Key != key {
+			continue
+		}
+		gotKickoff, ok := newsParamInt64(n.Params["kickoff"])
+		gotDivision, okDivision := newsParamInt64(n.Params["division"])
+		if ok && okDivision && gotKickoff == int64(kickoff) &&
+			n.Params["competition"] == competition && gotDivision == int64(division) {
+			return true
+		}
+	}
+	return false
+}
+
+func newsParamInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		return int64(n), n == float64(int64(n))
+	case json.Number:
+		got, err := n.Int64()
+		return got, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func (e *Engine) fixturesAt(kickoff sim.GameTime, competition string, division int) []*worldgen.Fixture {
+	out := []*worldgen.Fixture{}
+	for i := range e.world.Fixtures {
+		f := &e.world.Fixtures[i]
+		if f.Kickoff == kickoff && f.Competition == competition && f.DivisionTier == division {
+			out = append(out, f)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Competition != b.Competition {
+			return a.Competition < b.Competition
+		}
+		if a.DivisionTier != b.DivisionTier {
+			return a.DivisionTier < b.DivisionTier
+		}
+		if a.Round != b.Round {
+			return a.Round < b.Round
+		}
+		return a.ID < b.ID
+	})
+	return out
+}
+
+func (e *Engine) resultsAt(kickoff sim.GameTime, competition string, division int) []worldgen.MatchResult {
+	out := []worldgen.MatchResult{}
+	for _, r := range e.world.Results {
+		if r.Kickoff == kickoff && r.Competition == competition && r.DivisionTier == division {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Competition != b.Competition {
+			return a.Competition < b.Competition
+		}
+		if a.DivisionTier != b.DivisionTier {
+			return a.DivisionTier < b.DivisionTier
+		}
+		if a.FixtureID != b.FixtureID {
+			return a.FixtureID < b.FixtureID
+		}
+		return a.HomeID < b.HomeID
+	})
+	return out
+}
+
+func (e *Engine) matchdayBaseParams(kickoff sim.GameTime, competition string, division int, count int) map[string]any {
+	d := worldgen.DateOf(kickoff)
+	return map[string]any{
+		"kickoff":      int64(kickoff),
+		"competition":  competition,
+		"division":     division,
+		"count":        count,
+		"season":       d.Season,
+		"month":        d.Month,
+		"day":          d.Day,
+		"kickoff_time": fmt.Sprintf("%02d:%02d", d.Hour, d.Minute),
+	}
+}
+
+func (e *Engine) fixturePayloads(fixtures []*worldgen.Fixture) []map[string]any {
+	out := make([]map[string]any, 0, len(fixtures))
+	for _, f := range fixtures {
+		out = append(out, e.fixturePayload(f))
+	}
+	return out
+}
+
+func (e *Engine) fixturePayload(f *worldgen.Fixture) map[string]any {
+	if f == nil {
+		return nil
+	}
+	return map[string]any{
+		"round": f.Round,
+		"home":  e.clubName(f.HomeID),
+		"away":  e.clubName(f.AwayID),
+	}
+}
+
+func (e *Engine) resultPayloads(results []worldgen.MatchResult) []map[string]any {
+	out := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		payload := map[string]any{
+			"home":       e.clubName(r.HomeID),
+			"away":       e.clubName(r.AwayID),
+			"home_goals": r.HomeGoals,
+			"away_goals": r.AwayGoals,
+		}
+		if r.Winner != 0 {
+			payload["winner"] = e.clubName(r.Winner)
+		}
+		out = append(out, payload)
+	}
+	return out
+}
+
+func (e *Engine) tableSnapshotPayloads(results []worldgen.MatchResult) []map[string]any {
+	seen := map[int]bool{}
+	out := []map[string]any{}
+	for _, r := range results {
+		if r.Competition != worldgen.CompetitionLeague || seen[r.DivisionTier] ||
+			r.DivisionTier < 1 || r.DivisionTier > len(e.world.Table) {
+			continue
+		}
+		seen[r.DivisionTier] = true
+		table := e.world.Table[r.DivisionTier-1]
+		if len(table) == 0 {
+			continue
+		}
+		leader := table[0]
+		out = append(out, map[string]any{
+			"division": r.DivisionTier,
+			"club":     e.clubName(leader.ClubID),
+			"points":   leader.Points,
+		})
+	}
+	return out
+}
+
+func (e *Engine) resultStoryPayload(results []worldgen.MatchResult) map[string]any {
+	if len(results) == 0 {
+		return nil
+	}
+	var best worldgen.MatchResult
+	bestMargin := 0
+	draws := 0
+	for _, r := range results {
+		if r.HomeGoals == r.AwayGoals {
+			draws++
+		}
+		if margin := absInt(r.HomeGoals - r.AwayGoals); margin > bestMargin {
+			best, bestMargin = r, margin
+		}
+	}
+	out := map[string]any{
+		"best_margin": bestMargin,
+		"draws":       draws,
+	}
+	if bestMargin > 0 {
+		out["best_home"] = e.clubName(best.HomeID)
+		out["best_away"] = e.clubName(best.AwayID)
+		out["home_goals"] = best.HomeGoals
+		out["away_goals"] = best.AwayGoals
+	}
+	return out
+}
+
+func fixtureClubRefs(fixtures []*worldgen.Fixture) []int64 {
+	seen := map[int64]bool{}
+	out := []int64{}
+	for _, f := range fixtures {
+		for _, id := range []int64{f.HomeID, f.AwayID} {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 // applyPostMatch folds the finished match into each PARTICIPANT's season line
@@ -1242,6 +1530,17 @@ func (e *Engine) comment(lm *worldgen.LiveMatch, at sim.GameTime, key string, pa
 // stream.
 func pickKey(r *rand.Rand, keys ...string) string {
 	return keys[r.IntN(len(keys))]
+}
+
+func pickKeyFrom(r *rand.Rand, keys []string) string {
+	return keys[r.IntN(len(keys))]
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func (e *Engine) playerName(id int64) string {

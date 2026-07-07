@@ -83,6 +83,10 @@ Article detail uses a terminal masthead, dateline, section tag, and multi-
 paragraph prose so the press desk reads like a living newspaper rather than a
 raw event log. Long bodies preserve paragraph rhythm in the TUI and can be
 paged with the same wheel/PageUp/PageDown controls used by match replays.
+Match kick-off and full-time items are grouped into matchday preview and
+round-up articles, with fixture lists, result blocks, table notes, and a short
+storyline, so the Media tab does not become a repetitive list of one-line score
+alerts.
 Player attribute drift is therefore not shown as global breaking news. It is
 ordinary development and belongs on player/training-style views, not the media
 desk.

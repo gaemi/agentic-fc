@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
@@ -40,6 +41,90 @@ func TestChanceTypeCatalogLabels(t *testing.T) {
 			t.Fatalf("missing Korean chance type label for %s: %q", key, got)
 		}
 	}
+}
+
+func TestExpandedCommentaryCatalogKeys(t *testing.T) {
+	for _, chanceType := range []string{
+		chanceCrossHeader,
+		chanceCutback,
+		chanceThroughBall,
+		chanceLongShot,
+		chanceSetPieceHeader,
+		chanceScramble,
+		chanceCounter,
+	} {
+		for _, key := range append(missCommentKeys(chanceType), goalCommentKeys(chanceType)...) {
+			for _, loc := range narrative.Supported {
+				if got := narrative.Default.Render(loc, key, map[string]any{
+					"player": "P", "club": "C", "home_goals": 1, "away_goals": 0,
+				}); got == key || got == "" {
+					t.Fatalf("missing %s commentary key %s", loc, key)
+				}
+			}
+		}
+	}
+	for i := 1; i <= 15; i++ {
+		key := "comment.quiet." + strconv.Itoa(i)
+		for _, loc := range narrative.Supported {
+			if got := narrative.Default.Render(loc, key, nil); got == key || got == "" {
+				t.Fatalf("missing %s quiet key %s", loc, key)
+			}
+		}
+	}
+}
+
+func TestMatchdayNewsGroupsFixturesAndResults(t *testing.T) {
+	e, _ := newEngine(t, 42)
+	kickoff := firstKickoff(e)
+	if _, err := e.RunUntil(kickoff + day(12)); err != nil {
+		t.Fatal(err)
+	}
+	preview, roundUp := 0, 0
+	previewKeys := map[string]bool{}
+	roundUpKeys := map[string]bool{}
+	for _, n := range e.world.News {
+		switch n.Key {
+		case FeedKickoff, FeedMatchResult, FeedCupResult:
+			t.Fatalf("individual match news should be grouped, got %s: %+v", n.Key, n)
+		case FeedMatchdayPreview:
+			preview++
+			key := matchdayTestKey(n.Params)
+			if previewKeys[key] {
+				t.Fatalf("duplicate preview for %s", key)
+			}
+			previewKeys[key] = true
+			if len(n.ClubIDs) == 0 || len(mapsParam(t, n.Params["fixtures"])) == 0 || n.Params["spotlight"] == nil {
+				t.Fatalf("preview missing article params: %+v", n.Params)
+			}
+		case FeedMatchdayResults:
+			roundUp++
+			key := matchdayTestKey(n.Params)
+			if roundUpKeys[key] {
+				t.Fatalf("duplicate round-up for %s", key)
+			}
+			roundUpKeys[key] = true
+			if len(n.ClubIDs) == 0 || len(mapsParam(t, n.Params["results"])) == 0 || n.Params["story"] == nil {
+				t.Fatalf("round-up missing article params: %+v", n.Params)
+			}
+		}
+	}
+	if preview == 0 || roundUp == 0 {
+		t.Fatalf("grouped matchday news missing: preview=%d roundUp=%d", preview, roundUp)
+	}
+}
+
+func matchdayTestKey(params map[string]any) string {
+	return strconv.FormatInt(params["kickoff"].(int64), 10) + "/" +
+		params["competition"].(string) + "/" + strconv.Itoa(params["division"].(int))
+}
+
+func mapsParam(t *testing.T, raw any) []map[string]any {
+	t.Helper()
+	rows, ok := raw.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", raw)
+	}
+	return rows
 }
 
 func TestBodyProfileFeedsAerialAndStrength(t *testing.T) {
