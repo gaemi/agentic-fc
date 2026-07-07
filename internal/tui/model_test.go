@@ -22,7 +22,6 @@ func testModel() Model {
 		"ui.tab.table":                "Table",
 		"ui.tab.clubs":                "Clubs",
 		"ui.tab.fixtures":             "Fixtures",
-		"ui.tab.match":                "Match",
 		"ui.col.pos":                  "Pos",
 		"ui.col.club":                 "Club",
 		"ui.col.div":                  "Div",
@@ -47,12 +46,18 @@ func testModel() Model {
 		"ui.col.status":               "Status",
 		"ui.table.live":               "Live standings",
 		"ui.fixtures.empty":           "No fixtures",
+		"ui.fixture.live":             "Live",
 		"ui.fixture.scheduled":        "Soon",
 		"ui.fixture.result":           "Result",
 		"ui.fixture.replay":           "Replay",
 		"ui.fixture.archived":         "Archive",
-		"ui.fixture.scheduled_detail": "Not kicked off",
+		"ui.fixture.scheduled_notice": "Not kicked off",
 		"ui.match.loading":            "Loading",
+		"ui.match.live":               "Live match",
+		"ui.match.ended":              "Match ended",
+		"ui.match.waiting_result":     "Waiting result",
+		"ui.match.modal.close":        "Esc close",
+		"ui.match.modal.replay_help":  "PgUp/PgDn",
 		"ui.match.away":               "Away",
 		"ui.match.winner":             "Winner",
 		"ui.match.scorers":            "Scorers",
@@ -129,6 +134,7 @@ func testModel() Model {
 	m.Fixtures = []Fixture{
 		{ID: 7, Status: "RESULT", Round: 1, KickoffText: "Aug 16, 15:00", Home: "A", Away: "B", HomeGoals: 2, AwayGoals: 1, HasReplay: true},
 		{ID: 8, Status: "SCHEDULED", Round: 2, KickoffText: "Aug 23, 15:00", Home: "C", Away: "D"},
+		{ID: 6, Status: "RESULT", Archived: true, Season: 0, Round: 0, KickoffText: "Last season", Home: "E", Away: "F", HomeGoals: 0, AwayGoals: 0},
 	}
 	m.MatchDetail = MatchDetail{
 		Fixture: 7, Status: "RESULT", Competition: "LEAGUE", KickoffText: "Aug 16, 15:00",
@@ -171,6 +177,10 @@ func TestTabsAndDivisionSwitch(t *testing.T) {
 	m = update(m, key("4"))
 	if m.Tab != tabFixtures {
 		t.Fatalf("tab = %d", m.Tab)
+	}
+	m = update(m, key("5"))
+	if m.Tab != tabFixtures {
+		t.Fatalf("removed match tab changed tab to %d", m.Tab)
 	}
 	// Division bounds: 1..World.Divisions.
 	m = update(m, key("left"))
@@ -217,7 +227,6 @@ func TestKoreanTableKeepsColumnWidths(t *testing.T) {
 	m.UI["ui.tab.table"] = "순위표"
 	m.UI["ui.tab.clubs"] = "클럽"
 	m.UI["ui.tab.fixtures"] = "일정"
-	m.UI["ui.tab.match"] = "경기"
 	m.UI["ui.header.division"] = "{tier}부 리그"
 	m.UI["ui.col.pos"] = "순위"
 	m.UI["ui.col.club"] = "클럽"
@@ -228,7 +237,7 @@ func TestKoreanTableKeepsColumnWidths(t *testing.T) {
 	m.UI["ui.col.gf"] = "득점"
 	m.UI["ui.col.ga"] = "실점"
 	m.UI["ui.col.pts"] = "승점"
-	m.UI["ui.help.keys"] = "1 매체 · 2 순위표 · 3 클럽 · 4 일정 · 5 경기 · q 종료"
+	m.UI["ui.help.keys"] = "1 매체 · 2 순위표 · 3 클럽 · 4 일정 · q 종료"
 	m.Table.Rows = []TableRow{
 		{Pos: 1, Club: "서울 유나이티드", Played: 2, Won: 1, Drawn: 1, Lost: 0, GF: 4, GA: 2, Points: 4},
 		{Pos: 2, Club: "Rot-Weiss Lindenbach", Played: 2, Won: 1, Drawn: 0, Lost: 1, GF: 3, GA: 3, Points: 3},
@@ -328,7 +337,6 @@ func TestMouseSelectsTabsAndRows(t *testing.T) {
 			tabTable:    "2 Table",
 			tabClubs:    "3 Clubs",
 			tabFixtures: "4 Fixtures",
-			tabMatch:    "5 Match",
 		}[span.tab]
 		tabLine := plain(strings.Split(m.View(), "\n")[2])
 		byteIdx := strings.Index(tabLine, label)
@@ -350,9 +358,18 @@ func TestMouseSelectsTabsAndRows(t *testing.T) {
 	}
 
 	m.Tab = tabFixtures
+	m = update(m, tea.MouseMsg{X: 5, Y: 7, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.FixtureIdx != 0 || m.MatchModal != modalReplay {
+		t.Fatalf("mouse fixture click selected fixture %d modal %q, want fixture 0 replay", m.FixtureIdx, m.MatchModal)
+	}
 	m = update(m, tea.MouseMsg{X: 5, Y: 8, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.FixtureIdx != 1 {
-		t.Fatalf("mouse fixture click selected fixture %d, want 1", m.FixtureIdx)
+	if m.FixtureIdx != 0 {
+		t.Fatalf("mouse click pierced open modal, selected fixture %d", m.FixtureIdx)
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(m, tea.MouseMsg{X: 5, Y: 8, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.FixtureIdx != 1 || m.Notice != "Not kicked off" {
+		t.Fatalf("mouse scheduled click selected fixture %d notice %q, want fixture 1 scheduled notice", m.FixtureIdx, m.Notice)
 	}
 }
 
@@ -361,9 +378,23 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 	m.Width, m.Height = 140, 40
 	m.Tab = tabFixtures
 	v := m.View()
-	for _, want := range []string{"Replay", "A 2-1 B", "Chance mix Counters 2", "Scorers", "Rae Quinn", "Replay log", "lashes it home"} {
+	for _, want := range []string{"Replay", "A 2-1 B", "C - D"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("fixtures/results view missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "Chance mix Counters 2") || strings.Contains(v, "Scorers") {
+		t.Fatalf("fixture list should not render the old side detail pane:\n%s", v)
+	}
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalReplay {
+		t.Fatalf("enter did not open replay modal: %q", m.MatchModal)
+	}
+	v = m.View()
+	for _, want := range []string{"A 2-1 B", "Chance mix Counters 2", "Scorers", "Rae Quinn", "Cards", "Lee Ward", "Subs", "Fresh Legs", "Ratings", "7.8 Rae Quinn", "Replay log", "lashes it home"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("replay modal missing %q:\n%s", want, v)
 		}
 	}
 
@@ -387,12 +418,85 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 		t.Fatalf("PageUp did not rewind replay scroll: %d", m.ReplayOffset)
 	}
 
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.MatchModal != modalNone {
+		t.Fatalf("Esc did not close replay modal: %q", m.MatchModal)
+	}
 	m = update(m, key("down"))
 	if m.FixtureIdx != 1 {
 		t.Fatalf("fixture selection = %d, want 1", m.FixtureIdx)
 	}
-	if v := m.viewFixtures(80, 20); !strings.Contains(v, "Not kicked off") {
-		t.Fatalf("scheduled detail missing:\n%s", v)
+	if v := m.viewFixtures(80, 20); strings.Contains(v, "Not kicked off") {
+		t.Fatalf("scheduled detail should not render as side pane:\n%s", v)
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalNone || m.Notice != "Not kicked off" {
+		t.Fatalf("scheduled enter opened modal %q notice %q", m.MatchModal, m.Notice)
+	}
+}
+
+func TestFixtureResultsEnterAndSpaceOpenLiveModal(t *testing.T) {
+	m := testModel()
+	m.Tab = tabFixtures
+	m.FixtureIdx = 1
+	m.Matches = []LiveMatchView{{Fixture: 8, Home: "C", Away: "D", HomeGoals: 1, AwayGoals: 0, Minute: 25}}
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalLive || m.MatchModalID != 8 {
+		t.Fatalf("enter did not open live modal: modal=%q id=%d", m.MatchModal, m.MatchModalID)
+	}
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(m, tea.KeyMsg{Type: tea.KeySpace})
+	if m.MatchModal != modalLive || m.MatchModalID != 8 {
+		t.Fatalf("space did not open live modal: modal=%q id=%d", m.MatchModal, m.MatchModalID)
+	}
+}
+
+func TestArchivedResultOpensLedgerModal(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 80, 24
+	m.Tab = tabFixtures
+	m.FixtureIdx = 2
+	m.MatchDetail = MatchDetail{
+		Fixture: 6, Status: "RESULT", Archived: true, Competition: "LEAGUE", KickoffText: "Last season",
+		Home: "E", Away: "F", HomeGoals: 0, AwayGoals: 0, HomeShots: 5, AwayShots: 4,
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalReplay || m.MatchModalID != 6 {
+		t.Fatalf("archived result did not open replay/ledger modal: modal=%q id=%d notice=%q", m.MatchModal, m.MatchModalID, m.Notice)
+	}
+	v := m.View()
+	for _, want := range []string{"E 0-0 F", "Shots H 5 · A 4", "Archived no replay"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("archived ledger modal missing %q:\n%s", want, v)
+		}
+	}
+
+	overlay, ok := m.matchModalOverlay(52, 18)
+	if !ok || !strings.Contains(strings.Join(overlay.Lines, "\n"), "E 0-0 F") {
+		t.Fatalf("small modal fallback failed: ok=%v overlay=%+v", ok, overlay)
+	}
+}
+
+func TestReplayModalTracksFixtureIDAcrossFixtureRefresh(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 100, 28
+	m.Tab = tabFixtures
+	m.FixtureIdx = 0
+	m.MatchModal = modalReplay
+	m.MatchModalID = 7
+
+	m = update(m, FixturesMsg([]Fixture{
+		{ID: 9, Status: "SCHEDULED", Round: 1, KickoffText: "Now", Home: "Live", Away: "New"},
+		{ID: 7, Status: "RESULT", Round: 1, KickoffText: "Aug 16, 15:00", Home: "A", Away: "B", HomeGoals: 2, AwayGoals: 1, HasReplay: true},
+		{ID: 8, Status: "SCHEDULED", Round: 2, KickoffText: "Aug 23, 15:00", Home: "C", Away: "D"},
+	}))
+	if m.FixtureIdx != 1 {
+		t.Fatalf("replay modal did not resync fixture index by id: %d", m.FixtureIdx)
+	}
+	if v := m.View(); !strings.Contains(v, "A 2-1 B") || strings.Contains(v, "Loading") {
+		t.Fatalf("replay modal drifted after fixture refresh:\n%s", v)
 	}
 }
 
@@ -411,16 +515,44 @@ func TestSelectedRowsStayVisible(t *testing.T) {
 func liveModel(width, height int) Model {
 	m := NewModel(nil)
 	m.Width, m.Height = width, height
-	m.Tab = tabMatch
+	m.Tab = tabFixtures
+	m.MatchModal = modalLive
+	m.MatchModalID = 9
 	m.UI = map[string]string{
-		"ui.match.none":       "quiet",
-		"ui.match.legend":     "legend",
-		"ui.match.scoreboard": "SCOREBOARD",
-		"ui.match.goalflash":  "GOAL",
-		"ui.match.replay":     "COMMENTARY",
+		"ui.app.title":               "Agentic FC",
+		"ui.header.division":         "Division {tier}",
+		"ui.tab.media":               "Media",
+		"ui.tab.table":               "Table",
+		"ui.tab.clubs":               "Clubs",
+		"ui.tab.fixtures":            "Fixtures",
+		"ui.fixtures.empty":          "No fixtures",
+		"ui.fixture.live":            "Live",
+		"ui.match.none":              "quiet",
+		"ui.match.live":              "Live match",
+		"ui.match.ended":             "Match ended",
+		"ui.match.waiting_result":    "Waiting result",
+		"ui.match.goalflash":         "GOAL",
+		"ui.match.modal.close":       "Esc close",
+		"ui.match.modal.replay_help": "PgUp/PgDn",
+		"ui.match.replay":            "COMMENTARY",
+		"ui.match.ratings":           "RATINGS",
+		"ui.match.stat.shots":        "Shots",
+		"ui.match.stat.cards":        "Cards",
+		"ui.match.stat.subs":         "Subs",
+		"ui.match.stat.chance_mix":   "Chance mix",
+		"ui.match.stat.quality":      "Quality",
+		"ui.match.stat.aerial":       "Aerial",
+		"ui.match.stat.press":        "Press",
+		"ui.match.stat.setpieces":    "Set pieces",
+		"ui.help.keys":               "help",
+		"term.chance_type.CUTBACK":   "Cutbacks",
+		"term.quality.HIGH":          "High",
+		"term.quality.MEDIUM":        "Medium",
 	}
+	m.Fixtures = []Fixture{{ID: 9, Status: "SCHEDULED", Round: 2, KickoffText: "Now", Home: "Alpha", Away: "Beta"}}
 	m.Matches = []LiveMatchView{{
-		Home: "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1, Minute: 61,
+		Fixture: 9,
+		Home:    "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1, Minute: 61,
 		Competition: "LEAGUE",
 		Commentary:  []string{"line one", "line two"},
 		Markers: []LiveMarker{
@@ -431,103 +563,8 @@ func liveModel(width, height int) Model {
 	return m
 }
 
-// TestMatchScreenTiers locks the docs/07 §4.1 degradation ladder: tier S is
-// pure commentary (no pitch border at all), M draws the strip and 'p' folds
-// it away, L renders the full band with the event glyphs on it.
-func TestMatchScreenTiers(t *testing.T) {
-	small := liveModel(70, 24) // TierS
-	if v := small.View(); strings.Contains(v, "+--") {
-		t.Fatal("tier S must stay pure commentary — no pitch border")
-	} else if !strings.Contains(v, "line two") {
-		t.Fatal("tier S lost the commentary itself")
-	}
-
-	mid := liveModel(110, 30) // TierM
-	if v := mid.View(); !strings.Contains(v, "+--") {
-		t.Fatal("tier M should draw the compact strip by default")
-	}
-	toggled, _ := mid.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	if v := toggled.(Model).View(); strings.Contains(v, "+--") {
-		t.Fatal("'p' must fold the M-tier strip back to commentary")
-	}
-
-	large := liveModel(150, 40) // TierL
-	v := large.View()
-	if !strings.Contains(v, "+--") || !strings.Contains(v, "G") || !strings.Contains(v, "x") {
-		t.Fatal("tier L must render the full band with goal and card glyphs")
-	}
-	if !strings.Contains(v, "Alpha 2 - 1 Beta") {
-		t.Fatal("score header missing")
-	}
-	if !strings.Contains(v, "SCOREBOARD") || !strings.Contains(v, "█████") {
-		t.Fatal("tier L must render the big scoreboard")
-	}
-	if strings.Contains(v, ">>>  GOAL") {
-		t.Fatal("goal flash should only render when the latest marker is a goal")
-	}
-	if !strings.Contains(v, "legend") {
-		t.Fatal("marker legend missing beside the pitch")
-	}
-}
-
-func TestMatchGoalFlash(t *testing.T) {
-	m := liveModel(150, 40)
-	m.Matches[0].Markers = append(m.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
-	v := m.View()
-	if !strings.Contains(v, ">>>  GOAL  62'  Beta  <<<") {
-		t.Fatalf("latest-goal flash missing:\n%s", v)
-	}
-	if !strings.Contains(v, "▓") || !strings.Contains(v, "SCOREBOARD GOAL") {
-		t.Fatalf("latest-goal flash missing burst graphics:\n%s", v)
-	}
-
-	small := liveModel(70, 24)
-	small.Matches[0].Markers = append(small.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
-	if v := small.View(); strings.Contains(v, ">>>  GOAL") || strings.Contains(v, "SCOREBOARD") {
-		t.Fatal("tier S should remain pure commentary without scoreboard or flash")
-	}
-}
-
-// TestMatchScreenEmptyAndGoalSides locks the empty state and the goalmouth
-// geometry: a HOME goal lands in the right half of the field, an AWAY goal in
-// the left half.
-func TestMatchScreenEmptyAndGoalSides(t *testing.T) {
-	empty := liveModel(150, 40)
-	empty.Matches = nil
-	if v := empty.View(); !strings.Contains(v, "quiet") {
-		t.Fatal("empty state must show ui.match.none")
-	}
-
-	pitch := renderPitch(80, 9, []LiveMarker{{Kind: "GOAL", Side: "HOME"}})
-	for _, line := range strings.Split(pitch, "\n") {
-		if i := strings.IndexRune(line, 'G'); i >= 0 && i <= 40 {
-			t.Fatalf("HOME goal glyph at col %d — must sit in the right half", i)
-		}
-	}
-	pitch = renderPitch(80, 9, []LiveMarker{{Kind: "GOAL", Side: "AWAY"}})
-	for _, line := range strings.Split(pitch, "\n") {
-		if i := strings.IndexRune(line, 'G'); i >= 40 {
-			t.Fatalf("AWAY goal glyph at col %d — must sit in the left half", i)
-		}
-	}
-}
-
-// paneModel is liveModel plus the §4.1 side-pane data: stats, ratings for
-// both sides, a momentum curve, and a second match for the ticker.
-func paneModel(width, height int) Model {
-	m := liveModel(width, height)
-	m.UI["ui.match.stats"] = "MATCH-STATS"
-	m.UI["ui.match.ratings"] = "RATINGS"
-	m.UI["ui.match.latest"] = "LATEST"
-	m.UI["ui.match.momentum"] = "MOMENTUM"
-	m.UI["ui.match.stat.shots"] = "Shots"
-	m.UI["ui.match.stat.quality"] = "Quality"
-	m.UI["ui.match.stat.aerial"] = "Aerial"
-	m.UI["ui.match.stat.press"] = "Press"
-	m.UI["ui.match.stat.setpieces"] = "Set pieces"
-	m.UI["term.chance_type.CUTBACK"] = "Cutbacks"
-	m.UI["term.quality.HIGH"] = "High"
-	m.UI["term.quality.MEDIUM"] = "Medium"
+func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
+	m := liveModel(140, 36)
 	m.Matches[0].Stats = LiveStats{
 		HomeShots: 7, AwayShots: 3, HomeCards: 1, AwayCards: 2, HomeSubs: 2, AwaySubs: 0,
 		ChanceTypes: map[string]int{"CUTBACK": 2},
@@ -543,68 +580,107 @@ func paneModel(width, height int) Model {
 		{Side: "HOME", Name: "Solid", RatingX10: 68},
 		{Side: "AWAY", Name: "Villain", RatingX10: 61},
 	}
-	m.Matches[0].Momentum = []int{0, 3, 1, -1, 0, 0, 4, 0, 0}
-	m.Matches = append(m.Matches, LiveMatchView{
-		Home: "Gamma", Away: "Delta", HomeGoals: 0, AwayGoals: 0, Minute: 30,
-	})
-	return m
-}
-
-// TestMatchSidePanes locks the §4.1 side-pane matrix: L shows stats + ratings
-// (ticker only when tall), XL keeps the ticker column, M shows one toggleable
-// pane ('r' cycles stats → ratings → hidden), S swaps the main block, and the
-// momentum sparkline sits under the header from L up.
-func TestMatchSidePanes(t *testing.T) {
-	large := paneModel(150, 45) // TierL, tall → ticker
-	v := large.View()
-	for _, want := range []string{"MATCH-STATS", "Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "RATINGS", "7.6 Hero", "6.1 Villain", "MOMENTUM", "LATEST", "Gamma 0-0 Delta 30'"} {
+	v := m.View()
+	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "RATINGS", "Alpha", "Beta", "7.6 Hero", "line two"} {
 		if !strings.Contains(v, want) {
-			t.Fatalf("tier L tall missing %q:\n%s", want, v)
+			t.Fatalf("live modal missing %q:\n%s", want, v)
 		}
 	}
-	if !strings.Contains(v, "△") || !strings.Contains(v, "▲") || !strings.Contains(v, "▽") {
-		t.Fatal("momentum glyphs missing (goal ▲, light pressure △/▽)")
+	if strings.Contains(v, "HOME 7.6") || strings.Contains(v, "AWAY 6.1") {
+		t.Fatalf("live modal should not render raw side enums:\n%s", v)
+	}
+	if strings.Contains(v, "+--") || strings.Contains(v, "legend") {
+		t.Fatalf("live modal should not render the old pitch:\n%s", v)
+	}
+}
+
+func TestLiveMatchModalGoalFlashAndClose(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches[0].Markers = append(m.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
+	v := m.View()
+	if !strings.Contains(v, "GOAL") || !strings.Contains(v, "62'") || !strings.Contains(v, "Beta") || !strings.Contains(v, "█") {
+		t.Fatalf("latest-goal flash missing:\n%s", v)
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.MatchModal != modalNone {
+		t.Fatalf("Esc did not close live modal: %q", m.MatchModal)
+	}
+}
+
+func TestLiveMatchModalTracksFixtureAcrossRefresh(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches = append([]LiveMatchView{
+		{Fixture: 10, Home: "Gamma", Away: "Delta", HomeGoals: 0, AwayGoals: 0, Minute: 12},
+	}, m.Matches...)
+	m.MatchIdx = 1
+	m.MatchModalID = 9
+
+	m = update(m, MatchesMsg{
+		{Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 3, AwayGoals: 1, Minute: 70},
+		{Fixture: 10, Home: "Gamma", Away: "Delta", HomeGoals: 0, AwayGoals: 0, Minute: 14},
+	})
+	if m.MatchModal != modalLive || m.MatchIdx != 0 || m.MatchModalID != 9 {
+		t.Fatalf("live modal did not remap by fixture: modal=%q idx=%d id=%d", m.MatchModal, m.MatchIdx, m.MatchModalID)
+	}
+	if got := m.liveMatchModal(90, 18); !strings.Contains(got, "Alpha 3-1 Beta") {
+		t.Fatalf("live modal drifted to wrong match:\n%s", got)
+	}
+}
+
+func TestLiveMatchModalTransitionsToReplayWhenResultArrives(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Fixtures[0].Status = "RESULT"
+	m.Fixtures[0].HasReplay = true
+	m.Fixtures[0].HomeGoals = 2
+	m.Fixtures[0].AwayGoals = 1
+
+	next, cmd := m.Update(MatchesMsg{})
+	m = next.(Model)
+	if m.MatchModal != modalReplay || m.MatchModalID != 9 || m.FixtureIdx != 0 {
+		t.Fatalf("live modal did not transition to replay: modal=%q id=%d fixture=%d", m.MatchModal, m.MatchModalID, m.FixtureIdx)
+	}
+	if cmd != nil {
+		t.Fatal("nil test client should not schedule replay fetch")
+	}
+}
+
+func TestLiveMatchModalWaitsForFixtureResultSkew(t *testing.T) {
+	m := liveModel(140, 36)
+
+	m = update(m, MatchesMsg{})
+	if m.MatchModal != modalWaiting || m.MatchModalID != 9 || m.FixtureIdx != 0 {
+		t.Fatalf("missing live match should wait for result: modal=%q id=%d fixture=%d", m.MatchModal, m.MatchModalID, m.FixtureIdx)
+	}
+	m.World.Divisions = 3
+	m.Tier = 2
+	m = update(m, tea.KeyMsg{Type: tea.KeyLeft})
+	if m.Tier != 2 {
+		t.Fatalf("left key leaked through waiting modal, tier=%d", m.Tier)
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyRight})
+	if m.Tier != 2 {
+		t.Fatalf("right key leaked through waiting modal, tier=%d", m.Tier)
+	}
+	if v := m.View(); !strings.Contains(v, "Waiting result") {
+		t.Fatalf("waiting modal missing:\n%s", v)
 	}
 
-	shortL := paneModel(150, 30) // TierL, short → no ticker
-	if v := shortL.View(); strings.Contains(v, "LATEST") {
-		t.Fatal("tier L below the tall threshold must drop the ticker")
-	} else if !strings.Contains(v, "MATCH-STATS") {
-		t.Fatal("tier L short must keep the stats pane")
+	m = update(m, FixturesMsg([]Fixture{{ID: 9, Status: "RESULT", HasReplay: true, Home: "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1}}))
+	if m.MatchModal != modalReplay || m.MatchModalID != 9 {
+		t.Fatalf("result fixture did not promote waiting modal to replay: modal=%q id=%d", m.MatchModal, m.MatchModalID)
 	}
+}
 
-	xl := paneModel(190, 30) // TierXL → persistent ticker even short
-	if v := xl.View(); !strings.Contains(v, "LATEST") {
-		t.Fatal("tier XL must keep the ticker column")
-	}
+func TestWaitingMatchModalClosesWhenFixtureDisappears(t *testing.T) {
+	m := liveModel(140, 36)
+	m.MatchModal = modalWaiting
+	m.MatchModalID = 9
 
-	mid := paneModel(110, 30) // TierM: one pane, 'r' cycles
-	if v := mid.View(); !strings.Contains(v, "MATCH-STATS") || strings.Contains(v, "RATINGS") {
-		t.Fatal("tier M default must show the stats pane alone")
+	m = update(m, FixturesMsg([]Fixture{{ID: 10, Status: "SCHEDULED", Home: "Other", Away: "Match"}}))
+	if m.MatchModal != modalNone || m.MatchModalID != 0 {
+		t.Fatalf("missing fixture did not close waiting modal: modal=%q id=%d", m.MatchModal, m.MatchModalID)
 	}
-	r1, _ := mid.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if v := r1.(Model).View(); !strings.Contains(v, "RATINGS") || strings.Contains(v, "MATCH-STATS") {
-		t.Fatal("tier M 'r' must swap to the ratings pane")
-	}
-	r2, _ := r1.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if v := r2.(Model).View(); strings.Contains(v, "RATINGS") || strings.Contains(v, "MATCH-STATS") {
-		t.Fatal("tier M second 'r' must hide the pane")
-	}
-	if v := r2.(Model).View(); strings.Contains(v, "MOMENTUM") {
-		t.Fatal("the momentum sparkline is L/XL only")
-	}
-
-	small := paneModel(70, 24) // TierS: 'r' swaps the main block
-	s1, _ := small.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if v := s1.(Model).View(); !strings.Contains(v, "MATCH-STATS") || strings.Contains(v, "line two") {
-		t.Fatal("tier S 'r' must swap commentary for the stats block")
-	}
-	s2, _ := s1.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if v := s2.(Model).View(); !strings.Contains(v, "RATINGS") {
-		t.Fatal("tier S second 'r' must show the ratings block")
-	}
-	s3, _ := s2.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
-	if v := s3.(Model).View(); !strings.Contains(v, "line two") {
-		t.Fatal("tier S third 'r' must return to commentary")
+	if m.Notice != "Match ended" {
+		t.Fatalf("missing fixture notice = %q", m.Notice)
 	}
 }
