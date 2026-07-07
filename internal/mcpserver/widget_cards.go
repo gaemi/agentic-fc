@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/mindset"
@@ -16,15 +17,39 @@ import (
 
 // envData / envList pull the (masked) result payload out of the envelope.
 func envData(env map[string]any) map[string]any {
-	d, _ := env["data"].(map[string]any)
-	return d
+	return anyMap(env["data"])
 }
 
 func envList(env map[string]any, key string) []map[string]any {
 	if d := envData(env); d != nil {
-		if r, ok := d[key].([]map[string]any); ok {
-			return r
+		return mapList(d[key])
+	}
+	return nil
+}
+
+func anyMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
+}
+
+func mapList(v any) []map[string]any {
+	switch rows := v.(type) {
+	case []map[string]any:
+		if len(rows) == 0 {
+			return nil
 		}
+		return rows
+	case []any:
+		out := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			if m := anyMap(row); m != nil {
+				out = append(out, m)
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
 	}
 	return nil
 }
@@ -40,7 +65,7 @@ func mstr(m map[string]any, key string) string {
 
 // moneyDisplay reads the human string out of a money map ({amount, display}).
 func moneyDisplay(v any) string {
-	if m, ok := v.(map[string]any); ok {
+	if m := anyMap(v); m != nil {
 		return mstr(m, "display")
 	}
 	return ""
@@ -49,7 +74,7 @@ func moneyDisplay(v any) string {
 // descText localizes a Descriptor by re-rendering its KEY in the target locale —
 // the envelope's `text` is English (FR-22a) and must never be scraped for i18n.
 func (g *Gateway) descText(loc narrative.Locale, desc any) string {
-	if m, ok := desc.(map[string]any); ok {
+	if m := anyMap(desc); m != nil {
 		if k := mstr(m, "key"); k != "" {
 			return g.tr(loc, k)
 		}
@@ -82,6 +107,158 @@ func (c *widgetCard) countRow(label string, v any) {
 	}
 }
 
+func (c *widgetCard) section(title string, lines []widgetLine) {
+	if title != "" && len(lines) > 0 {
+		c.sections = append(c.sections, widgetSection{title: title, lines: lines})
+	}
+}
+
+func limitLines(lines []widgetLine, n int) []widgetLine {
+	if n > 0 && len(lines) > n {
+		return lines[:n]
+	}
+	return lines
+}
+
+func tableLines(rows []map[string]any) []widgetLine {
+	out := make([]widgetLine, 0, len(rows))
+	for _, row := range rows {
+		club := clubName(row["club"])
+		if club == "" {
+			continue
+		}
+		parts := []string{}
+		if pos := row["pos"]; pos != nil {
+			parts = append(parts, fmt.Sprintf("#%v", pos))
+		}
+		if pts := row["points"]; pts != nil {
+			parts = append(parts, fmt.Sprintf("%v pts", pts))
+		}
+		if form := mstr(row, "form"); form != "" {
+			parts = append(parts, form)
+		}
+		out = append(out, widgetLine{primary: club, meta: strings.Join(parts, " · ")})
+	}
+	return out
+}
+
+func resultLines(rows []map[string]any) []widgetLine {
+	out := make([]widgetLine, 0, len(rows))
+	for _, row := range rows {
+		home, away := clubName(row["home"]), clubName(row["away"])
+		if home == "" || away == "" {
+			continue
+		}
+		primary := home + " v " + away
+		if row["home_goals"] != nil && row["away_goals"] != nil {
+			primary = fmt.Sprintf("%s %v-%v %s", home, row["home_goals"], row["away_goals"], away)
+		}
+		meta := ""
+		if gt := row["game_time"]; gt != nil {
+			meta = fmt.Sprint(gt)
+		} else if comp := row["competition"]; comp != nil {
+			meta = fmt.Sprint(comp)
+		}
+		out = append(out, widgetLine{primary: primary, meta: meta})
+	}
+	return out
+}
+
+func fixtureLines(rows []map[string]any) []widgetLine {
+	out := make([]widgetLine, 0, len(rows))
+	for _, row := range rows {
+		home, away := clubName(row["home"]), clubName(row["away"])
+		if home == "" || away == "" {
+			continue
+		}
+		meta := ""
+		if kickoff := row["kickoff"]; kickoff != nil {
+			meta = fmt.Sprint(kickoff)
+		}
+		if round := row["round"]; round != nil {
+			if meta != "" {
+				meta = fmt.Sprintf("R%v · %s", round, meta)
+			} else {
+				meta = fmt.Sprintf("R%v", round)
+			}
+		}
+		out = append(out, widgetLine{primary: home + " v " + away, meta: meta})
+	}
+	return out
+}
+
+func headlineLines(g *Gateway, loc narrative.Locale, rows []map[string]any) []widgetLine {
+	out := make([]widgetLine, 0, len(rows))
+	for _, row := range rows {
+		title := ""
+		if headline := anyMap(row["headline"]); headline != nil {
+			if key := mstr(headline, "key"); key != "" {
+				article := g.newsArticle(fmt.Sprint(row["category"]), key, anyMap(headline["params"]), loc)
+				title = mstr(article, "title")
+			}
+		}
+		if title == "" {
+			if article := anyMap(row["article"]); article != nil {
+				title = mstr(article, "title")
+			}
+		}
+		if title == "" {
+			if headline := anyMap(row["headline"]); headline != nil {
+				title = mstr(headline, "text")
+			}
+		}
+		if title == "" {
+			continue
+		}
+		meta := ""
+		if gt := row["game_time"]; gt != nil {
+			meta = fmt.Sprint(gt)
+		}
+		out = append(out, widgetLine{primary: title, meta: meta})
+	}
+	return out
+}
+
+func timeCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetTime), env)
+	c.headline = g.tr(loc, "widget.headline.time")
+	d := envData(env)
+	if tempo := d["tempo"]; tempo != nil {
+		c.row(g.tr(loc, "widget.row.tempo"), fmt.Sprint(tempo))
+	}
+	if speed := d["game_speed"]; speed != nil {
+		c.row(g.tr(loc, "widget.row.speed"), fmt.Sprintf("%vx", speed))
+	}
+	if next := anyMap(d["next_match_window"]); next != nil {
+		c.row(g.tr(loc, "widget.row.next_match"), mstr(next, "kickoff"))
+	}
+	return renderCard(c)
+}
+
+func settingsCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetSettings), env)
+	c.headline = g.tr(loc, "widget.headline.settings")
+	d := envData(env)
+	if world := anyMap(d["world"]); world != nil {
+		c.row(g.tr(loc, "widget.row.world"), mstr(world, "name"))
+		if phase := world["season_phase"]; phase != nil {
+			c.row(g.tr(loc, "widget.row.phase"), fmt.Sprint(phase))
+		}
+	}
+	if pacing := anyMap(d["pacing"]); pacing != nil {
+		if profile := pacing["run_profile"]; profile != nil {
+			c.row(g.tr(loc, "widget.row.run_profile"), fmt.Sprint(profile))
+		}
+		if speed := pacing["base_game_speed"]; speed != nil {
+			c.row(g.tr(loc, "widget.row.speed"), fmt.Sprintf("%vx", speed))
+		}
+		if effective := pacing["current_effective_speed"]; effective != nil {
+			c.row(g.tr(loc, "widget.row.effective_speed"), fmt.Sprintf("%vx", effective))
+		}
+	}
+	return renderCard(c)
+}
+
 func situationCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
 	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetSituation), env)
 	c.headline = g.tr(loc, "widget.headline.situation")
@@ -89,12 +266,24 @@ func situationCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]a
 	if phase := d["season_phase"]; phase != nil {
 		c.row(g.tr(loc, "widget.row.phase"), fmt.Sprint(phase))
 	}
+	if pos := d["league_position"]; pos != nil {
+		c.row(g.tr(loc, "widget.row.league_position"), fmt.Sprint(pos))
+	}
 	c.row(g.tr(loc, "widget.row.headlines"), fmt.Sprint(len(envList(env, "headlines"))))
-	if urgent, ok := d["urgent"].(map[string]any); ok {
-		if board, ok := urgent["board"].(map[string]any); ok {
+	if urgent := anyMap(d["urgent"]); urgent != nil {
+		if board := anyMap(urgent["board"]); board != nil {
 			c.row(g.tr(loc, "widget.row.board"), g.descText(loc, board["confidence"]))
 		}
+		if injuries := mapList(urgent["injuries"]); injuries != nil {
+			c.row(g.tr(loc, "widget.row.injuries"), fmt.Sprint(len(injuries)))
+		}
+		c.countRow(g.tr(loc, "widget.row.expiring_contracts"), urgent["expiring_contracts"])
 	}
+	if next := anyMap(d["next_fixture"]); next != nil {
+		c.section(g.tr(loc, "widget.section.next_fixture"), fixtureLines([]map[string]any{next}))
+	}
+	c.section(g.tr(loc, "widget.section.last_results"), resultLines(envList(env, "last_results")))
+	c.section(g.tr(loc, "widget.section.headlines"), limitLines(headlineLines(g, loc, envList(env, "headlines")), 4))
 	return renderCard(c)
 }
 
@@ -108,14 +297,14 @@ func newsCard(g *Gateway, loc narrative.Locale, _ getNewsIn, env map[string]any)
 		return renderCard(c)
 	}
 	top := items[0]
-	if headline, ok := top["headline"].(map[string]any); ok {
-		params, _ := headline["params"].(map[string]any)
+	if headline := anyMap(top["headline"]); headline != nil {
+		params := anyMap(headline["params"])
 		article := g.newsArticle(fmt.Sprint(top["category"]), mstr(headline, "key"), params, loc)
 		c.headline = mstr(article, "title")
 		c.row(g.tr(loc, "widget.row.source"), mstr(article, "source"))
 		c.row(g.tr(loc, "widget.row.category"), fmt.Sprint(top["category"]))
 		c.body = append(c.body, mstr(article, "deck"), mstr(article, "body"))
-	} else if article, ok := top["article"].(map[string]any); ok {
+	} else if article := anyMap(top["article"]); article != nil {
 		c.headline = mstr(article, "title")
 		c.row(g.tr(loc, "widget.row.source"), mstr(article, "source"))
 		c.row(g.tr(loc, "widget.row.category"), fmt.Sprint(top["category"]))

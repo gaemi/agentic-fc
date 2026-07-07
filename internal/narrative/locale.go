@@ -20,6 +20,16 @@ var Supported = []Locale{LocaleEN, LocaleKO}
 // ResolveTag normalizes a language tag or POSIX locale string to an available
 // Locale: "ko", "ko-KR", "ko_KR.UTF-8" → ko; anything else → en.
 func ResolveTag(tag string) Locale {
+	if loc, ok := TryResolveTag(tag); ok {
+		return loc
+	}
+	return LocaleEN
+}
+
+// TryResolveTag normalizes a language tag or POSIX locale string only when it
+// matches an available catalog. The bool lets callers distinguish "unsupported"
+// from the English fallback used by ResolveTag.
+func TryResolveTag(tag string) (Locale, bool) {
 	tag = strings.ToLower(strings.TrimSpace(tag))
 	// Strip POSIX encoding/modifier: "ko_KR.UTF-8@x" → "ko_kr"
 	if i := strings.IndexAny(tag, ".@"); i >= 0 {
@@ -31,10 +41,10 @@ func ResolveTag(tag string) Locale {
 	}
 	for _, l := range Supported {
 		if tag == string(l) {
-			return l
+			return l, true
 		}
 	}
-	return LocaleEN
+	return "", false
 }
 
 // FromEnv resolves the system language the POSIX way: LC_ALL beats

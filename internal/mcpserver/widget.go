@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -62,21 +63,48 @@ func handleUI[In any](g *Gateway, fn func(managerID int64, sessionID string, in 
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, map[string]any, error) {
 		id, aerr := managerIDFromCtx(ctx)
 		if aerr != nil {
-			return nil, g.errEnvelope(nil, aerr), nil
+			env := g.errEnvelope(nil, aerr)
+			return quietResult(), env, nil
 		}
 		session := ""
 		if req != nil && req.Session != nil {
 			session = req.Session.ID()
 		}
 		env := fn(id, session, in)
-		res := &mcp.CallToolResult{}
+		res := quietResult()
 		if ok, _ := env["ok"].(bool); ok {
-			if htmlCard := render(g, g.widgetLocale(), in, env); htmlCard != "" {
-				g.attachWidget(res, env, htmlCard)
+			loc := g.widgetLocaleForTool(req)
+			if htmlCard := render(g, loc, in, env); htmlCard != "" {
+				g.attachWidget(res, env, htmlCard, localizedWidgetHTML(g, loc, htmlCard, in, env, render))
 			}
 		}
 		return res, env, nil
 	}
+}
+
+func localizedWidgetHTML[In any](g *Gateway, primary narrative.Locale, primaryHTML string, in In,
+	env map[string]any, render widgetRenderer[In]) map[narrative.Locale]string {
+
+	if g.Locale != "" {
+		return nil
+	}
+	// Unpinned widgets carry all maintained locales so a host can re-render the
+	// same tool result if it learns the user's locale after the result arrives.
+	out := map[narrative.Locale]string{}
+	for _, loc := range narrative.Supported {
+		if loc == primary {
+			out[loc] = primaryHTML
+			continue
+		}
+		out[loc] = render(g, loc, in, env)
+	}
+	return out
+}
+
+func quietResult() *mcp.CallToolResult {
+	// Keep the model-facing content stream quiet. StructuredContent carries the
+	// machine-readable envelope; visible rendering is the host/widget's job.
+	return &mcp.CallToolResult{Content: []mcp.Content{}}
 }
 
 // SetWidgetMode selects the UI transport. The default/"apps" follows the MCP
@@ -103,21 +131,195 @@ func (g *Gateway) widgetLocale() narrative.Locale {
 	return narrative.FromEnv(os.Getenv)
 }
 
+func (g *Gateway) widgetLocaleForTool(req *mcp.CallToolRequest) narrative.Locale {
+	if g.Locale != "" {
+		return g.Locale
+	}
+	var meta mcp.Meta
+	header := ""
+	if req != nil && req.Params != nil {
+		meta = req.Params.Meta
+	}
+	if req != nil && req.Extra != nil {
+		header = req.Extra.Header.Get("Accept-Language")
+	}
+	return g.widgetLocaleFromClient(meta, header)
+}
+
+func (g *Gateway) widgetLocaleFromClient(meta mcp.Meta, header string) narrative.Locale {
+	if loc := localeFromMeta(meta); loc != "" {
+		return loc
+	}
+	clientLocaleSeen := hasLocaleSignal(meta)
+	headerSeen := strings.TrimSpace(header) != ""
+	if loc := localeFromHeader(header); loc != "" {
+		return loc
+	}
+	if clientLocaleSeen || headerSeen {
+		return narrative.LocaleEN
+	}
+	return g.widgetLocale()
+}
+
+func localeFromMeta(meta mcp.Meta) narrative.Locale {
+	for _, key := range []string{"openai/locale", "webplus/i18n"} {
+		if loc := localeFromValue(meta[key]); loc != "" {
+			return loc
+		}
+	}
+	return ""
+}
+
+func hasLocaleSignal(meta mcp.Meta) bool {
+	for _, key := range []string{"openai/locale", "webplus/i18n"} {
+		if hasLocaleValue(meta[key]) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLocaleValue(v any) bool {
+	switch raw := v.(type) {
+	case string:
+		return looksLikeLocaleTag(raw)
+	case map[string]any:
+		for _, key := range []string{"primary", "locale", "language"} {
+			if hasLocaleValue(raw[key]) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range raw {
+			if hasLocaleValue(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func looksLikeLocaleTag(raw string) bool {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return false
+	}
+	if i := strings.IndexAny(s, ".@"); i >= 0 {
+		s = s[:i]
+	}
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '-' || r == '_' })
+	if len(parts) == 0 || len(parts[0]) < 2 || len(parts[0]) > 3 {
+		return false
+	}
+	for _, r := range parts[0] {
+		if !isASCIIAlpha(r) {
+			return false
+		}
+	}
+	for _, part := range parts[1:] {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if !isASCIIAlnum(r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isASCIIAlpha(r rune) bool {
+	return ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+}
+
+func isASCIIAlnum(r rune) bool {
+	return isASCIIAlpha(r) || ('0' <= r && r <= '9')
+}
+
+func localeFromValue(v any) narrative.Locale {
+	switch raw := v.(type) {
+	case string:
+		if loc, ok := narrative.TryResolveTag(raw); ok {
+			return loc
+		}
+	case map[string]any:
+		for _, key := range []string{"primary", "locale", "language"} {
+			if loc := localeFromValue(raw[key]); loc != "" {
+				return loc
+			}
+		}
+	case []any:
+		for _, item := range raw {
+			if loc := localeFromValue(item); loc != "" {
+				return loc
+			}
+		}
+	}
+	return ""
+}
+
+func localeFromHeader(header string) narrative.Locale {
+	if header == "" {
+		return ""
+	}
+	bestQ := -1.0
+	var best narrative.Locale
+	for _, part := range strings.Split(header, ",") {
+		tag, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		q := 1.0
+		for _, param := range strings.Split(params, ";") {
+			k, v, ok := strings.Cut(strings.TrimSpace(param), "=")
+			if ok && strings.EqualFold(k, "q") {
+				parsed, err := strconv.ParseFloat(v, 64)
+				if err == nil {
+					q = parsed
+				}
+			}
+		}
+		if q > 1 {
+			q = 1
+		}
+		if q <= 0 {
+			continue
+		}
+		if loc, ok := narrative.TryResolveTag(tag); ok {
+			if q > bestQ {
+				bestQ = q
+				best = loc
+			}
+		}
+	}
+	return best
+}
+
 // attachWidget is the single swappable seam. It never fails the tool result: a
 // marshal error just drops the card (the AI still gets its data).
-func (g *Gateway) attachWidget(res *mcp.CallToolResult, env map[string]any, htmlCard string) {
+func (g *Gateway) attachWidget(res *mcp.CallToolResult, env map[string]any, htmlCard string, htmlByLocale map[narrative.Locale]string) {
+	payload := map[string]any{"mimeType": widgetMIME, "html": htmlCard}
+	if len(htmlByLocale) > 0 {
+		byLocale := map[string]string{}
+		for loc, html := range htmlByLocale {
+			if html != "" {
+				byLocale[string(loc)] = html
+			}
+		}
+		if len(byLocale) > 0 {
+			payload["html_by_locale"] = byLocale
+		}
+	}
 	switch g.WidgetMode {
 	case widgetApps:
 		if res.Meta == nil {
 			res.Meta = mcp.Meta{}
 		}
-		res.Meta[widgetMetaKey] = map[string]any{"mimeType": widgetMIME, "html": htmlCard}
+		res.Meta[widgetMetaKey] = payload
 		return
 	case widgetMeta:
 		if res.Meta == nil {
 			res.Meta = mcp.Meta{}
 		}
-		res.Meta[widgetMetaKey] = map[string]any{"mimeType": widgetMIME, "html": htmlCard}
+		res.Meta[widgetMetaKey] = payload
 		return
 	}
 	// content-block compatibility mode: keep the structured JSON as the first
@@ -138,7 +340,18 @@ func appTool(t *mcp.Tool) *mcp.Tool {
 	if t.Meta == nil {
 		t.Meta = mcp.Meta{}
 	}
-	t.Meta["ui"] = map[string]any{"resourceUri": widgetURI}
+	t.Meta["ui"] = map[string]any{
+		"resourceUri": widgetURI,
+		"visibility":  []string{"model", "app"},
+	}
+	// Codex/OpenAI compatibility keys. Some hosts discover the iframe from
+	// _meta.ui.resourceUri but hydrate it only through the older Apps SDK bridge.
+	t.Meta["ui/resourceUri"] = widgetURI
+	t.Meta["openai/outputTemplate"] = widgetURI
+	// The card is display-only; it should not call MCP tools from inside the iframe.
+	t.Meta["openai/widgetAccessible"] = false
+	t.Meta["openai/toolInvocation/invoking"] = "Rendering Agentic FC"
+	t.Meta["openai/toolInvocation/invoked"] = "Rendered Agentic FC"
 	return t
 }
 
@@ -149,13 +362,45 @@ func (g *Gateway) registerUIResources(s *mcp.Server) {
 		Title:       "Agentic FC action card",
 		Description: "MCP Apps resource for rendering Agentic FC tool results.",
 		MIMEType:    widgetMIME,
-	}, func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	}, func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		loc := g.widgetLocaleForResource(req)
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{
 			URI:      widgetURI,
 			MIMEType: widgetMIME,
-			Text:     g.widgetAppHTML(g.widgetLocale()),
+			Text:     g.widgetAppHTML(loc),
+			Meta: mcp.Meta{
+				// MCP-UI and OpenAI Apps SDK name the same CSP concepts differently.
+				"ui": map[string]any{
+					"prefersBorder": false,
+					"csp": map[string]any{
+						"connectDomains":  []string{},
+						"resourceDomains": []string{},
+					},
+				},
+				"openai/widgetDescription":   "Compact Agentic FC action card for the latest tool result.",
+				"openai/widgetPrefersBorder": false,
+				"openai/widgetCSP": map[string]any{
+					"connect_domains":  []string{},
+					"resource_domains": []string{},
+				},
+			},
 		}}}, nil
 	})
+}
+
+func (g *Gateway) widgetLocaleForResource(req *mcp.ReadResourceRequest) narrative.Locale {
+	if g.Locale != "" {
+		return g.Locale
+	}
+	var meta mcp.Meta
+	header := ""
+	if req != nil && req.Params != nil {
+		meta = req.Params.Meta
+	}
+	if req != nil && req.Extra != nil {
+		header = req.Extra.Header.Get("Accept-Language")
+	}
+	return g.widgetLocaleFromClient(meta, header)
 }
 
 // ---- card model ----
@@ -171,12 +416,23 @@ type widgetCard struct {
 	asked    string // optional query line (reads)
 	rows     []widgetRow
 	body     []string
+	sections []widgetSection
 }
 
 type widgetRow struct {
 	label  string
 	value  string
 	change bool // highlight the value as a decided change
+}
+
+type widgetSection struct {
+	title string
+	lines []widgetLine
+}
+
+type widgetLine struct {
+	primary string
+	meta    string
 }
 
 func (c widgetCard) metaLine() string {
@@ -233,25 +489,36 @@ func (g *Gateway) tr2(loc narrative.Locale, key string, p map[string]any) string
 // widgetCSS is compact, self-contained (no external assets), and scoped to
 // .nfw so it is safe in a sandboxed host iframe.
 const widgetCSS = `<style>` +
-	`.nfw{--b:#0e1116;--l:#2b323d;--t:#e7ecf3;--t2:#96a2b2;--t3:#6b7686;--rd:#57a6ff;--wr:#3ddc84;` +
+	`.nfw{--b:#101418;--p:#151b21;--l:#2b3540;--l2:#1d252d;--t:#eef2f6;--t2:#aeb8c4;--t3:#74808d;--rd:#58a6ff;--wr:#36d399;` +
 	`--mono:ui-monospace,SFMono-Regular,Menlo,monospace;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;` +
-	`background:var(--b);color:var(--t);border:1px solid var(--l);border-radius:12px;padding:13px 15px;max-width:480px}` +
+	`position:relative;background:var(--b);color:var(--t);border:1px solid var(--l);border-radius:10px;padding:0;max-width:720px;overflow:hidden;box-shadow:0 18px 45px rgba(8,12,18,.24)}` +
 	`.nfw *{box-sizing:border-box}` +
-	`.nfw-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}` +
-	`.nfw-bg{font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:6px}` +
-	`.nfw--read .nfw-bg{color:var(--rd);background:rgba(87,166,255,.13)}` +
-	`.nfw--write .nfw-bg{color:var(--wr);background:rgba(61,220,132,.14)}` +
-	`.nfw-tl{font-family:var(--mono);font-size:12px;color:var(--t2)}` +
-	`.nfw-mt{margin-left:auto;font-size:11px;color:var(--t3);font-family:var(--mono)}` +
-	`.nfw-hl{font-size:14px;font-weight:500;margin:10px 0 2px;line-height:1.35}` +
-	`.nfw-as{font-size:11.5px;color:var(--t3);font-family:var(--mono);margin:2px 0 4px}` +
-	`.nfw-rs{margin-top:7px}` +
-	`.nfw-r{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13px;border-top:1px solid var(--l)}` +
-	`.nfw-rs .nfw-r:first-child{border-top:none}` +
-	`.nfw-k{color:var(--t3);font-size:12px}` +
-	`.nfw-v{color:var(--t);text-align:right}` +
-	`.nfw-r--ch .nfw-v{color:var(--wr);font-weight:500}` +
+	`.nfw:before{content:"";display:block;height:3px;background:var(--rd)}` +
+	`.nfw--write:before{background:var(--wr)}` +
+	`.nfw-hd{display:grid;grid-template-columns:auto minmax(120px,1fr) auto;align-items:center;gap:10px 12px;background:var(--p);border-bottom:1px solid var(--l);padding:13px 16px}` +
+	`.nfw-bg{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:4px 9px;border-radius:6px}` +
+	`.nfw--read .nfw-bg{color:var(--rd);background:rgba(88,166,255,.16)}` +
+	`.nfw--write .nfw-bg{color:var(--wr);background:rgba(54,211,153,.16)}` +
+	`.nfw-tl{font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+	`.nfw-mt{font-size:11.5px;color:var(--t3);font-family:var(--mono);text-align:right;white-space:nowrap}` +
+	`.nfw-bd{padding:16px}` +
+	`.nfw-hl{font-size:17px;font-weight:700;margin:0 0 4px;line-height:1.35}` +
+	`.nfw-as{font-size:12px;color:var(--t3);font-family:var(--mono);margin:0 0 10px}` +
+	`.nfw-rs{margin-top:13px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}` +
+	`.nfw-r{min-height:68px;padding:11px 12px;border:1px solid var(--l2);border-radius:8px;background:#131920;font-size:13.5px}` +
+	`.nfw-k{display:block;color:var(--t3);font-size:12px;margin-bottom:8px}` +
+	`.nfw-v{display:block;color:var(--t);font-size:15px;font-weight:650;line-height:1.25;overflow-wrap:anywhere}` +
+	`.nfw-r--ch{border-color:rgba(54,211,153,.4);background:rgba(54,211,153,.07)}` +
+	`.nfw-r--ch .nfw-v{color:var(--wr);font-weight:700}` +
+	`.nfw-secs{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;max-height:310px;overflow:auto;padding-right:2px}` +
+	`.nfw-sec{border:1px solid var(--l2);border-radius:8px;background:#11171d;overflow:hidden}` +
+	`.nfw-st{padding:9px 11px;border-bottom:1px solid var(--l2);color:var(--t2);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}` +
+	`.nfw-li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:9px 11px;border-top:1px solid var(--l2);align-items:baseline}` +
+	`.nfw-li:first-of-type{border-top:0}` +
+	`.nfw-lp{font-size:13px;color:var(--t);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}` +
+	`.nfw-lm{font-size:12px;color:var(--t3);font-family:var(--mono);white-space:nowrap}` +
 	`.nfw-p{margin:9px 0 0;color:var(--t2);font-size:12.5px;line-height:1.45}` +
+	`@media(max-width:420px){.nfw-hd{grid-template-columns:1fr}.nfw-mt{text-align:left;white-space:normal}.nfw-rs,.nfw-secs{grid-template-columns:1fr}.nfw-li{grid-template-columns:1fr}.nfw-lm{white-space:normal}}` +
 	`.nfw-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}` +
 	`</style>`
 
@@ -260,6 +527,11 @@ const widgetCSS = `<style>` +
 // accepts older ad-hoc postMessage shapes as a defensive fallback.
 func (g *Gateway) widgetAppHTML(loc narrative.Locale) string {
 	msg := func(key string) string { return g.tr(loc, key) }
+	supported := make([]string, 0, len(narrative.Supported))
+	for _, sup := range narrative.Supported {
+		supported = append(supported, string(sup))
+	}
+	supportedJSON, _ := json.Marshal(supported)
 	labels, _ := json.Marshal(map[string]string{
 		"observed":   msg("widget.badge.observed"),
 		"decided":    msg("widget.badge.decided"),
@@ -276,19 +548,64 @@ func (g *Gateway) widgetAppHTML(loc narrative.Locale) string {
 		"generic":    msg("widget.headline.generic"),
 		"incomplete": msg("widget.app.incomplete"),
 	})
-	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` + widgetCSS + `<style>body{margin:0;background:transparent}.nfw{max-width:none;border-radius:0;border:0}.nfw-pre{white-space:pre-wrap;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#96a2b2;margin-top:8px}</style></head><body><div id="root" class="nfw nfw--read"><div class="nfw-hd"><span class="nfw-bg">` + html.EscapeString(msg("ui.app.title")) + `</span><span class="nfw-tl">` + html.EscapeString(msg("widget.app.mcp_app")) + `</span></div><div class="nfw-hl">` + html.EscapeString(msg("widget.app.waiting")) + `</div></div><script>
+	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` + widgetCSS + `<style>body{margin:0;background:transparent}.nfw{max-width:none}.nfw#root{border:0;border-radius:0;background:transparent;box-shadow:none}.nfw-pre{white-space:pre-wrap;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#96a2b2;margin-top:8px}</style></head><body><div id="root" class="nfw nfw--read"><div class="nfw-hd"><span class="nfw-bg">` + html.EscapeString(msg("ui.app.title")) + `</span><span class="nfw-tl">` + html.EscapeString(msg("widget.app.mcp_app")) + `</span></div><div class="nfw-bd"><div class="nfw-hl">` + html.EscapeString(msg("widget.app.waiting")) + `</div></div></div><script>
 (function(){
   const labels=` + string(labels) + `;
+  const supportedLocales=` + string(supportedJSON) + `;
   const metaKey='` + widgetMetaKey + `';
   let root=document.getElementById('root');
   let nextId=1;
+  let lastToolResult=null;
   const pending=new Map();
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function runtimeLocale(preferred){
+    const candidates=[
+      preferred,
+      window.openai?.locale,
+      document.documentElement.lang,
+      ...(navigator.languages||[]),
+      navigator.language
+    ].filter(Boolean);
+    for(const raw of candidates){
+      const s=String(raw).toLowerCase();
+      for(const loc of supportedLocales){
+        if(s===loc||s.startsWith(loc+'-')||s.startsWith(loc+'_')) return loc;
+      }
+    }
+    return 'en';
+  }
+  function widgetHTML(widget, preferredLocale){
+    const by=widget?.html_by_locale||widget?.htmlByLocale;
+    if(by){
+      const loc=runtimeLocale(preferredLocale);
+      if(by[loc]) return by[loc];
+      if(loc!=='en'&&by.en) return by.en;
+      for(const supported of supportedLocales){ if(by[supported]) return by[supported]; }
+    }
+    return widget?.html;
+  }
   const pick=(m)=>m&&(
     m.toolResult?.structuredContent || m.toolResult?.structured_content ||
     m.result?.structuredContent || m.result?.structured_content ||
     m.structuredContent || m.structured_content ||
     m.content?.structuredContent || m.data?.structuredContent || m.data
+  );
+  const pickMeta=(m)=>m&&(
+    m.toolResponseMetadata?.mcp_tool_result?._meta ||
+    m.toolResponseMetadata?.call_tool_result?._meta ||
+    m.toolResponseMetadata?._meta ||
+    m.toolResponseMetadata ||
+    m.mcp_tool_result?._meta ||
+    m.call_tool_result?._meta ||
+    m._meta || m.meta || {}
+  );
+  const pickStructured=(m)=>m&&(
+    m.toolOutput ||
+    m.toolResponseMetadata?.mcp_tool_result?.structuredContent ||
+    m.toolResponseMetadata?.mcp_tool_result?.structured_content ||
+    m.toolResponseMetadata?.call_tool_result?.structuredContent ||
+    m.toolResponseMetadata?.call_tool_result?.structured_content ||
+    pick(m)
   );
   function metaLine(meta){
     const parts=[];
@@ -319,10 +636,23 @@ func (g *Gateway) widgetAppHTML(loc narrative.Locale) string {
     notifySize();
   }
   function renderToolResult(result){
+    lastToolResult=result;
     const meta=result?._meta||result?.meta||{};
     const widget=meta[metaKey]||meta.agenticfc_widget;
-    if(widget&&widget.html){ renderHTML(widget.html); return; }
+    const html=widgetHTML(widget);
+    if(html){ renderHTML(html); return; }
     render(result?.structuredContent||result?.structured_content||pick(result)||result);
+  }
+  function renderOpenAI(globals){
+    const g=globals||window.openai;
+    if(!g) return false;
+    const meta=pickMeta(g);
+    const widget=meta&&((meta[metaKey])||meta.agenticfc_widget);
+    const html=widgetHTML(widget,g.locale);
+    if(html){ renderHTML(html); return true; }
+    const env=pickStructured(g);
+    if(env){ render(env); return true; }
+    return false;
   }
   function render(env){
     if(!env || typeof env!=='object') return;
@@ -334,7 +664,8 @@ func (g *Gateway) widgetAppHTML(loc narrative.Locale) string {
     const title=ok?(data.directive||data.tactical_plan||data.formation?labels.decided:labels.observed):labels.problem;
     const headline=ok?summary(data):err.message||err.message_key||labels.incomplete;
     root.className='nfw '+(ok?'nfw--read':'nfw--write');
-    root.innerHTML='<div class="nfw-hd"><span class="nfw-bg">'+esc(title)+'</span><span class="nfw-tl">'+esc(tool)+'</span><span class="nfw-mt">'+esc(metaLine(meta))+'</span></div><div class="nfw-hl">'+esc(headline)+'</div><div class="nfw-pre">'+esc(JSON.stringify(data||err,null,2)).slice(0,4000)+'</div>';
+    const debug=JSON.stringify(data||err,null,2);
+    root.innerHTML='<div class="nfw-hd"><span class="nfw-bg">'+esc(title)+'</span><span class="nfw-tl">'+esc(tool)+'</span><span class="nfw-mt">'+esc(metaLine(meta))+'</span></div><div class="nfw-bd"><div class="nfw-hl">'+esc(headline)+'</div><div class="nfw-pre">'+esc(debug.slice(0,4000))+'</div></div>';
     notifySize();
   }
   function summary(data){
@@ -358,11 +689,14 @@ func (g *Gateway) widgetAppHTML(loc narrative.Locale) string {
     if(m.method==='ui/resource-teardown'){ post({jsonrpc:'2.0',id:m.id,result:{}}); return; }
     const env=pick(m); if(env) render(env);
   });
+  window.addEventListener('openai:set_globals',(ev)=>{ const globals=ev.detail?.globals||window.openai; if(renderOpenAI(globals)) return; if(lastToolResult) renderToolResult(lastToolResult); });
   sendRequest('ui/initialize',{
     protocolVersion:'2026-01-26',
     clientInfo:{name:'agentic-fc-action-card',version:'dev'},
     appCapabilities:{availableDisplayModes:['inline','fullscreen']}
   }).then(()=>sendNotification('ui/notifications/initialized',{})).catch(()=>{});
+  renderOpenAI(window.openai);
+  setTimeout(()=>renderOpenAI(window.openai),0);
 })();
 </script></body></html>`
 }
@@ -380,7 +714,7 @@ func renderCard(c widgetCard) string {
 	b.WriteString(esc(c.tool))
 	b.WriteString(`</span><span class="nfw-mt">`)
 	b.WriteString(esc(c.metaLine()))
-	b.WriteString(`</span></div>`)
+	b.WriteString(`</span></div><div class="nfw-bd">`)
 	if c.headline != "" {
 		b.WriteString(`<div class="nfw-hl">`)
 		b.WriteString(esc(c.headline))
@@ -414,7 +748,30 @@ func renderCard(c widgetCard) string {
 		b.WriteString(esc(p))
 		b.WriteString(`</p>`)
 	}
-	b.WriteString(`</div>`)
+	if len(c.sections) > 0 {
+		b.WriteString(`<div class="nfw-secs">`)
+		for _, s := range c.sections {
+			if s.title == "" || len(s.lines) == 0 {
+				continue
+			}
+			b.WriteString(`<section class="nfw-sec"><div class="nfw-st">`)
+			b.WriteString(esc(s.title))
+			b.WriteString(`</div>`)
+			for _, line := range s.lines {
+				if line.primary == "" {
+					continue
+				}
+				b.WriteString(`<div class="nfw-li"><span class="nfw-lp">`)
+				b.WriteString(esc(line.primary))
+				b.WriteString(`</span><span class="nfw-lm">`)
+				b.WriteString(esc(line.meta))
+				b.WriteString(`</span></div>`)
+			}
+			b.WriteString(`</section>`)
+		}
+		b.WriteString(`</div>`)
+	}
+	b.WriteString(`</div></div>`)
 	return b.String()
 }
 
@@ -506,6 +863,9 @@ func leagueCard(g *Gateway, loc narrative.Locale, in getLeagueIn, env map[string
 	if hasManagers {
 		c.rows = append(c.rows, widgetRow{label: g.tr(loc, "widget.row.managers"), value: fmt.Sprint(len(managers))})
 	}
+	c.section(g.tr(loc, "widget.section.table"), limitLines(tableLines(table), 6))
+	c.section(g.tr(loc, "widget.section.results"), limitLines(resultLines(results), 5))
+	c.section(g.tr(loc, "widget.section.fixtures"), limitLines(fixtureLines(fixtures), 5))
 	return renderCard(c)
 }
 

@@ -574,10 +574,16 @@ func TestMCPOverHTTP(t *testing.T) {
 		!strings.Contains(uiRes.Contents[0].Text, "Agentic FC") {
 		t.Fatalf("widget resource contents = %#v", uiRes.Contents)
 	}
+	if v, ok := uiRes.Contents[0].Meta["openai/widgetDescription"]; !ok || v == "" {
+		t.Fatalf("widget resource missing OpenAI metadata: %#v", uiRes.Contents[0].Meta)
+	}
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_time"})
 	if err != nil {
 		t.Fatalf("get_time: %v", err)
+	}
+	if len(res.Content) != 0 {
+		t.Fatalf("get_time should keep model-facing content quiet; got %#v", res.Content)
 	}
 	env, ok := res.StructuredContent.(map[string]any)
 	if !ok || env["ok"] != true {
@@ -587,9 +593,16 @@ func TestMCPOverHTTP(t *testing.T) {
 	if gt, _ := meta["game_time"].(string); !strings.HasPrefix(gt, "1925-07-01") {
 		t.Fatalf("game_time = %v", meta["game_time"])
 	}
+	widget, ok := res.Meta[widgetMetaKey].(map[string]any)
+	if !ok || widget["mimeType"] != widgetMIME || !strings.Contains(fmt.Sprint(widget["html"]), "Checked the game clock") {
+		t.Fatalf("get_time widget meta = %#v", res.Meta)
+	}
 	res, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "get_settings"})
 	if err != nil {
 		t.Fatalf("get_settings: %v", err)
+	}
+	if len(res.Content) != 0 {
+		t.Fatalf("get_settings should keep model-facing content quiet; got %#v", res.Content)
 	}
 	settings := res.StructuredContent.(map[string]any)
 	data := settings["data"].(map[string]any)
@@ -617,6 +630,9 @@ func TestMCPOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add_directive: %v", err)
 	}
+	if len(res.Content) != 0 {
+		t.Fatalf("add_directive should keep model-facing content quiet; got %#v", res.Content)
+	}
 	env = res.StructuredContent.(map[string]any)
 	if env["ok"] != true {
 		t.Fatalf("add_directive envelope = %#v", env)
@@ -625,7 +641,7 @@ func TestMCPOverHTTP(t *testing.T) {
 	if balance != float64(focus.Cap-6) { // LEAN costs 6
 		t.Fatalf("balance over the wire = %v", balance)
 	}
-	widget, ok := res.Meta[widgetMetaKey].(map[string]any)
+	widget, ok = res.Meta[widgetMetaKey].(map[string]any)
 	if !ok || widget["mimeType"] != widgetMIME || !strings.Contains(fmt.Sprint(widget["html"]), "Added a directive") {
 		t.Fatalf("default apps mode widget meta = %#v", res.Meta)
 	}
