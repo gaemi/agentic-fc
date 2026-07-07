@@ -85,10 +85,20 @@ Optional flags:
 |------|---------|
 | `-server` | Console API base URL. |
 | `-locale` | Display override: `en` or `ko`. |
-| `-admin-token` | Reserved for Admin Mode screens. |
+| `-admin-token` | Enables Admin Mode screens and authenticated settings changes. |
 
-The console is read-only today: it watches the world through public spectator
-views.
+Without `-admin-token`, the console stays in Viewer Mode and watches the world
+through public spectator views. With `-admin-token`, press `5` for Settings and
+use `+/-` or `[`/`]` to adjust runtime pacing live. The initial run-profile
+flags still apply only when creating a new world, but Game Speed,
+idle acceleration, and off-season acceleration can be changed after creation.
+
+The Console API endpoints backing this screen are:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /v1/admin/settings` | Read mutable runtime settings and their allowed ranges. |
+| `PATCH /v1/admin/settings` | Partially update runtime pacing settings. |
 
 ## Connect an MCP Client
 

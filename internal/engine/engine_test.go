@@ -58,11 +58,7 @@ func TestTempoIndependence(t *testing.T) {
 
 	// Run C: real-time runner with an instant sleeper at a different speed.
 	ec, auditC := newEngine(t, 99)
-	runner := &Runner{
-		Engine: ec,
-		Pacer:  Pacer{Speed: sim.Speed60, IdleAcceleration: 8},
-		Sleep:  func(context.Context, time.Duration) error { return nil },
-	}
+	runner := NewRunner(ec, Pacer{Speed: sim.Speed60, IdleAcceleration: 8}, func(context.Context, time.Duration) error { return nil }, nil)
 	if err := runner.Run(context.Background(), day(horizon)); err != nil {
 		t.Fatal(err)
 	}
@@ -250,12 +246,7 @@ func TestRealDurationIntegration(t *testing.T) {
 func TestPauseFreezesWorld(t *testing.T) {
 	e, _ := newEngine(t, 17)
 	var mu sync.RWMutex
-	r := &Runner{
-		Engine: e,
-		Pacer:  Pacer{Speed: sim.Speed60, IdleAcceleration: 8},
-		Sleep:  func(context.Context, time.Duration) error { return nil },
-		Guard:  &mu,
-	}
+	r := NewRunner(e, Pacer{Speed: sim.Speed60, IdleAcceleration: 8}, func(context.Context, time.Duration) error { return nil }, &mu)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})

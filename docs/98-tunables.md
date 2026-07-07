@@ -18,6 +18,7 @@ Every gameplay value marked *(tunable)* or *(initial)* in the design docs, with 
 | Disposition drift | instant ≤2 · 2 pts/game-week | `internal/mindset` `InstantDelta`, `DriftPerGameWeek` | FR-16b |
 | Formation catalog | 12 shapes | `internal/mindset` `FormationCatalog` | [10 §5](10-mindset-schema.md) |
 | Speed tiers | 5/15/30/60× | `internal/sim` `Speed*` | FR-2 |
+| Runtime pacing settings | Game Speed 5/15/30/60× · idle 2–64× · off-season 2–240× | `internal/consoleapi` admin settings validation, `internal/engine` `Runner.SetPacer` | [02 §5.2](02-game-design.md), [13](13-operations.md) |
 | Idle acceleration | 16× base | `internal/sim` `DefaultIdleAcceleration` | [02 §5.2](02-game-design.md) |
 | Off-season acceleration | 96× base | `internal/sim` `DefaultOffseasonAcceleration` | [02 §5.2](02-game-design.md) |
 | Run profile presets | default 15/16/96 · fast 30/32/192 · slow 15/6/36 | `cmd/agenticfc` `baseRunProfile` | [02 §5.2](02-game-design.md) |

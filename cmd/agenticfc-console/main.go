@@ -17,7 +17,7 @@ import (
 
 func main() {
 	server := flag.String("server", "http://127.0.0.1:7420", "Console API base URL")
-	adminToken := flag.String("admin-token", "", "Admin Token (reserved for operator screens)")
+	adminToken := flag.String("admin-token", "", "Admin Token for operator settings")
 	localeFlag := flag.String("locale", "", "display locale override (en|ko); default: system language")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -25,8 +25,6 @@ func main() {
 		fmt.Println(buildinfo.String("agenticfc-console"))
 		return
 	}
-	_ = adminToken // reserved for Admin Mode
-
 	// Locale follows the system language with English fallback (FR-35c);
 	// the flag exists for testing and explicit override. The server renders
 	// all text; the Console stays catalog-free (docs/07 §6).
@@ -36,6 +34,7 @@ func main() {
 	}
 
 	client := tui.NewClient(*server, loc)
+	client.AdminToken = *adminToken
 	p := tea.NewProgram(tui.NewModel(client), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {

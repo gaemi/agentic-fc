@@ -122,6 +122,13 @@ Club views include a deterministic ASCII club badge generated from the club name
 | Managers & Tokens | list; token revealed on demand | list + detail (token, club, binding status) | + Agent session info pane | + world status column |
 | World Status | key metrics page | metrics + queue/tempo pane | + event-rate panel | + live log tail |
 
+The first Settings implementation exposes runtime pacing controls when the
+console is launched with `-admin-token`: Game Speed, in-season idle
+acceleration, and off-season acceleration. These controls apply immediately via
+the Console API and persist in the world snapshot. Generation-shaping settings
+such as seed, league shape, quality, economy, and culture mix remain listed as
+new-world-only settings rather than editable live controls.
+
 ## 5. Degradation & promotion rules
 
 When the terminal shrinks (or grows), elements move along this ladder — content is demoted before it is removed:
