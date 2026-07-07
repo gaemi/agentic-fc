@@ -12,8 +12,9 @@ func TestEconomyGolden(t *testing.T) {
 
 func TestFlatCostsGolden(t *testing.T) {
 	want := map[Tool]int{
-		GetGuide: 0, GetTime: 0, GetFocus: 0, GetMindset: 0,
-		GetSituation: 1, GetNews: 1, GetLeague: 2,
+		GetGuide: 0, GetTime: 0, GetSettings: 0, GetFocus: 0, GetMindset: 0,
+		ConfigureAlerts: 0, AckAlerts: 0,
+		GetSituation: 1, GetNews: 1, GetAlerts: 1, GetLeague: 2,
 		GetPerson: 4, SearchPlayers: 4, Scout: 12,
 		RemoveDirective: 2, SetPriorities: 12,
 		UpdateTacticalPlan: 15, UpdateDisposition: 25,
@@ -45,17 +46,17 @@ func TestOwnOtherCostsGolden(t *testing.T) {
 	}
 }
 
-// The canonical surface is 19 tools (docs/11): 5 free + 8 observation +
+// The canonical surface is 22 tools (docs/11): 7 free + 9 observation +
 // 1 commission + 5 shaping.
 func TestToolCount(t *testing.T) {
 	all := []Tool{
-		GetGuide, GetTime, GetSettings, GetFocus, GetMindset,
-		GetSituation, GetNews, GetLeague, GetClub, GetSquad, GetPerson, GetMatch, SearchPlayers,
+		GetGuide, GetTime, GetSettings, GetFocus, GetMindset, ConfigureAlerts, AckAlerts,
+		GetSituation, GetNews, GetAlerts, GetLeague, GetClub, GetSquad, GetPerson, GetMatch, SearchPlayers,
 		Scout,
 		UpdateDisposition, SetPriorities, AddDirective, RemoveDirective, UpdateTacticalPlan,
 	}
-	if len(all) != 19 {
-		t.Fatalf("tool surface = %d, docs/11 says 19", len(all))
+	if len(all) != 22 {
+		t.Fatalf("tool surface = %d, docs/11 says 22", len(all))
 	}
 	seen := map[Tool]bool{}
 	for _, tool := range all {

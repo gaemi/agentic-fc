@@ -7,6 +7,9 @@ Every gameplay value marked *(tunable)* or *(initial)* in the design docs, with 
 | Focus cap | 100 FP | `internal/focus` `Cap` | [11 §2](11-mcp-tools.md) |
 | Focus regen | 2 FP/game-hour | `internal/focus` `RegenPerGameHour` | [11 §2](11-mcp-tools.md) |
 | Tool costs (flat) | table | `internal/focus` `flatCosts` | [11 §2](11-mcp-tools.md) |
+| Agent Alert tool costs | configure/ack 0 FP · get_alerts 1 FP | `internal/focus` `flatCosts` | [11 §2](11-mcp-tools.md), [14](14-agent-alerts.md) |
+| Agent Alert pending cap | 512 per Manager | `internal/worldgen` alert state | [14 §7](14-agent-alerts.md) |
+| Agent Alert Focus sub-cap / hysteresis | 128 pending Focus alerts · 2 FP hysteresis | `internal/worldgen` alert state | [14 §5](14-agent-alerts.md) |
 | Tool costs (own/other) | 2/4 · 3/4 · 1/3 | `internal/focus` `CostOwnOther` | [11 §2](11-mcp-tools.md) |
 | Directive costs by strength | 6 / 10 / 18 FP | `internal/mindset` `Strength.FocusCost` | [11 §2](11-mcp-tools.md) |
 | Directive odds multipliers | ×2 / ×6 / ×20 | `internal/mindset` `Strength.OddsMultiplier` | [10 §4.1](10-mindset-schema.md) |

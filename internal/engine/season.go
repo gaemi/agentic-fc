@@ -56,8 +56,9 @@ func (e *Engine) handleSeasonEnd(ev *sim.Event) error {
 	e.primeSeasonEvents(newSeason)
 
 	e.emitCalendar(ev.Due, worldgen.PayloadSeasonEnd)
+	e.issueCalendarAlerts(ev.Due, "SEASON_ENDED")
 	if key, params := calendarKeyParams(ev.Due, worldgen.PayloadSeasonEnd); key != "" {
-		e.world.AddNews(worldgen.NewsItem{
+		e.addNews(worldgen.NewsItem{
 			GameTime: ev.Due, Category: "board", Key: key, Params: params,
 		})
 	}

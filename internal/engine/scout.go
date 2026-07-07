@@ -68,7 +68,7 @@ func (e *Engine) handleScoutReport(ev *sim.Event, payload string) error {
 
 	// The report lands as a PRIVATE news item — knowledge belongs to the
 	// commissioning Agent alone (FR-22a).
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime:  ev.Due,
 		Category:  "media",
 		Key:       "news.scout.report",

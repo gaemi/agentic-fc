@@ -291,7 +291,7 @@ func (e *Engine) executeTransfer(ev *sim.Event, buyer, seller *worldgen.Club, p 
 		clubIDs = []int64{buyer.ID, seller.ID}
 		outcome = "signed_fee"
 	}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: ev.Due, Category: "transfer", Key: key, Params: newsParams, ClubIDs: clubIDs,
 	})
 	// The human Console feed carries the money too (fee/wage) — it renders from this

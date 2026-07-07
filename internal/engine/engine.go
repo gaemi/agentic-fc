@@ -26,12 +26,13 @@ type Engine struct {
 	audit store.AuditLog
 	now   sim.GameTime
 
-	players  map[int64]*worldgen.Player
-	clubs    map[int64]*worldgen.Club
-	managers map[int64]*worldgen.Manager
-	fixtures map[int64]*worldgen.Fixture
-	kickoffs []sim.GameTime // sorted unique kickoff times (match windows)
-	sink     Sink           // optional feed observer (never affects outcomes)
+	players   map[int64]*worldgen.Player
+	clubs     map[int64]*worldgen.Club
+	managers  map[int64]*worldgen.Manager
+	fixtures  map[int64]*worldgen.Fixture
+	kickoffs  []sim.GameTime // sorted unique kickoff times (match windows)
+	sink      Sink           // optional feed observer (never affects outcomes)
+	alertSink AlertSink
 }
 
 // New wires an engine over a generated world and its primed queue.
@@ -161,6 +162,12 @@ func (e *Engine) handle(ev *sim.Event) error {
 	if strings.HasPrefix(payload, scoutPayloadPrefix) {
 		return e.handleScoutReport(ev, payload)
 	}
+	if strings.HasPrefix(payload, focusAlertPayloadPrefix) {
+		return e.handleFocusAlert(ev, payload)
+	}
+	if strings.HasPrefix(payload, calendarAlertPayloadPrefix) {
+		return e.handleCalendarAlert(ev, payload)
+	}
 	switch payload {
 	case worldgen.PayloadPlayerDrift:
 		return e.handlePlayerDrift(ev)
@@ -181,8 +188,13 @@ func (e *Engine) handle(ev *sim.Event) error {
 		// derived from game time (worldgen.TransferWindowOpenAt), so no state to
 		// toggle here.
 		e.emitCalendar(ev.Due, payload)
+		if payload == worldgen.PayloadWindowOpen {
+			e.issueCalendarAlerts(ev.Due, "WINDOW_OPEN")
+		} else {
+			e.issueCalendarAlerts(ev.Due, "WINDOW_CLOSE")
+		}
 		if key, params := calendarKeyParams(ev.Due, payload); key != "" {
-			e.world.AddNews(worldgen.NewsItem{
+			e.addNews(worldgen.NewsItem{
 				GameTime: ev.Due, Category: "transfer", Key: key, Params: params,
 			})
 		}

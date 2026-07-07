@@ -120,7 +120,7 @@ func (e *Engine) announceCupChampion(at sim.GameTime, clubID int64, season int) 
 	e.world.CupChampionID = clubID
 	params := map[string]any{"club": e.clubName(clubID), "season": season}
 	e.emit(at, FeedCupChampion, params)
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "match", Key: FeedCupChampion,
 		Params: params, ClubIDs: []int64{clubID},
 	})

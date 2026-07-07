@@ -43,6 +43,7 @@ func (g *Gateway) registerTools(s *mcp.Server) {
 		Name:        string(focus.GetMindset),
 		Description: "Free. The full Mindset + Tactical Plan, plus manager self-state.",
 	}, handle(g, g.getMindset))
+	g.registerAlertTools(s)
 
 	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.UpdateDisposition),
@@ -230,9 +231,9 @@ func focusRegenRealBlock(w *worldgen.World, tempo sim.Tempo) map[string]any {
 	if tempo == sim.TempoPaused {
 		return map[string]any{"paused": true}
 	}
-	d := time.Duration(minutesPerFP) * pacer(w.Config).RealPerGameMinute(tempo)
+	d := time.Duration(worldgen.FocusMinutesPerFP) * pacer(w.Config).RealPerGameMinute(tempo)
 	return map[string]any{
-		"one_focus_point_every_game_minutes": minutesPerFP,
+		"one_focus_point_every_game_minutes": worldgen.FocusMinutesPerFP,
 		"current_real_time_per_focus_point":  durationBlock(d),
 	}
 }
@@ -328,6 +329,7 @@ func guideData() map[string]any {
 			"Decide whether the board goal is realistic. Do not promise WIN_LEAGUE blindly if the squad is weak.",
 			"Use set_priorities only with goals from vocabularies.goals.",
 			"Use update_tactical_plan for broad style, then add_directive for specific standing orders.",
+			"For long-running play, call configure_alerts and subscribe to the alert resource returned by get_alerts if your MCP host supports resource subscriptions.",
 			"After shaping, wait/observe: get_news, get_situation, get_match around fixtures, then adjust.",
 		},
 		"strategy_loop": []string{
@@ -336,6 +338,13 @@ func guideData() map[string]any {
 			"Plan: choose at most 5 priorities and a tactical plan that matches the squad.",
 			"Shape: disposition changes are slow personality pressure; priorities set strategic goals; directives are concrete standing orders.",
 			"Review: the Manager may not obey perfectly. Stronger directives cost more Focus but still do not guarantee certainty.",
+		},
+		"long_running_alerts": []string{
+			"Agentic FC does not run your agent. Your harness controls its own loop.",
+			"Use configure_alerts to watch for NEWS, MATCH, CALENDAR, and FOCUS wake signals.",
+			"Call get_alerts to read the manager-specific resource URI, then subscribe to it when your MCP host supports resources/subscribe.",
+			"When notifications/resources/updated arrives, call get_alerts, inspect detail through normal tools such as get_news or get_match, then call ack_alerts through the highest handled id.",
+			"If your host cannot subscribe, poll get_alerts sparingly; it costs Focus like other attention reads.",
 		},
 		"common_pitfalls": []string{
 			"Do not invent enum values. Use the vocabularies in this guide.",

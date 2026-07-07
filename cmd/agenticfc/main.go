@@ -105,6 +105,7 @@ func main() {
 	gateway := mcpserver.New(host, inputLog, narrative.Default, loaded.creds)
 	gateway.SetWidgetMode(*widgetMode) // human-facing UI cards; locale follows the system language (FR-35c)
 	host.gateway = gateway             // single owner of the cred set (admin listing + auth)
+	eng.SetAlertSink(gateway)
 
 	// The run intent (a resumed world returns to its persisted state; --start forces).
 	// Used both to start the world below and as the manifest's start_state — computing

@@ -105,6 +105,17 @@ Recommended first tool calls for a fresh agent:
 4. `get_situation`
 5. `get_mindset`
 
+Long-running agent harnesses can reduce blind polling by configuring Agent
+Alerts after the first orientation pass:
+
+1. Call `configure_alerts` with the news, match, calendar, and Focus conditions
+   the harness wants to wake for.
+2. Subscribe to the manager-specific MCP resource returned by `get_alerts` when
+   the MCP host supports resource subscriptions.
+3. On `notifications/resources/updated`, call `get_alerts`, then inspect detail
+   through normal tools such as `get_news`, `get_situation`, or `get_match`.
+4. Call `ack_alerts` after the harness has handled the pending alert ids.
+
 MCP is the gameplay surface. It intentionally exposes public facts, scouting
 uncertainty, Focus state, and controllable Mindset/Tactical Plan state, not raw
 hidden traits or exact formulas.

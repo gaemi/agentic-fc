@@ -179,7 +179,7 @@ func (e *Engine) clubPoints(club *worldgen.Club) int {
 // boardNews files a board statement about a club (news + Console feed).
 func (e *Engine) boardNews(t sim.GameTime, club *worldgen.Club, key string) {
 	params := map[string]any{"club": club.Name}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: t, Category: "board", Key: key, Params: params, ClubIDs: []int64{club.ID},
 	})
 	e.emit(t, key, cloneParams(params))
@@ -190,7 +190,7 @@ func (e *Engine) boardNews(t sim.GameTime, club *worldgen.Club, key string) {
 // stale after a spawn reallocated World.Managers.
 func (e *Engine) boardNewsManager(t sim.GameTime, club *worldgen.Club, managerName, key string) {
 	params := map[string]any{"club": club.Name, "manager": managerName}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: t, Category: "board", Key: key, Params: params, ClubIDs: []int64{club.ID},
 	})
 	e.emit(t, key, cloneParams(params))
@@ -200,7 +200,7 @@ func (e *Engine) boardNewsManager(t sim.GameTime, club *worldgen.Club, managerNa
 // manager's retirement (manager careers), which has no club to attach.
 func (e *Engine) managerNews(t sim.GameTime, managerName, key string) {
 	params := map[string]any{"manager": managerName}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: t, Category: "board", Key: key, Params: params,
 	})
 	e.emit(t, key, cloneParams(params))

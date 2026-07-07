@@ -30,6 +30,8 @@ organized by product layer rather than by implementation history.
   economy.
 - [MCP Tools](11-mcp-tools.md): canonical tool surface, costs, envelopes, and
   response shapes.
+- [Agent Alerts](14-agent-alerts.md): manager-scoped MCP alert watches and
+  resource notifications for long-running agent harnesses.
 - [Console Design](07-console-design.md): TUI layout, responsive tiers, media,
   clubs, fixtures/results, and live match screen.
 - [Architecture](05-architecture.md): process layout, modules, storage,

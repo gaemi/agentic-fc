@@ -74,7 +74,7 @@ func (e *Engine) scheduleDrift(playerID int64, due sim.GameTime) {
 // only (FR-22).
 func (e *Engine) youthNews(t sim.GameTime, club *worldgen.Club, count int, key string) {
 	params := map[string]any{"club": club.Name, "count": count}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: t, Category: "youth", Key: key, Params: params, ClubIDs: []int64{club.ID},
 	})
 	e.emit(t, key, cloneParams(params))
