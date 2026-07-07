@@ -25,6 +25,12 @@ type Host interface {
 	Start() error
 	// SetPaused toggles the admin maintenance pause (FR-34b).
 	SetPaused(paused bool) error
+	// RuntimeSettings returns mutable operator settings that affect pacing
+	// but not deterministic simulation outcomes.
+	RuntimeSettings() RuntimeSettings
+	// UpdateRuntimeSettings applies mutable operator settings from a stable
+	// host-owned baseline and returns the persisted result.
+	UpdateRuntimeSettings(RuntimeSettingsUpdater) (RuntimeSettings, error)
 
 	// Seed is admin-only information: publishing it would let anyone
 	// regenerate the world and read every hidden attribute.
@@ -32,3 +38,16 @@ type Host interface {
 	// Credentials lists the generated Manager Tokens (admin-only, FR-33).
 	Credentials() []worldgen.ManagerCredential
 }
+
+// RuntimeSettings are admin-editable settings that can change after world
+// creation. They are deliberately limited to runtime pacing knobs; generation
+// settings such as seed, league shape, economy, and quality stay immutable.
+type RuntimeSettings struct {
+	GameSpeed             sim.Speed `json:"game_speed"`
+	IdleAcceleration      int       `json:"idle_acceleration"`
+	OffseasonAcceleration int       `json:"offseason_acceleration"`
+}
+
+// RuntimeSettingsUpdater merges a partial operator request into the current
+// settings. The Host runs it inside its own serialized update path.
+type RuntimeSettingsUpdater func(RuntimeSettings) (RuntimeSettings, error)

@@ -19,14 +19,17 @@ const (
 	tabTable
 	tabClubs
 	tabFixtures
+	tabAdminSettings
 	tabCount
 )
 
 const (
-	viewerHistoryLimit = 1000
-	scrollPageLines    = 8
-	scrollWheelLines   = 4
-	pollInterval       = 2 * time.Second
+	viewerHistoryLimit     = 1000
+	scrollPageLines        = 8
+	scrollWheelLines       = 4
+	pollInterval           = 2 * time.Second
+	settingsUpdateDebounce = 250 * time.Millisecond
+	runtimeSettingCount    = 3
 )
 
 type matchModalKind string
@@ -65,6 +68,11 @@ type Model struct {
 	NoticeTTL     int
 	LatestNewsID  int64
 	LiveCount     int
+	AdminMode     bool
+	Settings      AdminSettings
+	SettingsIdx   int
+	SettingsDirty bool
+	SettingsRev   int
 	Tab           int
 	Tier          int
 	Width         int
@@ -73,7 +81,7 @@ type Model struct {
 }
 
 func NewModel(c *Client) Model {
-	return Model{Client: c, Tier: 1, UI: map[string]string{}, LiveCount: -1}
+	return Model{Client: c, Tier: 1, UI: map[string]string{}, LiveCount: -1, AdminMode: c != nil && c.AdminToken != ""}
 }
 
 // Messages.
@@ -87,12 +95,21 @@ type (
 	FixturesMsg []Fixture
 	MatchMsg    MatchDetail
 	MatchesMsg  []LiveMatchView
-	ErrMsg      struct{ Err error }
-	tickMsg     struct{}
+	SettingsMsg struct {
+		Settings AdminSettings
+		Updated  bool
+	}
+	SettingsErrMsg struct {
+		Err      error
+		Updating bool
+	}
+	SettingsCommitMsg struct{ Rev int }
+	ErrMsg            struct{ Err error }
+	tickMsg           struct{}
 )
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.fetchUI(), m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchFixtures(), m.fetchLive(), tick())
+	return tea.Batch(m.fetchUI(), m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchFixtures(), m.fetchLive(), m.fetchAdminSettings(), tick())
 }
 
 func tick() tea.Cmd {
@@ -241,6 +258,34 @@ func (m Model) fetchLive() tea.Cmd {
 	}
 }
 
+func (m Model) fetchAdminSettings() tea.Cmd {
+	if m.Client == nil || !m.AdminMode {
+		return nil
+	}
+	c := m.Client
+	return func() tea.Msg {
+		settings, err := c.AdminSettings()
+		if err != nil {
+			return SettingsErrMsg{Err: err}
+		}
+		return SettingsMsg{Settings: settings}
+	}
+}
+
+func (m Model) updateAdminSettings(runtime RuntimeSettings) tea.Cmd {
+	if m.Client == nil || !m.AdminMode {
+		return nil
+	}
+	c := m.Client
+	return func() tea.Msg {
+		settings, err := c.UpdateAdminSettings(runtime)
+		if err != nil {
+			return SettingsErrMsg{Err: err, Updating: true}
+		}
+		return SettingsMsg{Settings: settings, Updated: true}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -270,6 +315,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Tab = tabFixtures
 			m.closeMatchModal()
 			m.clearNotice()
+		case "5":
+			if m.AdminMode {
+				m.Tab = tabAdminSettings
+				m.closeMatchModal()
+				m.clearNotice()
+				return m, m.fetchAdminSettings()
+			}
 		case "enter", " ":
 			if m.Tab == tabFixtures && m.MatchModal == modalNone {
 				return m.openSelectedFixture()
@@ -297,6 +349,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.FixtureIdx--
 					m.ReplayOffset = 0
 				}
+			case tabAdminSettings:
+				if m.SettingsIdx > 0 {
+					m.SettingsIdx--
+				}
 			}
 		case "down", "j":
 			if m.MatchModal != modalNone {
@@ -320,6 +376,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.FixtureIdx+1 < len(m.Fixtures) {
 					m.FixtureIdx++
 					m.ReplayOffset = 0
+				}
+			case tabAdminSettings:
+				if m.SettingsIdx < runtimeSettingCount-1 {
+					m.SettingsIdx++
 				}
 			}
 		case "tab":
@@ -347,6 +407,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.Tab {
 			case tabMedia:
 				m.ArticleOffset = scrollForward(m.ArticleOffset, m.articleScrollLineCount(), scrollPageLines)
+			}
+		case "+", "=":
+			if m.Tab == tabAdminSettings {
+				return m.adjustRuntimeSetting(1)
+			}
+		case "-", "_":
+			if m.Tab == tabAdminSettings {
+				return m.adjustRuntimeSetting(-1)
+			}
+		case "[", "{":
+			if m.Tab == tabAdminSettings {
+				return m.adjustRuntimeSetting(-1)
+			}
+		case "]", "}":
+			if m.Tab == tabAdminSettings {
+				return m.adjustRuntimeSetting(1)
 			}
 		case "left":
 			if m.MatchModal == modalWaiting {
@@ -474,11 +550,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.MatchIdx >= len(m.Matches) {
 			m.MatchIdx = 0
 		}
+	case SettingsMsg:
+		if msg.Updated {
+			if !m.SettingsDirty || sameRuntimeSettings(m.Settings.Runtime, msg.Settings.Runtime) {
+				m.Settings = msg.Settings
+				m.SettingsDirty = false
+				m.setNotice(m.ui("ui.admin.settings.saved"))
+			} else {
+				m.Settings.Schema = msg.Settings.Schema
+			}
+		} else if !m.SettingsDirty {
+			m.Settings = msg.Settings
+		}
+	case SettingsErrMsg:
+		if msg.Updating {
+			m.SettingsDirty = false
+			m.setNotice(msg.Err.Error())
+		} else {
+			m.Err = msg.Err.Error()
+		}
+	case SettingsCommitMsg:
+		if msg.Rev == m.SettingsRev && m.SettingsDirty {
+			return m, m.updateAdminSettings(m.Settings.Runtime)
+		}
 	case ErrMsg:
 		m.Err = msg.Err.Error()
 	case tickMsg:
 		m.ageNotice()
-		return m, tea.Batch(m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick())
+		cmds := []tea.Cmd{m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick()}
+		if m.AdminMode && m.Tab == tabAdminSettings {
+			cmds = append(cmds, m.fetchAdminSettings())
+		}
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
@@ -628,6 +731,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.FixtureIdx = idx
 			return m.openSelectedFixture()
 		}
+	case tabAdminSettings:
+		row := m.adminSettingsRowAt(bodyWidth, msg.Y-bodyY)
+		if row >= 0 && row < runtimeSettingCount {
+			m.SettingsIdx = row
+		}
 	}
 	return m, nil
 }
@@ -763,13 +871,19 @@ func (m Model) View() string {
 		body = m.viewClubs(bodyWidth, bodyHeight)
 	case tabFixtures:
 		body = m.viewFixtures(bodyWidth, bodyHeight)
+	case tabAdminSettings:
+		body = m.viewAdminSettings(bodyWidth, bodyHeight)
 	default:
 		body = m.viewMedia(bodyWidth, bodyHeight)
 	}
 
 	header := styleHeader.Render(truncate(fmt.Sprintf("%s · %s · [%s]",
 		m.World.Name, m.World.ClockText, m.World.TempoLabel), bodyWidth))
-	footer := styleDim.Render(truncate(m.ui("ui.help.keys"), bodyWidth))
+	helpKey := "ui.help.keys"
+	if m.AdminMode {
+		helpKey = "ui.help.keys_admin"
+	}
+	footer := styleDim.Render(truncate(m.ui(helpKey), bodyWidth))
 	err := ""
 	if m.Err != "" {
 		err = styleDim.Render(truncate(m.ui("ui.error.prefix")+" "+m.Err, bodyWidth))
@@ -1106,7 +1220,7 @@ func (m Model) viewTooSmall() string {
 func (m Model) tabBar(_ int) string {
 	division := strings.ReplaceAll(m.ui("ui.header.division"), "{tier}", fmt.Sprint(m.Tier))
 	names := m.tabNames()
-	parts := make([]string, tabCount)
+	parts := make([]string, len(names))
 	for i, n := range names {
 		label := fmt.Sprintf("%d %s", i+1, n)
 		if i == m.Tab {
@@ -1119,7 +1233,168 @@ func (m Model) tabBar(_ int) string {
 }
 
 func (m Model) tabNames() []string {
-	return []string{m.ui("ui.tab.media"), m.ui("ui.tab.table"), m.ui("ui.tab.clubs"), m.ui("ui.tab.fixtures")}
+	names := []string{m.ui("ui.tab.media"), m.ui("ui.tab.table"), m.ui("ui.tab.clubs"), m.ui("ui.tab.fixtures")}
+	if m.AdminMode {
+		names = append(names, m.ui("ui.tab.admin_settings"))
+	}
+	return names
+}
+
+func (m Model) viewAdminSettings(width, height int) string {
+	if !m.AdminMode {
+		return styleDim.Render(truncate(m.ui("ui.admin.token_required"), width))
+	}
+	settings := m.Settings.Runtime
+	if settings.GameSpeed == 0 {
+		return styleDim.Render(truncate(m.ui("ui.admin.settings.loading"), width))
+	}
+	rows := m.adminSettingsRows(settings)
+	cols := m.adminSettingsColumns()
+	var b strings.Builder
+	b.WriteString(m.adminSettingsPreamble(width))
+	b.WriteString(renderTextTable(width, cols, rows))
+	if m.Settings.Schema.Determinism != "" {
+		b.WriteString("\n\n")
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.admin.settings.determinism"), width)) + "\n")
+		for _, line := range wrapText(m.Settings.Schema.Determinism, width) {
+			b.WriteString(truncate(line, width) + "\n")
+		}
+	}
+	if len(m.Settings.Schema.RequiresWorldRebuild) > 0 {
+		b.WriteString("\n")
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.admin.settings.rebuild_required"), width)) + "\n")
+		b.WriteString(truncate(strings.Join(m.Settings.Schema.RequiresWorldRebuild, ", "), width) + "\n")
+	}
+	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) adminSettingsPreamble(width int) string {
+	return styleHeader.Render(truncate(m.ui("ui.admin.settings.title"), width)) + "\n" +
+		styleDim.Render(truncate(m.ui("ui.admin.settings.help"), width)) + "\n\n"
+}
+
+func (m Model) adminSettingsColumns() []tableColumn {
+	return []tableColumn{
+		{Header: "", Width: 2, Align: alignLeft},
+		{Header: m.ui("ui.admin.settings.setting"), Width: 30, Align: alignLeft},
+		{Header: m.ui("ui.admin.settings.value"), Width: 12, Align: alignRight},
+		{Header: m.ui("ui.admin.settings.allowed"), Width: 20, Align: alignLeft},
+	}
+}
+
+func (m Model) adminSettingsRows(settings RuntimeSettings) [][]string {
+	return [][]string{
+		{selector(m.SettingsIdx == 0), m.ui("ui.admin.settings.game_speed"), fmt.Sprintf("%dx", settings.GameSpeed), strings.Join(intsToStrings(speedOptions(m.Settings.Schema)), "/")},
+		{selector(m.SettingsIdx == 1), m.ui("ui.admin.settings.idle_acceleration"), fmt.Sprintf("%dx", settings.IdleAcceleration), fmt.Sprintf("%d..%d", idleMin(m.Settings.Schema), idleMax(m.Settings.Schema))},
+		{selector(m.SettingsIdx == 2), m.ui("ui.admin.settings.offseason_acceleration"), fmt.Sprintf("%dx", settings.OffseasonAcceleration), fmt.Sprintf("%d..%d", offseasonMin(m.Settings.Schema), offseasonMax(m.Settings.Schema))},
+	}
+}
+
+func (m Model) adminSettingsRowAt(width, bodyRelativeY int) int {
+	table := renderTextTable(width, m.adminSettingsColumns(), nil)
+	tableDataOffset := len(strings.Split(strings.TrimRight(table, "\n"), "\n")) - 1
+	dataStart := strings.Count(m.adminSettingsPreamble(width), "\n") + tableDataOffset
+	return bodyRelativeY - dataStart
+}
+
+func selector(active bool) string {
+	if active {
+		return ">"
+	}
+	return ""
+}
+
+func (m Model) adjustRuntimeSetting(delta int) (tea.Model, tea.Cmd) {
+	settings := m.Settings.Runtime
+	if settings.GameSpeed == 0 {
+		return m, nil
+	}
+	switch m.SettingsIdx {
+	case 0:
+		settings.GameSpeed = nextSpeed(settings.GameSpeed, delta, speedOptions(m.Settings.Schema))
+	case 1:
+		settings.IdleAcceleration = clampInt(settings.IdleAcceleration+delta, idleMin(m.Settings.Schema), idleMax(m.Settings.Schema))
+	case 2:
+		settings.OffseasonAcceleration = clampInt(settings.OffseasonAcceleration+delta, offseasonMin(m.Settings.Schema), offseasonMax(m.Settings.Schema))
+	}
+	m.Settings.Runtime = settings
+	m.SettingsDirty = true
+	m.SettingsRev++
+	rev := m.SettingsRev
+	return m, tea.Tick(settingsUpdateDebounce, func(time.Time) tea.Msg {
+		return SettingsCommitMsg{Rev: rev}
+	})
+}
+
+func nextSpeed(current, delta int, options []int) int {
+	if len(options) == 0 {
+		options = []int{5, 15, 30, 60}
+	}
+	idx := 1
+	for i, v := range options {
+		if v == current {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta) % len(options)
+	if idx < 0 {
+		idx += len(options)
+	}
+	return options[idx]
+}
+
+func speedOptions(schema SettingsSchema) []int {
+	if len(schema.GameSpeedOptions) > 0 {
+		return schema.GameSpeedOptions
+	}
+	return []int{5, 15, 30, 60}
+}
+
+func sameRuntimeSettings(a, b RuntimeSettings) bool {
+	return a.GameSpeed == b.GameSpeed &&
+		a.IdleAcceleration == b.IdleAcceleration &&
+		a.OffseasonAcceleration == b.OffseasonAcceleration
+}
+
+func intsToStrings(values []int) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = fmt.Sprint(v)
+	}
+	return out
+}
+
+func idleMin(schema SettingsSchema) int {
+	if schema.IdleAccelerationMin == 0 {
+		return 2
+	}
+	return schema.IdleAccelerationMin
+}
+
+func idleMax(schema SettingsSchema) int {
+	if schema.IdleAccelerationMax == 0 {
+		return 64
+	}
+	return schema.IdleAccelerationMax
+}
+
+func offseasonMin(schema SettingsSchema) int {
+	if schema.OffseasonAccelMin == 0 {
+		return 2
+	}
+	return schema.OffseasonAccelMin
+}
+
+func offseasonMax(schema SettingsSchema) int {
+	if schema.OffseasonAccelMax == 0 {
+		return 240
+	}
+	return schema.OffseasonAccelMax
 }
 
 func (m Model) viewMedia(width, height int) string {

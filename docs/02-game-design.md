@@ -160,7 +160,7 @@ Real-time does not mean uniform speed:
 
 **Match window scope (decision):** match windows are **league-wide match days** — whenever any fixture in the world is in play, the world runs at base speed, and all fixtures of that match day run concurrently (viewers can hop between grounds; the other-scores ticker stays coherent). The same rule applies in zero-agent worlds. The default run profile keeps matches readable but accelerates dead time: **idle acceleration: 16× base** (240× at the default 15×) and **off-season acceleration: 96× base** (1440× at the default 15×), tunable against NFR-9's pace target.
 
-Run profiles are launch presets for new worlds only. **default** = 15× match / 16× idle / 96× off-season; **fast** = 30× / 32× / 192×; **slow** = 15× / 6× / 36×; **custom** starts from default and expects explicit speed overrides.
+Run profiles are launch presets for new worlds. **default** = 15× match / 16× idle / 96× off-season; **fast** = 30× / 32× / 192×; **slow** = 15× / 6× / 36×; **custom** starts from default and expects explicit speed overrides. After creation, Admin Mode can adjust runtime pacing (`Game Speed`, idle acceleration, off-season acceleration) live; this changes wall-clock delay only, not game-time event ordering or seeded outcomes.
 
 **Tuning target ([90 L8](90-reference-cm-fm.md)):** in a real-time world the CM lesson translates to **density, not total duration** — no dead air between meaningful events. Match windows should remain readable; in-season gaps should move briskly; fixtureless off-season stretches should clear very quickly. Operators trade wall-clock for immersion via the Game Speed and acceleration settings; what Adaptive Tempo guarantees is that spectating never feels FM-slow at any tier.
 

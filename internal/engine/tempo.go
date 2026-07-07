@@ -134,8 +134,10 @@ func (e *Engine) kickoffUpperBound(t sim.GameTime) int {
 // chunking-independent.
 type Runner struct {
 	Engine *Engine
-	Pacer  Pacer
 	Sleep  func(context.Context, time.Duration) error
+
+	pacerMu sync.RWMutex
+	pacer   Pacer
 
 	// Guard, when set, wraps every state mutation in a write lock so API
 	// readers can snapshot between steps (single-writer stays intact:
@@ -143,6 +145,11 @@ type Runner struct {
 	Guard *sync.RWMutex
 
 	paused atomic.Bool
+}
+
+// NewRunner constructs a real-time runner with mutex-guarded pacing settings.
+func NewRunner(engine *Engine, pacer Pacer, sleep func(context.Context, time.Duration) error, guard *sync.RWMutex) *Runner {
+	return &Runner{Engine: engine, pacer: pacer, Sleep: sleep, Guard: guard}
 }
 
 // runnerQuantum is the real-time slice between clock advances.
@@ -183,6 +190,21 @@ func (r *Runner) SetPaused(v bool) {
 // Paused reports the runner's pause state.
 func (r *Runner) Paused() bool { return r.paused.Load() }
 
+// PacerSnapshot returns the current runtime pacing settings.
+func (r *Runner) PacerSnapshot() Pacer {
+	r.pacerMu.RLock()
+	defer r.pacerMu.RUnlock()
+	return r.pacer
+}
+
+// SetPacer replaces runtime pacing settings. Pacing changes only wall-clock
+// delay; game-time ordering and simulation outcomes are unchanged.
+func (r *Runner) SetPacer(p Pacer) {
+	r.pacerMu.Lock()
+	defer r.pacerMu.Unlock()
+	r.pacer = p
+}
+
 // Tempo reports the effective tempo right now: PAUSED when paused, else the
 // engine's tempo at the current game time.
 func (r *Runner) Tempo() sim.Tempo {
@@ -212,7 +234,8 @@ func (r *Runner) Run(ctx context.Context, until sim.GameTime) error {
 		// One quantum of real time → game minutes at the current tempo,
 		// clipped to the next tempo boundary and the horizon.
 		tempo := r.Engine.TempoAt(now)
-		perMinute := r.Pacer.RealPerGameMinute(tempo)
+		pacer := r.PacerSnapshot()
+		perMinute := pacer.RealPerGameMinute(tempo)
 		step := sim.GameTime(int64(runnerQuantum / perMinute))
 		if step < 1 {
 			step = 1
@@ -224,7 +247,7 @@ func (r *Runner) Run(ctx context.Context, until sim.GameTime) error {
 		if target > until {
 			target = until
 		}
-		if err := r.Sleep(ctx, r.Engine.RealDuration(r.Pacer, now, target)); err != nil {
+		if err := r.Sleep(ctx, r.Engine.RealDuration(pacer, now, target)); err != nil {
 			return err
 		}
 		if r.Guard != nil {

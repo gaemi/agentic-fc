@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,92 +18,107 @@ func testModel() Model {
 	m := NewModel(nil)
 	m.Width, m.Height = 80, 24
 	m.UI = map[string]string{
-		"ui.app.title":                "Agentic FC",
-		"ui.tab.media":                "Media",
-		"ui.tab.table":                "Table",
-		"ui.tab.clubs":                "Clubs",
-		"ui.tab.fixtures":             "Fixtures",
-		"ui.col.pos":                  "Pos",
-		"ui.col.club":                 "Club",
-		"ui.col.div":                  "Div",
-		"ui.col.security":             "Security",
-		"ui.col.source":               "Source",
-		"ui.col.article":              "Article",
-		"ui.col.name":                 "Name",
-		"ui.col.age":                  "Age",
-		"ui.col.position":             "Pos",
-		"ui.col.attributes":           "Attributes",
-		"ui.col.contract":             "Contract",
-		"ui.col.played":               "P",
-		"ui.col.won":                  "W",
-		"ui.col.drawn":                "D",
-		"ui.col.lost":                 "L",
-		"ui.col.gf":                   "GF",
-		"ui.col.ga":                   "GA",
-		"ui.col.pts":                  "Pts",
-		"ui.col.round":                "Rd",
-		"ui.col.kickoff":              "Kick-off",
-		"ui.col.fixture":              "Fixture",
-		"ui.col.status":               "Status",
-		"ui.table.live":               "Live standings",
-		"ui.fixtures.empty":           "No fixtures",
-		"ui.fixture.live":             "Live",
-		"ui.fixture.scheduled":        "Soon",
-		"ui.fixture.result":           "Result",
-		"ui.fixture.replay":           "Replay",
-		"ui.fixture.archived":         "Archive",
-		"ui.fixture.scheduled_notice": "Not kicked off",
-		"ui.match.loading":            "Loading",
-		"ui.match.live":               "Live match",
-		"ui.match.ended":              "Match ended",
-		"ui.match.waiting_result":     "Waiting result",
-		"ui.match.modal.close":        "Esc close",
-		"ui.match.modal.replay_help":  "PgUp/PgDn",
-		"ui.match.away":               "Away",
-		"ui.match.winner":             "Winner",
-		"ui.match.scorers":            "Scorers",
-		"ui.match.cards":              "Cards",
-		"ui.match.subs":               "Subs",
-		"ui.match.replay":             "Replay log",
-		"ui.match.replay.more":        "More",
-		"ui.match.replay.archived":    "Archived no replay",
-		"ui.match.ratings":            "Ratings",
-		"ui.match.stat.shots":         "Shots",
-		"ui.match.stat.cards":         "Cards",
-		"ui.match.stat.subs":          "Subs",
-		"ui.match.stat.chance_mix":    "Chance mix",
-		"term.chance_type.COUNTER":    "Counters",
-		"term.chance_type.CUTBACK":    "Cutbacks",
-		"ui.header.division":          "Division {tier}",
-		"ui.help.keys":                "help",
-		"ui.media.empty":              "No press",
-		"ui.media.recent":             "Recent press",
-		"ui.notice.news":              "Fresh story: {title}",
-		"ui.notice.match":             "{count} live match window(s) just opened.",
-		"ui.clubs.empty":              "No clubs",
-		"ui.club.caretaker":           "Caretaker",
-		"ui.club.manager":             "Manager",
-		"ui.club.predicted":           "Predicted",
-		"ui.club.objective":           "Objective",
-		"ui.club.confidence":          "Board",
-		"ui.club.security":            "Job",
-		"ui.club.fan_mood":            "Fans",
-		"ui.club.balance":             "Balance",
-		"ui.club.wage_bill":           "Wages",
-		"ui.club.transfer_budget":     "Transfer",
-		"ui.club.squad":               "Squad",
-		"ui.player.empty":             "No player",
-		"ui.player.dossier":           "Player dossier",
-		"ui.player.group":             "Unit",
-		"ui.player.body":              "Body",
-		"ui.player.foot":              "Foot",
-		"ui.player.familiarity":       "Familiarity",
-		"ui.player.profile":           "Attribute profile",
-		"ui.player.youth":             "Academy player",
-		"ui.terminal.too_small":       "too small {min_cols}x{min_rows} now {cols}x{rows}",
-		"attr.PACE":                   "Pace",
-		"attr.FINISHING":              "Finishing",
-		"attr.PASSING":                "Passing",
+		"ui.app.title":                             "Agentic FC",
+		"ui.tab.media":                             "Media",
+		"ui.tab.table":                             "Table",
+		"ui.tab.clubs":                             "Clubs",
+		"ui.tab.fixtures":                          "Fixtures",
+		"ui.tab.admin_settings":                    "Settings",
+		"ui.col.pos":                               "Pos",
+		"ui.col.club":                              "Club",
+		"ui.col.div":                               "Div",
+		"ui.col.security":                          "Security",
+		"ui.col.source":                            "Source",
+		"ui.col.article":                           "Article",
+		"ui.col.name":                              "Name",
+		"ui.col.age":                               "Age",
+		"ui.col.position":                          "Pos",
+		"ui.col.attributes":                        "Attributes",
+		"ui.col.contract":                          "Contract",
+		"ui.col.played":                            "P",
+		"ui.col.won":                               "W",
+		"ui.col.drawn":                             "D",
+		"ui.col.lost":                              "L",
+		"ui.col.gf":                                "GF",
+		"ui.col.ga":                                "GA",
+		"ui.col.pts":                               "Pts",
+		"ui.col.round":                             "Rd",
+		"ui.col.kickoff":                           "Kick-off",
+		"ui.col.fixture":                           "Fixture",
+		"ui.col.status":                            "Status",
+		"ui.table.live":                            "Live standings",
+		"ui.fixtures.empty":                        "No fixtures",
+		"ui.fixture.live":                          "Live",
+		"ui.fixture.scheduled":                     "Soon",
+		"ui.fixture.result":                        "Result",
+		"ui.fixture.replay":                        "Replay",
+		"ui.fixture.archived":                      "Archive",
+		"ui.fixture.scheduled_notice":              "Not kicked off",
+		"ui.match.loading":                         "Loading",
+		"ui.match.live":                            "Live match",
+		"ui.match.ended":                           "Match ended",
+		"ui.match.waiting_result":                  "Waiting result",
+		"ui.match.modal.close":                     "Esc close",
+		"ui.match.modal.replay_help":               "PgUp/PgDn",
+		"ui.match.away":                            "Away",
+		"ui.match.winner":                          "Winner",
+		"ui.match.scorers":                         "Scorers",
+		"ui.match.cards":                           "Cards",
+		"ui.match.subs":                            "Subs",
+		"ui.match.replay":                          "Replay log",
+		"ui.match.replay.more":                     "More",
+		"ui.match.replay.archived":                 "Archived no replay",
+		"ui.match.ratings":                         "Ratings",
+		"ui.match.stat.shots":                      "Shots",
+		"ui.match.stat.cards":                      "Cards",
+		"ui.match.stat.subs":                       "Subs",
+		"ui.match.stat.chance_mix":                 "Chance mix",
+		"term.chance_type.COUNTER":                 "Counters",
+		"term.chance_type.CUTBACK":                 "Cutbacks",
+		"ui.header.division":                       "Division {tier}",
+		"ui.help.keys":                             "help",
+		"ui.help.keys_admin":                       "admin help",
+		"ui.admin.token_required":                  "Admin token required",
+		"ui.admin.settings.loading":                "Loading settings",
+		"ui.admin.settings.title":                  "Runtime Settings",
+		"ui.admin.settings.help":                   "adjust settings",
+		"ui.admin.settings.setting":                "Setting",
+		"ui.admin.settings.value":                  "Value",
+		"ui.admin.settings.allowed":                "Allowed",
+		"ui.admin.settings.game_speed":             "Game speed",
+		"ui.admin.settings.idle_acceleration":      "Idle acceleration",
+		"ui.admin.settings.offseason_acceleration": "Off-season acceleration",
+		"ui.admin.settings.determinism":            "Determinism",
+		"ui.admin.settings.rebuild_required":       "New world required",
+		"ui.admin.settings.saved":                  "Saved",
+		"ui.media.empty":                           "No press",
+		"ui.media.recent":                          "Recent press",
+		"ui.notice.news":                           "Fresh story: {title}",
+		"ui.notice.match":                          "{count} live match window(s) just opened.",
+		"ui.clubs.empty":                           "No clubs",
+		"ui.club.caretaker":                        "Caretaker",
+		"ui.club.manager":                          "Manager",
+		"ui.club.predicted":                        "Predicted",
+		"ui.club.objective":                        "Objective",
+		"ui.club.confidence":                       "Board",
+		"ui.club.security":                         "Job",
+		"ui.club.fan_mood":                         "Fans",
+		"ui.club.balance":                          "Balance",
+		"ui.club.wage_bill":                        "Wages",
+		"ui.club.transfer_budget":                  "Transfer",
+		"ui.club.squad":                            "Squad",
+		"ui.player.empty":                          "No player",
+		"ui.player.dossier":                        "Player dossier",
+		"ui.player.group":                          "Unit",
+		"ui.player.body":                           "Body",
+		"ui.player.foot":                           "Foot",
+		"ui.player.familiarity":                    "Familiarity",
+		"ui.player.profile":                        "Attribute profile",
+		"ui.player.youth":                          "Academy player",
+		"ui.terminal.too_small":                    "too small {min_cols}x{min_rows} now {cols}x{rows}",
+		"attr.PACE":                                "Pace",
+		"attr.FINISHING":                           "Finishing",
+		"attr.PASSING":                             "Passing",
 	}
 	m.World = WorldInfo{Name: "Testshire League", ClockText: "Aug 16, 15:00 · Season 1",
 		TempoLabel: "Idle", Divisions: 2}
@@ -194,6 +210,86 @@ func TestTabsAndDivisionSwitch(t *testing.T) {
 	m = update(m, key("right"))
 	if m.Tier != 2 {
 		t.Fatalf("tier exceeded divisions: %d", m.Tier)
+	}
+}
+
+func TestAdminSettingsTabAndAdjustments(t *testing.T) {
+	m := testModel()
+	m.AdminMode = true
+	m.Settings = AdminSettings{
+		Runtime: RuntimeSettings{GameSpeed: 15, IdleAcceleration: 16, OffseasonAcceleration: 96},
+		Schema: SettingsSchema{
+			GameSpeedOptions:     []int{5, 15, 30, 60, 120},
+			IdleAccelerationMin:  2,
+			IdleAccelerationMax:  64,
+			OffseasonAccelMin:    2,
+			OffseasonAccelMax:    240,
+			Determinism:          "Pacing only",
+			RequiresWorldRebuild: []string{"seed"},
+		},
+	}
+	m = update(m, key("5"))
+	if m.Tab != tabAdminSettings {
+		t.Fatalf("admin settings tab = %d", m.Tab)
+	}
+	v := m.View()
+	for _, want := range []string{"Runtime Settings", "Game speed", "15x", "Idle acceleration", "Pacing only", "admin help"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("admin settings missing %q:\n%s", want, v)
+		}
+	}
+	m = update(m, key("+"))
+	if m.Settings.Runtime.GameSpeed != 30 {
+		t.Fatalf("game speed = %d, want 30", m.Settings.Runtime.GameSpeed)
+	}
+	m.Settings.Runtime.GameSpeed = 60
+	m = update(m, key("+"))
+	if m.Settings.Runtime.GameSpeed != 120 {
+		t.Fatalf("game speed should use schema options, got %d", m.Settings.Runtime.GameSpeed)
+	}
+	m = update(m, SettingsMsg{Settings: AdminSettings{Runtime: RuntimeSettings{GameSpeed: 5}}})
+	if m.Settings.Runtime.GameSpeed != 120 {
+		t.Fatalf("poll should not overwrite dirty settings, got %d", m.Settings.Runtime.GameSpeed)
+	}
+	m = update(m, ErrMsg{Err: errors.New("news poll failed")})
+	if !m.SettingsDirty {
+		t.Fatal("unrelated errors should not clear settings dirty state")
+	}
+	m = update(m, SettingsMsg{Settings: AdminSettings{Runtime: RuntimeSettings{GameSpeed: 60, IdleAcceleration: 16, OffseasonAcceleration: 96}}, Updated: true})
+	if !m.SettingsDirty || m.Settings.Runtime.GameSpeed != 120 {
+		t.Fatalf("stale update response should keep dirty local settings, dirty=%v runtime=%+v", m.SettingsDirty, m.Settings.Runtime)
+	}
+	m = update(m, SettingsMsg{Settings: AdminSettings{Runtime: RuntimeSettings{GameSpeed: 120, IdleAcceleration: 16, OffseasonAcceleration: 96}}, Updated: true})
+	if m.SettingsDirty {
+		t.Fatal("updated settings response should clear dirty flag")
+	}
+	m = update(m, key("down"))
+	m = update(m, key("-"))
+	if m.Settings.Runtime.IdleAcceleration != 15 {
+		t.Fatalf("idle acceleration = %d, want 15", m.Settings.Runtime.IdleAcceleration)
+	}
+	m = update(m, key("down"))
+	m.Settings.Runtime.OffseasonAcceleration = 2
+	m = update(m, key("-"))
+	if m.Settings.Runtime.OffseasonAcceleration != 2 {
+		t.Fatalf("offseason acceleration should clamp at 2, got %d", m.Settings.Runtime.OffseasonAcceleration)
+	}
+}
+
+func TestAdminSettingsLoadingDoesNotPatchDefaults(t *testing.T) {
+	m := testModel()
+	m.AdminMode = true
+	m.Tab = tabAdminSettings
+	next, cmd := m.Update(key("+"))
+	m = next.(Model)
+	if cmd != nil {
+		t.Fatal("loading settings adjustment should not issue a PATCH command")
+	}
+	if m.SettingsDirty {
+		t.Fatal("loading settings adjustment should not mark settings dirty")
+	}
+	if m.Settings.Runtime.GameSpeed != 0 {
+		t.Fatalf("loading settings adjustment changed runtime settings: %+v", m.Settings.Runtime)
 	}
 }
 
@@ -370,6 +466,22 @@ func TestMouseSelectsTabsAndRows(t *testing.T) {
 	m = update(m, tea.MouseMsg{X: 5, Y: 8, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if m.FixtureIdx != 1 || m.Notice != "Not kicked off" {
 		t.Fatalf("mouse scheduled click selected fixture %d notice %q, want fixture 1 scheduled notice", m.FixtureIdx, m.Notice)
+	}
+
+	m.AdminMode = true
+	m.Tab = tabAdminSettings
+	m.Settings = AdminSettings{Runtime: RuntimeSettings{GameSpeed: 15, IdleAcceleration: 16, OffseasonAcceleration: 96}}
+	m = update(m, tea.MouseMsg{X: 5, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.SettingsIdx != 0 {
+		t.Fatalf("mouse admin first row selected %d, want 0", m.SettingsIdx)
+	}
+	m = update(m, tea.MouseMsg{X: 5, Y: 11, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.SettingsIdx != 1 {
+		t.Fatalf("mouse admin second row selected %d, want 1", m.SettingsIdx)
+	}
+	m = update(m, tea.MouseMsg{X: 5, Y: 12, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.SettingsIdx != 2 {
+		t.Fatalf("mouse admin third row selected %d, want 2", m.SettingsIdx)
 	}
 }
 

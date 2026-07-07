@@ -546,16 +546,16 @@ func newWorldHost(world *worldgen.World, eng *engine.Engine, fstore *store.FileS
 		hub:    hub,
 		done:   make(chan struct{}),
 	}
-	h.runner = &engine.Runner{
-		Engine: eng,
-		Pacer: engine.Pacer{
+	h.runner = engine.NewRunner(
+		eng,
+		engine.Pacer{
 			Speed:                 cfg.GameSpeed,
 			IdleAcceleration:      cfg.IdleAcceleration,
 			OffseasonAcceleration: cfg.OffseasonAccel,
 		},
-		Sleep: engine.SleepReal,
-		Guard: &h.mu,
-	}
+		engine.SleepReal,
+		&h.mu,
+	)
 	return h
 }
 
@@ -581,7 +581,7 @@ func (h *worldHost) Paused() bool {
 
 // RealUntil estimates wall-clock time until game time t at current pacing.
 func (h *worldHost) RealUntil(t sim.GameTime) time.Duration {
-	return h.eng.RealDuration(h.runner.Pacer, h.eng.Now(), t)
+	return h.eng.RealDuration(h.runner.PacerSnapshot(), h.eng.Now(), t)
 }
 
 func (h *worldHost) World() *worldgen.World { return h.world }
@@ -636,6 +636,51 @@ func (h *worldHost) SetPaused(p bool) error {
 	return nil
 }
 
+func (h *worldHost) RuntimeSettings() consoleapi.RuntimeSettings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.runtimeSettingsLocked()
+}
+
+func (h *worldHost) runtimeSettingsLocked() consoleapi.RuntimeSettings {
+	return consoleapi.RuntimeSettings{
+		GameSpeed:             h.world.Config.GameSpeed,
+		IdleAcceleration:      h.world.Config.IdleAcceleration,
+		OffseasonAcceleration: h.world.Config.OffseasonAccel,
+	}
+}
+
+func (h *worldHost) UpdateRuntimeSettings(update consoleapi.RuntimeSettingsUpdater) (consoleapi.RuntimeSettings, error) {
+	h.snapMu.Lock()
+	defer h.snapMu.Unlock()
+
+	h.mu.Lock()
+	previous := h.runtimeSettingsLocked()
+	settings, err := update(previous)
+	if err != nil {
+		h.mu.Unlock()
+		return previous, err
+	}
+	h.world.Config.GameSpeed = settings.GameSpeed
+	h.world.Config.IdleAcceleration = settings.IdleAcceleration
+	h.world.Config.OffseasonAccel = settings.OffseasonAcceleration
+	if err := h.saveSnapshotWithWorldLocked(); err != nil {
+		log.Printf("runtime settings snapshot: %v", err)
+		h.world.Config.GameSpeed = previous.GameSpeed
+		h.world.Config.IdleAcceleration = previous.IdleAcceleration
+		h.world.Config.OffseasonAccel = previous.OffseasonAcceleration
+		h.mu.Unlock()
+		return previous, err
+	}
+	h.runner.SetPacer(engine.Pacer{
+		Speed:                 settings.GameSpeed,
+		IdleAcceleration:      settings.IdleAcceleration,
+		OffseasonAcceleration: settings.OffseasonAcceleration,
+	})
+	h.mu.Unlock()
+	return settings, nil
+}
+
 func (h *worldHost) Seed() uint64 { return h.world.Config.Seed }
 
 // Credentials delegates to the gateway once it is wired — the gateway is the
@@ -658,6 +703,10 @@ func (h *worldHost) SaveSnapshot() error {
 	defer h.snapMu.Unlock()
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	return h.saveSnapshotWithWorldLocked()
+}
+
+func (h *worldHost) saveSnapshotWithWorldLocked() error {
 	events, nextSeq := h.eng.Queue().Snapshot()
 	return h.fstore.SaveSnapshot(&store.Snapshot{
 		Now:            h.eng.Now(),

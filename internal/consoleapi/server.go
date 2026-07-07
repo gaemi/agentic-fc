@@ -11,6 +11,7 @@ package consoleapi
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -20,8 +21,15 @@ import (
 
 	"github.com/gaemi/agentic-fc/internal/attr"
 	"github.com/gaemi/agentic-fc/internal/narrative"
+	"github.com/gaemi/agentic-fc/internal/sim"
 	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
+
+type runtimeSettingsValidationError struct {
+	Key string
+}
+
+func (e runtimeSettingsValidationError) Error() string { return e.Key }
 
 // Server hosts the Console API. Viewer endpoints are unauthenticated
 // (FR-32); admin endpoints require the Admin Token (FR-33).
@@ -52,6 +60,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/feed", s.handleFeed)
 
 	mux.HandleFunc("GET /v1/admin/status", s.admin(s.handleAdminStatus))
+	mux.HandleFunc("GET /v1/admin/settings", s.admin(s.handleAdminSettings))
+	mux.HandleFunc("PATCH /v1/admin/settings", s.admin(s.handleAdminSettingsPatch))
 	mux.HandleFunc("GET /v1/admin/managers", s.admin(s.handleAdminManagers))
 	mux.HandleFunc("POST /v1/admin/start", s.admin(s.handleAdminStart))
 	mux.HandleFunc("POST /v1/admin/pause", s.admin(s.handleAdminPause(true)))
@@ -1062,6 +1072,114 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, _ *http.Request) {
 		out.QueueLen = s.Host.Engine().Queue().Len()
 	})
 	writeJSON(w, out)
+}
+
+type adminSettingsDTO struct {
+	Runtime runtimeSettingsDTO `json:"runtime"`
+	Schema  runtimeSchemaDTO   `json:"schema"`
+}
+
+type runtimeSettingsDTO struct {
+	GameSpeed             int `json:"game_speed"`
+	IdleAcceleration      int `json:"idle_acceleration"`
+	OffseasonAcceleration int `json:"offseason_acceleration"`
+}
+
+type runtimeSchemaDTO struct {
+	GameSpeedOptions     []int    `json:"game_speed_options"`
+	IdleAccelerationMin  int      `json:"idle_acceleration_min"`
+	IdleAccelerationMax  int      `json:"idle_acceleration_max"`
+	OffseasonAccelMin    int      `json:"offseason_acceleration_min"`
+	OffseasonAccelMax    int      `json:"offseason_acceleration_max"`
+	Determinism          string   `json:"determinism"`
+	RequiresWorldRebuild []string `json:"requires_world_rebuild"`
+}
+
+func (s *Server) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.adminSettingsResponse(s.locale(r), s.Host.RuntimeSettings()))
+}
+
+type runtimeSettingsPatch struct {
+	GameSpeed             *int `json:"game_speed,omitempty"`
+	IdleAcceleration      *int `json:"idle_acceleration,omitempty"`
+	OffseasonAcceleration *int `json:"offseason_acceleration,omitempty"`
+}
+
+func (s *Server) handleAdminSettingsPatch(w http.ResponseWriter, r *http.Request) {
+	var patch runtimeSettingsPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		s.httpError(w, r, http.StatusBadRequest, "error.bad_request")
+		return
+	}
+	next, err := s.Host.UpdateRuntimeSettings(func(current RuntimeSettings) (RuntimeSettings, error) {
+		next := current
+		if patch.GameSpeed != nil {
+			next.GameSpeed = sim.Speed(*patch.GameSpeed)
+		}
+		if patch.IdleAcceleration != nil {
+			next.IdleAcceleration = *patch.IdleAcceleration
+		}
+		if patch.OffseasonAcceleration != nil {
+			next.OffseasonAcceleration = *patch.OffseasonAcceleration
+		}
+		if err := validateRuntimeSettings(next); err != nil {
+			return current, err
+		}
+		return next, nil
+	})
+	var validationErr runtimeSettingsValidationError
+	if errors.As(err, &validationErr) {
+		s.httpError(w, r, http.StatusBadRequest, validationErr.Key)
+		return
+	}
+	if err != nil {
+		s.httpError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	writeJSON(w, s.adminSettingsResponse(s.locale(r), next))
+}
+
+func (s *Server) adminSettingsResponse(loc narrative.Locale, settings RuntimeSettings) adminSettingsDTO {
+	return adminSettingsDTO{
+		Runtime: runtimeSettingsDTO{
+			GameSpeed:             int(settings.GameSpeed),
+			IdleAcceleration:      settings.IdleAcceleration,
+			OffseasonAcceleration: settings.OffseasonAcceleration,
+		},
+		Schema: runtimeSchemaDTO{
+			GameSpeedOptions:     []int{int(sim.Speed5), int(sim.Speed15), int(sim.Speed30), int(sim.Speed60)},
+			IdleAccelerationMin:  2,
+			IdleAccelerationMax:  64,
+			OffseasonAccelMin:    2,
+			OffseasonAccelMax:    240,
+			Determinism:          s.Catalogs.Render(loc, "ui.admin.settings.determinism_body", nil),
+			RequiresWorldRebuild: localizedRuntimeRebuildSettings(s.Catalogs, loc),
+		},
+	}
+}
+
+func localizedRuntimeRebuildSettings(cats narrative.Catalogs, loc narrative.Locale) []string {
+	keys := []string{"seed", "divisions", "clubs_per_division", "quality", "economy", "culture_mix"}
+	out := make([]string, len(keys))
+	for i, key := range keys {
+		out[i] = cats.Render(loc, "ui.admin.settings.rebuild."+key, nil)
+	}
+	return out
+}
+
+func validateRuntimeSettings(settings RuntimeSettings) error {
+	switch settings.GameSpeed {
+	case sim.Speed5, sim.Speed15, sim.Speed30, sim.Speed60:
+	default:
+		return runtimeSettingsValidationError{Key: "error.runtime_settings.game_speed"}
+	}
+	if settings.IdleAcceleration < 2 || settings.IdleAcceleration > 64 {
+		return runtimeSettingsValidationError{Key: "error.runtime_settings.idle_acceleration"}
+	}
+	if settings.OffseasonAcceleration < 2 || settings.OffseasonAcceleration > 240 {
+		return runtimeSettingsValidationError{Key: "error.runtime_settings.offseason_acceleration"}
+	}
+	return nil
 }
 
 func (s *Server) handleAdminManagers(w http.ResponseWriter, _ *http.Request) {

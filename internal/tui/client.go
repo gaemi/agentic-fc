@@ -6,9 +6,11 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -18,9 +20,10 @@ import (
 
 // Client talks to the Console API.
 type Client struct {
-	Base   string
-	Locale narrative.Locale
-	HTTP   *http.Client
+	Base       string
+	Locale     narrative.Locale
+	HTTP       *http.Client
+	AdminToken string
 }
 
 func NewClient(base string, loc narrative.Locale) *Client {
@@ -32,11 +35,40 @@ func NewClient(base string, loc narrative.Locale) *Client {
 }
 
 func (c *Client) get(path string, out any) error {
+	return c.do(http.MethodGet, path, nil, false, out)
+}
+
+func (c *Client) adminGet(path string, out any) error {
+	return c.do(http.MethodGet, path, nil, true, out)
+}
+
+func (c *Client) adminPatch(path string, in, out any) error {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(in); err != nil {
+		return err
+	}
+	return c.do(http.MethodPatch, path, &body, true, out)
+}
+
+func (c *Client) do(method, path string, body io.Reader, admin bool, out any) error {
 	sep := "?"
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	resp, err := c.HTTP.Get(c.Base + path + sep + "locale=" + string(c.Locale))
+	req, err := http.NewRequest(method, c.Base+path+sep+"locale="+string(c.Locale), body)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if admin {
+		if c.AdminToken == "" {
+			return fmt.Errorf("admin token required")
+		}
+		req.Header.Set("X-Admin-Token", c.AdminToken)
+	}
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
@@ -76,6 +108,39 @@ func (c *Client) UIStrings() (map[string]string, error) {
 	}
 	err := c.get("/v1/ui", &out)
 	return out.Strings, err
+}
+
+type RuntimeSettings struct {
+	GameSpeed             int `json:"game_speed"`
+	IdleAcceleration      int `json:"idle_acceleration"`
+	OffseasonAcceleration int `json:"offseason_acceleration"`
+}
+
+type SettingsSchema struct {
+	GameSpeedOptions     []int    `json:"game_speed_options"`
+	IdleAccelerationMin  int      `json:"idle_acceleration_min"`
+	IdleAccelerationMax  int      `json:"idle_acceleration_max"`
+	OffseasonAccelMin    int      `json:"offseason_acceleration_min"`
+	OffseasonAccelMax    int      `json:"offseason_acceleration_max"`
+	Determinism          string   `json:"determinism"`
+	RequiresWorldRebuild []string `json:"requires_world_rebuild"`
+}
+
+type AdminSettings struct {
+	Runtime RuntimeSettings `json:"runtime"`
+	Schema  SettingsSchema  `json:"schema"`
+}
+
+func (c *Client) AdminSettings() (AdminSettings, error) {
+	var out AdminSettings
+	err := c.adminGet("/v1/admin/settings", &out)
+	return out, err
+}
+
+func (c *Client) UpdateAdminSettings(runtime RuntimeSettings) (AdminSettings, error) {
+	var out AdminSettings
+	err := c.adminPatch("/v1/admin/settings", runtime, &out)
+	return out, err
 }
 
 // NewsArticle mirrors GET /v1/news.

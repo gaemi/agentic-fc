@@ -6,7 +6,7 @@ What gets decided at world creation, by whom (operator config vs. derivation vs.
 
 | Layer | Decided by | Examples |
 |-------|-----------|----------|
-| **Configured** | The operator, in the init wizard | League shape, run profile, game speed, world quality, name culture mix |
+| **Configured** | The operator, in the init wizard | League shape, run profile, initial game speed, world quality, name culture mix |
 | **Derived** | Deterministic rules over the config | Promotion/relegation slots, season calendar, cup bracket, budget bands, board objectives |
 | **Rolled** | The seeded RNG | Names, club tendencies, managers, squads, fixtures, rivalries |
 
@@ -54,7 +54,7 @@ state transitions that happen inside the generated world.
 | **Divisions** | 1–5 | 2 | The pyramid depth |
 | **Clubs per division** | 8–24 (even) | 16 | Uniform across divisions at v1 |
 | **Run profile** | default / fast / slow / custom | default | Launch preset for match, idle, and off-season pacing |
-| **Game Speed** | 5× / 15× / 30× / 60× *(tier set now fixed)* | 15× | Real:game ratio during match windows; profile value unless overridden (any override stores the run profile as custom) |
+| **Game Speed** | 5× / 15× / 30× / 60× *(tier set now fixed)* | 15× | Initial real:game ratio during match windows; Admin Settings may adjust runtime pacing later without changing world generation. |
 | **World quality** | Amateur / Semi-Pro / Professional / Elite | Professional | Scales the Ability Pool bands of every division (§4.2) |
 | **Economy scale** | Austerity / Standard / Flush | Standard | Scales all money in the world (budgets, wages, fees) |
 

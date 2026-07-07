@@ -2,6 +2,7 @@ package consoleapi
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,7 @@ type testHost struct {
 	seed   uint64
 	creds  []worldgen.ManagerCredential
 	state  string
+	err    error
 }
 
 func newTestHost(t *testing.T) *testHost {
@@ -89,6 +91,31 @@ func (h *testHost) SetPaused(p bool) error {
 		h.state = "running"
 	}
 	return nil
+}
+func (h *testHost) RuntimeSettings() RuntimeSettings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return RuntimeSettings{
+		GameSpeed:             h.world.Config.GameSpeed,
+		IdleAcceleration:      h.world.Config.IdleAcceleration,
+		OffseasonAcceleration: h.world.Config.OffseasonAccel,
+	}
+}
+func (h *testHost) UpdateRuntimeSettings(update RuntimeSettingsUpdater) (RuntimeSettings, error) {
+	current := h.RuntimeSettings()
+	settings, err := update(current)
+	if err != nil {
+		return current, err
+	}
+	if h.err != nil {
+		return current, h.err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.world.Config.GameSpeed = settings.GameSpeed
+	h.world.Config.IdleAcceleration = settings.IdleAcceleration
+	h.world.Config.OffseasonAccel = settings.OffseasonAcceleration
+	return settings, nil
 }
 
 func newTestServer(t *testing.T) (*Server, *testHost) {
@@ -439,6 +466,100 @@ func TestAdminAuthAndLifecycle(t *testing.T) {
 	if code, body := do(http.MethodGet, "/v1/admin/managers"); code != http.StatusOK ||
 		!strings.Contains(body, "mgr_") {
 		t.Fatalf("managers = %d %s", code, body)
+	}
+}
+
+func TestAdminRuntimeSettings(t *testing.T) {
+	s, host := newTestServer(t)
+	mux := s.Routes()
+
+	do := func(method, path, body string, auth bool) (int, string) {
+		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		if auth {
+			req.Header.Set("X-Admin-Token", "sekrit")
+		}
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+
+	if code, _ := do(http.MethodGet, "/v1/admin/settings", "", false); code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated settings status = %d", code)
+	}
+	if code, _ := do(http.MethodPatch, "/v1/admin/settings", `{}`, false); code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated settings patch status = %d", code)
+	}
+
+	code, body := do(http.MethodGet, "/v1/admin/settings", "", true)
+	if code != http.StatusOK {
+		t.Fatalf("settings status = %d %s", code, body)
+	}
+	var out adminSettingsDTO
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Runtime.GameSpeed != int(sim.Speed15) || len(out.Schema.GameSpeedOptions) == 0 {
+		t.Fatalf("settings dto = %#v", out)
+	}
+
+	code, body = do(http.MethodGet, "/v1/admin/settings?locale=ko", "", true)
+	if code != http.StatusOK {
+		t.Fatalf("localized settings status = %d %s", code, body)
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Schema.Determinism, "런타임") || len(out.Schema.RequiresWorldRebuild) == 0 || out.Schema.RequiresWorldRebuild[0] != "시드" {
+		t.Fatalf("localized schema = %#v", out.Schema)
+	}
+
+	code, body = do(http.MethodPatch, "/v1/admin/settings", `{"game_speed":30,"idle_acceleration":20}`, true)
+	if code != http.StatusOK {
+		t.Fatalf("patch status = %d %s", code, body)
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Runtime.GameSpeed != 30 || out.Runtime.IdleAcceleration != 20 || out.Runtime.OffseasonAcceleration != host.world.Config.OffseasonAccel {
+		t.Fatalf("patched settings = %#v", out.Runtime)
+	}
+	if host.world.Config.GameSpeed != sim.Speed30 || host.world.Config.IdleAcceleration != 20 {
+		t.Fatalf("host config not updated: %+v", host.world.Config)
+	}
+
+	code, body = do(http.MethodPatch, "/v1/admin/settings", `{}`, true)
+	if code != http.StatusOK {
+		t.Fatalf("empty patch status = %d %s", code, body)
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Runtime.GameSpeed != 30 || out.Runtime.IdleAcceleration != 20 {
+		t.Fatalf("empty patch should preserve settings: %#v", out.Runtime)
+	}
+
+	code, body = do(http.MethodPatch, "/v1/admin/settings", `{"game_speed":17}`, true)
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid speed status = %d", code)
+	}
+	if !strings.Contains(body, "error.runtime_settings.game_speed") {
+		t.Fatalf("invalid speed body = %s", body)
+	}
+	code, _ = do(http.MethodPatch, "/v1/admin/settings", `{"idle_acceleration":1}`, true)
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid idle acceleration status = %d", code)
+	}
+	code, _ = do(http.MethodPatch, "/v1/admin/settings", `{"offseason_acceleration":241}`, true)
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid off-season acceleration status = %d", code)
+	}
+	host.err = errors.New("snapshot failed")
+	code, _ = do(http.MethodPatch, "/v1/admin/settings", `{"game_speed":60}`, true)
+	if code != http.StatusInternalServerError {
+		t.Fatalf("settings persistence failure status = %d", code)
 	}
 }
 
