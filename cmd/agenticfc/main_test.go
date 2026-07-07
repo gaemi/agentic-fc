@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/sim"
@@ -81,6 +83,42 @@ func TestResolveRunProfile(t *testing.T) {
 					got, tt.wantName, tt.wantSpeed, tt.wantIdle, tt.wantOffseason)
 			}
 		})
+	}
+}
+
+func TestParseNameOverrides(t *testing.T) {
+	dir := t.TempDir()
+	clubFile := filepath.Join(dir, "clubs.txt")
+	managerFile := filepath.Join(dir, "managers.txt")
+	if err := os.WriteFile(clubFile, []byte("# comment\nCodex United\n\nAgentic Town\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managerFile, []byte("Claude Lee\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := parseNameOverrides(`"AFC Gaemi",Rovers`, clubFile+" ", "Codex Park", managerFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantClubs := []string{"AFC Gaemi", "Rovers", "Codex United", "Agentic Town"}
+	wantManagers := []string{"Codex Park", "Claude Lee"}
+	if len(got.ClubNames) != len(wantClubs) || len(got.ManagerNames) != len(wantManagers) {
+		t.Fatalf("override lengths = %+v", got)
+	}
+	for i, want := range wantClubs {
+		if got.ClubNames[i] != want {
+			t.Fatalf("club override %d = %q, want %q", i, got.ClubNames[i], want)
+		}
+	}
+	for i, want := range wantManagers {
+		if got.ManagerNames[i] != want {
+			t.Fatalf("manager override %d = %q, want %q", i, got.ManagerNames[i], want)
+		}
+	}
+
+	if _, err := parseNameListFlag("A\nB", ""); err == nil {
+		t.Fatal("multi-record inline CSV accepted")
 	}
 }
 

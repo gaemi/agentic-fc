@@ -30,16 +30,30 @@ func pickCulture(r *rand.Rand, mix CultureMix) Culture {
 
 // nameRegistry keeps generated names unique where uniqueness matters
 // (places, club names, short names).
-type nameRegistry struct{ used map[string]bool }
+type nameRegistry struct {
+	used         map[string]bool
+	reservedFold map[string]bool
+}
 
-func newNameRegistry() *nameRegistry { return &nameRegistry{used: map[string]bool{}} }
+func newNameRegistry() *nameRegistry {
+	return &nameRegistry{used: map[string]bool{}, reservedFold: map[string]bool{}}
+}
+
+// reserve protects operator-provided club names from generated club names.
+// The normal generated-name registry remains exact-match to avoid changing
+// historical seeds when no overrides are configured, while reserved names also
+// block case variants such as "afc gaemi" versus "AFC Gaemi".
+func (nr *nameRegistry) reserve(name string) {
+	nr.used[name] = true
+	nr.reservedFold[strings.ToLower(name)] = true
+}
 
 // claim rerolls gen() until it produces an unused name; after enough
 // collisions it appends a Roman-ish numeral suffix to force uniqueness.
 func (nr *nameRegistry) claim(gen func() string) string {
 	for i := 0; i < 64; i++ {
 		n := gen()
-		if !nr.used[n] {
+		if !nr.used[n] && !nr.reservedFold[strings.ToLower(n)] {
 			nr.used[n] = true
 			return n
 		}
@@ -47,7 +61,7 @@ func (nr *nameRegistry) claim(gen func() string) string {
 	base := gen()
 	for i := 2; ; i++ {
 		n := fmt.Sprintf("%s %d", base, i)
-		if !nr.used[n] {
+		if !nr.used[n] && !nr.reservedFold[strings.ToLower(n)] {
 			nr.used[n] = true
 			return n
 		}
@@ -318,6 +332,29 @@ func shortName(nr *nameRegistry, place string) string {
 			return fmt.Sprintf("%s%d", string(letters[0:2]), i)
 		}
 	}
+}
+
+func shortNameSourceFromClubOverride(name string) string {
+	noise := map[string]bool{
+		"1": true, "afc": true, "cd": true, "club": true, "deportivo": true,
+		"fc": true, "real": true, "sc": true, "sporting": true, "sv": true,
+		"town": true, "city": true, "united": true, "rovers": true,
+		"wanderers": true, "albion": true, "county": true, "athletic": true,
+		"dynamo": true, "union": true, "rot-weiss": true,
+	}
+	for _, field := range strings.Fields(name) {
+		clean := strings.Trim(field, ".-")
+		if clean == "" || noise[strings.ToLower(clean)] {
+			continue
+		}
+		return clean
+	}
+	for _, field := range strings.Fields(name) {
+		if clean := strings.Trim(field, ".-"); clean != "" {
+			return clean
+		}
+	}
+	return name
 }
 
 var stadiumPatterns = map[Culture][]string{

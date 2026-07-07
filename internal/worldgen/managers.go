@@ -1,7 +1,9 @@
 package worldgen
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/mindset"
@@ -198,11 +200,24 @@ const (
 
 func genManagers(w *World, r *rand.Rand) {
 	nextID := int64(managerIDBase)
+	nameIdx := 0
+	uniqueNames := map[string]bool{}
+	reservedOverrides := reservedManagerNameOverrides(w.Config.NameOverrides.ManagerNames)
+	// Keep override-free worlds byte-stable with historical generation. When an
+	// operator supplies manager overrides, reserve those names up front so the
+	// explicit operator names win and rolled duplicates absorb suffixes instead.
+	ensureUnique := len(w.Config.NameOverrides.ManagerNames) > 0
 	for i := range w.Clubs {
 		club := &w.Clubs[i]
 		arch := pickArchetype(r, club.Tendencies)
 		nextID++
-		w.Managers = append(w.Managers, rollManager(r, nextID, club.ID, club.DivisionTier, arch, w.Config.CultureMix))
+		m := rollManager(r, nextID, club.ID, club.DivisionTier, arch, w.Config.CultureMix)
+		overridden := applyManagerNameOverride(&m, w, nameIdx)
+		if ensureUnique {
+			m.Name = uniqueManagerName(m.Name, uniqueNames, reservedOverrides, overridden)
+		}
+		nameIdx++
+		w.Managers = append(w.Managers, m)
 	}
 	// Unemployed pool: ≈10% of club count, min 2 (docs/09 §4.3). Archetype
 	// is rolled flat; reputation takes the unemployment haircut.
@@ -212,10 +227,47 @@ func genManagers(w *World, r *rand.Rand) {
 		tier := 1 + r.IntN(w.Config.Divisions)
 		nextID++
 		m := rollManager(r, nextID, 0, tier, arch, w.Config.CultureMix)
+		overridden := applyManagerNameOverride(&m, w, nameIdx)
+		if ensureUnique {
+			m.Name = uniqueManagerName(m.Name, uniqueNames, reservedOverrides, overridden)
+		}
+		nameIdx++
 		m.Reputation = int(float64(m.Reputation) * unemployedRepPenalty)
 		w.Managers = append(w.Managers, m)
 	}
 	w.NextManagerID = nextID // runtime spawns (caretakers, newgen) continue from here
+}
+
+func applyManagerNameOverride(m *Manager, w *World, idx int) bool {
+	if idx < len(w.Config.NameOverrides.ManagerNames) {
+		m.Name = w.Config.NameOverrides.ManagerNames[idx]
+		return true
+	}
+	return false
+}
+
+func reservedManagerNameOverrides(names []string) map[string]bool {
+	reserved := map[string]bool{}
+	for _, name := range names {
+		reserved[strings.ToLower(name)] = true
+	}
+	return reserved
+}
+
+func uniqueManagerName(name string, used, reserved map[string]bool, overridden bool) string {
+	key := strings.ToLower(name)
+	if !used[key] && (overridden || !reserved[key]) {
+		used[key] = true
+		return name
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s %d", name, i)
+		key := strings.ToLower(candidate)
+		if !used[key] && (overridden || !reserved[key]) {
+			used[key] = true
+			return candidate
+		}
+	}
 }
 
 // caretakerArchetypeName is the conservative archetype an auto-installed caretaker

@@ -57,6 +57,8 @@ state transitions that happen inside the generated world.
 | **Game Speed** | 5× / 15× / 30× / 60× *(tier set now fixed)* | 15× | Initial real:game ratio during match windows; Admin Settings may adjust runtime pacing later without changing world generation. |
 | **World quality** | Amateur / Semi-Pro / Professional / Elite | Professional | Scales the Ability Pool bands of every division (§4.2) |
 | **Economy scale** | Austerity / Standard / Flush | Standard | Scales all money in the world (budgets, wages, fees) |
+| Custom club names | ordered list, max club count | none | Optional display-name overrides; applies to clubs in tier-by-tier generation order, partial lists allowed |
+| Custom manager names | ordered list, max clubs + unemployed pool | none | Optional display-name overrides; applies to club managers in club order, then unemployed pool, partial lists allowed |
 
 Presets for one-key setup: **Compact** (1×12), **Classic** (2×16), **Deep** (3×16), **Sprawling** (4×20).
 
@@ -70,6 +72,15 @@ Presets for one-key setup: **Compact** (1×12), **Classic** (2×16), **Deep** (3
 | Squad size target | 20–30 | 24 | Generation target; in-play squads may drift within min/max rules |
 | Youth intake batch | 3–8 per club per season | 5 | Population sustain rate |
 | Start state | ready / running | **ready** | "ready" = world fully generated but clock stopped, so the operator can distribute Manager Tokens before kickoff; Admin Mode issues `start` |
+
+Custom name lists are deterministic inputs. Empty names, duplicates within the
+same list, names longer than 64 characters, or lists longer than the generated
+entity count are rejected before generation. Providing only a few names is valid:
+the supplied names fill the first slots and the remaining clubs/managers keep
+generated names. Generated identities still roll all supporting facts
+(culture, region, stadium, archetype, reputation) from the seeded pipeline.
+Club short names are derived from the override display name after common football
+tokens such as `FC`, `AFC`, and `United` are ignored.
 
 ### 2.3 Daemon config (not part of the world — launch flags/file)
 
@@ -179,17 +190,22 @@ Archetype assignment is weighted by club character (a high-Youth-Emphasis club m
 
 Fictional currency: **Crowns**, notation `cr` — "cr2.4M", "cr180k/wk". Stored as integer minor units; rendering via the locale layer (NFR-5).
 
-## 5. Init wizard flow (Console, Admin Mode)
+## 5. Planned init wizard flow (Console, Admin Mode)
 
-The wizard authenticates with the **Admin Token issued at daemon first launch** (printed to the daemon's output) — Admin Mode therefore works before any world exists.
+World bootstrap currently exposes these settings through daemon CLI flags and
+`WorldConfig`. A future Console Admin Mode wizard should mirror the same
+contract. It authenticates with the **Admin Token issued at daemon first
+launch** (printed to the daemon's output) — Admin Mode therefore works before
+any world exists.
 
 ```
 1 Core settings     preset pick or custom (§2.1)
-2 Advanced          culture mix, tempo, squad/youth sizes, start state (§2.2)
-3 Review            full config + derivations preview (divisions, calendar,
+2 Names             optional world, club, and manager display-name overrides
+3 Advanced          culture mix, tempo, squad/youth sizes, start state (§2.2)
+4 Review            full config + derivations preview (divisions, calendar,
                     pro/rel, budget bands) before any generation
-4 Generate          pipeline §4 with stage progress; abort = nothing written
-5 Handover          shows world manifest: seed, Manager list
+5 Generate          pipeline §4 with stage progress; abort = nothing written
+6 Handover          shows world manifest: seed, Manager list
                     with club, archetype, Reputation — and Manager Tokens
                     (copyable). Ready worlds sit stopped until `start`;
                     worlds configured `running` begin immediately.

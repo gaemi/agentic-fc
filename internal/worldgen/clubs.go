@@ -46,6 +46,9 @@ var capacityQualityFactor = map[Quality]float64{
 func genClubs(w *World, r *rand.Rand, names *nameRegistry) {
 	// Round-robin region assignment, shuffled, keeps regions evenly loaded.
 	total := w.Config.TotalClubs()
+	for _, name := range w.Config.NameOverrides.ClubNames {
+		names.reserve(name)
+	}
 	regionOf := make([]int, total)
 	for i := range regionOf {
 		regionOf[i] = i % len(w.Regions)
@@ -59,12 +62,21 @@ func genClubs(w *World, r *rand.Rand, names *nameRegistry) {
 			idx := (tier-1)*w.Config.ClubsPerDivision + slot
 			region := w.Regions[regionOf[idx]]
 			place := names.claim(func() string { return placeName(r, region.Culture) })
+			// Always roll and claim the generated club name before applying an
+			// override. That keeps stream consumption stable for this config
+			// while still letting reserved custom names block generated clones.
+			displayName := names.claim(func() string { return clubName(r, region.Culture, place) })
+			shortNameSource := place
+			if idx < len(w.Config.NameOverrides.ClubNames) {
+				displayName = w.Config.NameOverrides.ClubNames[idx]
+				shortNameSource = shortNameSourceFromClubOverride(displayName)
+			}
 
 			wealth := 1 + r.IntN(20)
 			club := Club{
 				ID:           int64(idx + 1),
-				Name:         names.claim(func() string { return clubName(r, region.Culture, place) }),
-				ShortName:    shortName(names, place),
+				Name:         displayName,
+				ShortName:    shortName(names, shortNameSource),
 				Culture:      region.Culture,
 				RegionID:     region.ID,
 				DivisionTier: tier,

@@ -7,6 +7,7 @@ package worldgen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/sim"
 )
@@ -51,23 +52,32 @@ type CultureMix [4]int
 // (docs/09 §2.2, tunable).
 var DefaultCultureMix = CultureMix{40, 25, 25, 10}
 
+// NameOverrides are operator-provided identity overrides for generated worlds.
+// Lists apply in deterministic generation order: clubs are tier-by-tier slots;
+// managers are club managers in club order, then the unemployed pool.
+type NameOverrides struct {
+	ClubNames    []string `json:"club_names,omitempty"`
+	ManagerNames []string `json:"manager_names,omitempty"`
+}
+
 // WorldConfig is the operator's World Config (docs/09 §2). Zero values are
 // not defaulted here — build from DefaultConfig or a preset and override.
 type WorldConfig struct {
-	Name             string       `json:"name"` // empty ⇒ generated in stage 1
-	Seed             uint64       `json:"seed"`
-	Divisions        int          `json:"divisions"`          // 1–5
-	ClubsPerDivision int          `json:"clubs_per_division"` // 8–24, even
-	RunProfile       string       `json:"run_profile,omitempty"`
-	GameSpeed        sim.Speed    `json:"game_speed"`
-	Quality          Quality      `json:"quality"`
-	Economy          EconomyScale `json:"economy"`
-	CultureMix       CultureMix   `json:"culture_mix"`
-	IdleAcceleration int          `json:"idle_acceleration"`      // 2–64 × base
-	OffseasonAccel   int          `json:"offseason_acceleration"` // 2–240 × base
-	SquadSizeTarget  int          `json:"squad_size_target"`      // 20–30
-	YouthIntakeBatch int          `json:"youth_intake_batch"`     // 3–8
-	StartRunning     bool         `json:"start_running"`          // false = "ready"
+	Name             string        `json:"name"` // empty ⇒ generated in stage 1
+	Seed             uint64        `json:"seed"`
+	Divisions        int           `json:"divisions"`          // 1–5
+	ClubsPerDivision int           `json:"clubs_per_division"` // 8–24, even
+	RunProfile       string        `json:"run_profile,omitempty"`
+	GameSpeed        sim.Speed     `json:"game_speed"`
+	Quality          Quality       `json:"quality"`
+	Economy          EconomyScale  `json:"economy"`
+	CultureMix       CultureMix    `json:"culture_mix"`
+	IdleAcceleration int           `json:"idle_acceleration"`      // 2–64 × base
+	OffseasonAccel   int           `json:"offseason_acceleration"` // 2–240 × base
+	SquadSizeTarget  int           `json:"squad_size_target"`      // 20–30
+	YouthIntakeBatch int           `json:"youth_intake_batch"`     // 3–8
+	StartRunning     bool          `json:"start_running"`          // false = "ready"
+	NameOverrides    NameOverrides `json:"name_overrides,omitempty"`
 }
 
 // DefaultConfig returns the wizard defaults (docs/09 §2.1/2.2) with the given
@@ -110,8 +120,31 @@ func PresetSprawling(seed uint64) WorldConfig {
 	return c
 }
 
+const maxCustomNameLen = 64
+
+// Normalized returns the canonical config persisted in snapshots. It trims
+// operator-provided display names without otherwise changing generation choices.
+func (c WorldConfig) Normalized() WorldConfig {
+	c.Name = strings.TrimSpace(c.Name)
+	c.NameOverrides.ClubNames = normalizeNameList(c.NameOverrides.ClubNames)
+	c.NameOverrides.ManagerNames = normalizeNameList(c.NameOverrides.ManagerNames)
+	return c
+}
+
+func normalizeNameList(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = strings.TrimSpace(name)
+	}
+	return out
+}
+
 // Validate checks every configured range from docs/09 §2 (stage 0).
 func (c WorldConfig) Validate() error {
+	c = c.Normalized()
 	if c.Divisions < 1 || c.Divisions > 5 {
 		return fmt.Errorf("divisions %d out of range 1–5", c.Divisions)
 	}
@@ -163,8 +196,38 @@ func (c WorldConfig) Validate() error {
 	if c.YouthIntakeBatch < 3 || c.YouthIntakeBatch > 8 {
 		return fmt.Errorf("youth intake batch %d out of range 3–8", c.YouthIntakeBatch)
 	}
+	if err := validateNameOverrides("club", c.NameOverrides.ClubNames, c.TotalClubs()); err != nil {
+		return err
+	}
+	if err := validateNameOverrides("manager", c.NameOverrides.ManagerNames, c.TotalClubs()+unemployedPoolSize(c.TotalClubs())); err != nil {
+		return err
+	}
 	return nil
 }
 
 // TotalClubs is Divisions × ClubsPerDivision.
 func (c WorldConfig) TotalClubs() int { return c.Divisions * c.ClubsPerDivision }
+
+func validateNameOverrides(kind string, names []string, max int) error {
+	if len(names) > max {
+		return fmt.Errorf("%s name overrides = %d, max %d", kind, len(names), max)
+	}
+	seen := map[string]bool{}
+	for i, name := range names {
+		if name == "" {
+			return fmt.Errorf("%s name override %d is empty", kind, i+1)
+		}
+		if len([]rune(name)) > maxCustomNameLen {
+			return fmt.Errorf("%s name override %d exceeds %d characters", kind, i+1, maxCustomNameLen)
+		}
+		if strings.ContainsAny(name, "\r\n\t") {
+			return fmt.Errorf("%s name override %d contains unsupported control characters", kind, i+1)
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			return fmt.Errorf("duplicate %s name override %q", kind, name)
+		}
+		seen[key] = true
+	}
+	return nil
+}

@@ -60,7 +60,7 @@ Canonical terminology for Agentic FC. All docs, code, and MCP tool names should 
 | **Viewer Mode** | Openly accessible Console mode for spectating — unauthenticated by design, even when hosted publicly. All-text feeds of Manager decisions, player events, press articles, board/fan reactions, and live CM-style match commentary. Viewers freely switch focus between any Managers/clubs; they are never pinned to one. Read-only. |
 | **Console API** | The core's second interface (alongside MCP): serves the Console's view streams and admin operations. Future clients (e.g. Web) reuse this same API. |
 | **Layout Tier** | The Console's responsive size class, computed from terminal columns/rows: XS (too small) / S Compact / M Standard / L Wide / XL Dashboard. Each screen specifies exactly what it shows per tier — see [07-console-design.md](07-console-design.md). |
-| **World Config** | The operator-chosen settings at world creation (league shape, Run Profile, initial Game Speed, quality/economy presets, culture mix, seed…). Runtime pacing settings may be adjusted later; generation-shaping settings stay fixed — see [09-world-generation.md](09-world-generation.md). |
+| **World Config** | The operator-chosen settings at world creation (league shape, Run Profile, initial Game Speed, quality/economy presets, culture mix, seed, world display name, optional club/manager name overrides…). Runtime pacing settings may be adjusted later; generation-shaping settings stay fixed — see [09-world-generation.md](09-world-generation.md). |
 
 ## Agent economy
 
