@@ -136,7 +136,7 @@ func (e *Engine) retirePlayer(ev *sim.Event, p *worldgen.Player) {
 	if clubID != 0 {
 		if club := e.clubs[clubID]; club != nil {
 			params := map[string]any{"player": p.Name, "club": club.Name}
-			e.world.AddNews(worldgen.NewsItem{
+			e.addNews(worldgen.NewsItem{
 				GameTime: ev.Due, Category: "career", Key: newsPlayerRetired,
 				Params: params, ClubIDs: []int64{clubID},
 			})
@@ -145,7 +145,7 @@ func (e *Engine) retirePlayer(ev *sim.Event, p *worldgen.Player) {
 		}
 	}
 	params := map[string]any{"player": p.Name}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: ev.Due, Category: "career", Key: newsPlayerRetiredFree, Params: params,
 	})
 	e.emit(ev.Due, newsPlayerRetiredFree, cloneParams(params))

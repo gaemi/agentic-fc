@@ -198,7 +198,7 @@ func (e *Engine) sellListedAny(clubID, playerID int64) bool {
 // contractNews files a count-only contract item (renewals or lapses) for a club.
 func (e *Engine) contractNews(t sim.GameTime, club *worldgen.Club, count int, key string) {
 	params := map[string]any{"club": club.Name, "count": count}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: t, Category: "contract", Key: key, Params: params, ClubIDs: []int64{club.ID},
 	})
 	e.emit(t, key, cloneParams(params))

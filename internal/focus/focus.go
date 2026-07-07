@@ -9,16 +9,19 @@ const (
 	StartingBalance  = Cap
 )
 
-// Tool names — the canonical 19-tool surface (docs/11).
+// Tool names — the canonical tool surface (docs/11).
 type Tool string
 
 const (
 	// Free
-	GetGuide    Tool = "get_guide"
-	GetTime     Tool = "get_time"
-	GetSettings Tool = "get_settings"
-	GetFocus    Tool = "get_focus"
-	GetMindset  Tool = "get_mindset"
+	GetGuide        Tool = "get_guide"
+	GetTime         Tool = "get_time"
+	GetSettings     Tool = "get_settings"
+	GetFocus        Tool = "get_focus"
+	GetMindset      Tool = "get_mindset"
+	ConfigureAlerts Tool = "configure_alerts"
+	GetAlerts       Tool = "get_alerts"
+	AckAlerts       Tool = "ack_alerts"
 	// Observation
 	GetSituation  Tool = "get_situation"
 	GetNews       Tool = "get_news"
@@ -41,7 +44,8 @@ const (
 // flatCosts are the strength- and context-independent costs.
 var flatCosts = map[Tool]int{
 	GetGuide: 0, GetTime: 0, GetSettings: 0, GetFocus: 0, GetMindset: 0,
-	GetSituation: 1, GetNews: 1, GetLeague: 2,
+	ConfigureAlerts: 0, AckAlerts: 0,
+	GetSituation: 1, GetNews: 1, GetAlerts: 1, GetLeague: 2,
 	GetPerson: 4, SearchPlayers: 4, Scout: 12,
 	RemoveDirective: 2, SetPriorities: 12,
 	UpdateTacticalPlan: 15, UpdateDisposition: 25,

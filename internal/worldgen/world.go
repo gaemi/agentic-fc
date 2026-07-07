@@ -221,6 +221,8 @@ type Manager struct {
 	FocusRegenMark sim.GameTime `json:"focus_regen_mark"`
 	FocusSpends    []FocusSpend `json:"focus_spends,omitempty"` // newest last, cap 20
 
+	Alerts *AlertState `json:"alerts,omitempty"`
+
 	// Disposition drift accounting (FR-16b): drift applies on the decision
 	// cadence; the anchor/credit pair converts elapsed game time into
 	// whole drift points without float accumulation.

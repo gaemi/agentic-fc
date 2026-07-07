@@ -73,6 +73,8 @@ type Gateway struct {
 	tokens   map[string]int64             // Manager Token → manager id
 	creds    []worldgen.ManagerCredential // the credential set (guarded by credMu)
 	managers map[int64]*worldgen.Manager
+	serverMu sync.RWMutex
+	mcpSrv   *mcp.Server
 	// cursors is per-session get_news state (docs/11 §4). Mutated only
 	// under the write lock (every call runs through run→LockedWrite), so
 	// no extra sync is needed. Transient: sessions don't survive restart,
@@ -309,6 +311,7 @@ func (g *Gateway) run(managerID int64, sessionID string, tool focus.Tool,
 			return
 		}
 		chargeFocus(m, tool, fp, cc.now)
+		g.Host.Engine().RescheduleManagerAlerts(m.ID)
 		// Avatar-liveness stamp (FR-14e, manager careers): mark this token active at the
 		// current GAME time so the engine's season-boundary retirement pass exempts a
 		// live Avatar for the grace window (2 game-years). Stamped ONLY on the accepted
@@ -413,10 +416,6 @@ func (g *Gateway) logInput(cc *callCtx, fp int) {
 
 // ---- Focus state (docs/11 §2; integer ticks — NFR-2) ----
 
-// minutesPerFP derives the regen tick from the registered constant:
-// 2 FP/game-hour ⇒ exactly one FP per 30 game-minutes.
-const minutesPerFP = sim.MinutesPerHour / focus.RegenPerGameHour
-
 // syncFocus is COMPOSABLE: the mark only ever advances by whole ticks, so
 // sync(t₁) then sync(t₂) leaves exactly the state of sync(t₂) alone. That
 // makes regen a pure function of game time — a failed call that synced
@@ -424,18 +423,7 @@ const minutesPerFP = sim.MinutesPerHour / focus.RegenPerGameHour
 // At cap the balance clamps per batch (excess regen is lost) but the mark
 // still tracks tick boundaries, preserving the partial-tick remainder.
 func syncFocus(m *worldgen.Manager, now sim.GameTime) {
-	if now <= m.FocusRegenMark {
-		return
-	}
-	ticks := int64(now-m.FocusRegenMark) / minutesPerFP
-	if ticks <= 0 {
-		return
-	}
-	m.FocusRegenMark += sim.GameTime(ticks * minutesPerFP)
-	m.FocusBalance += int(ticks)
-	if m.FocusBalance > focus.Cap {
-		m.FocusBalance = focus.Cap
-	}
+	worldgen.SyncManagerFocus(m, now)
 }
 
 func chargeFocus(m *worldgen.Manager, tool focus.Tool, fp int, now sim.GameTime) {
@@ -458,7 +446,7 @@ func affordableAt(m *worldgen.Manager, required int, now sim.GameTime) sim.GameT
 		return now
 	}
 	// Next tick lands at FocusRegenMark + minutesPerFP, then every tick.
-	return m.FocusRegenMark + sim.GameTime(int64(deficit)*minutesPerFP)
+	return m.FocusRegenMark + sim.GameTime(int64(deficit)*worldgen.FocusMinutesPerFP)
 }
 
 // ---- Game-time display (docs/11 §1.4: ISO-like game timestamps) ----
@@ -490,15 +478,23 @@ func managerIDFromCtx(ctx context.Context) (int64, *apiError) {
 	return id, nil
 }
 
-const mcpInstructions = "Agentic FC is an autonomous football-management simulation. Start every unfamiliar session by calling get_guide, then observe with get_time, get_focus, get_situation, and get_mindset before spending Focus. Do not invent enum values; use the goals, directive verbs, strengths, tactical dials, and target-shape examples returned by get_guide."
+const mcpInstructions = "Agentic FC is an autonomous football-management simulation. Start every unfamiliar session by calling get_guide, then observe with get_time, get_focus, get_situation, and get_mindset before spending Focus. Long-running harnesses should use configure_alerts/get_alerts/ack_alerts and subscribe to the alert resource when supported. Do not invent enum values; use the goals, directive verbs, strengths, tactical dials, and target-shape examples returned by get_guide."
 
 // MCPServer builds the SDK server with the v1 tool surface registered.
 func (g *Gateway) MCPServer() *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "agentic-fc",
 		Version: "dev",
-	}, &mcp.ServerOptions{Instructions: mcpInstructions})
+	}, &mcp.ServerOptions{
+		Instructions:       mcpInstructions,
+		SubscribeHandler:   g.subscribeAlertResource,
+		UnsubscribeHandler: g.unsubscribeAlertResource,
+	})
+	g.serverMu.Lock()
+	g.mcpSrv = s
+	g.serverMu.Unlock()
 	g.registerUIResources(s)
+	g.registerAlertResources(s)
 	g.registerTools(s)
 	return s
 }

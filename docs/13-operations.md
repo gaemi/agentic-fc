@@ -110,8 +110,8 @@ Alerts after the first orientation pass:
 
 1. Call `configure_alerts` with the news, match, calendar, and Focus conditions
    the harness wants to wake for.
-2. Subscribe to the MCP resource `agenticfc://manager/self/alerts` when the MCP
-   host supports resource subscriptions.
+2. Subscribe to the manager-specific MCP resource returned by `get_alerts` when
+   the MCP host supports resource subscriptions.
 3. On `notifications/resources/updated`, call `get_alerts`, then inspect detail
    through normal tools such as `get_news`, `get_situation`, or `get_match`.
 4. Call `ack_alerts` after the harness has handled the pending alert ids.

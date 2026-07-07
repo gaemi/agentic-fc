@@ -76,7 +76,7 @@ Self-knowledge and meta-state are always free: the Agent must never have to pay 
 
 - **Non-blocking world:** tools return immediately against current state; the simulation never pauses for the Agent.
 - **Asynchronous consequences:** shaping tools change the Mindset *now*, but effects surface only as future Manager decisions. `get_news` is how the Agent learns what its shaping wrought.
-- **Alert notifications are wake signals, not gameplay data dumps.** A subscribed harness may receive `notifications/resources/updated` for `agenticfc://manager/self/alerts`, then should call `get_alerts` and normal observation tools to inspect the reason.
+- **Alert notifications are wake signals, not gameplay data dumps.** A subscribed harness may receive `notifications/resources/updated` for the manager-specific alert resource returned by `get_alerts`, then should call `get_alerts` and normal observation tools to inspect the reason.
 - **Insufficient FP:** the tool call fails cleanly with balance info and time-to-afford. Nothing queues.
 - **Multiple agents:** one Agent ↔ one Manager (via Manager Token); a world hosts any number of such bindings, including none. Information isolation between Avatars follows the same rule as everything else: you see what your Manager could see.
 

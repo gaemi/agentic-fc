@@ -39,11 +39,14 @@ new reasoning loop, waits for more events, or ignores it.
 The MCP server exposes one manager-private resource:
 
 ```text
-agenticfc://manager/self/alerts
+agenticfc://manager/{id}/alerts
 ```
 
-The URI is resolved from the authenticated Manager Token. Clients do not pass a
-manager id in the URI, so a token cannot request another Manager's alert queue.
+The concrete URI is returned by `get_alerts`, for example
+`agenticfc://manager/7/alerts`. The server validates that the URI manager id
+matches the authenticated Manager Token for `resources/read`,
+`resources/subscribe`, and `resources/unsubscribe`; a token cannot read or
+subscribe to another Manager's alert queue.
 
 Clients that support MCP resource subscriptions can call `resources/subscribe`
 for that URI. The resource is also readable for host compatibility.
@@ -51,7 +54,7 @@ for that URI. The resource is also readable for host compatibility.
 
 ```json
 {
-  "resource": "agenticfc://manager/self/alerts",
+  "resource": "agenticfc://manager/7/alerts",
   "hint": "Call get_alerts for pending alert summaries; call ack_alerts after handling them."
 }
 ```
@@ -68,7 +71,7 @@ MCP resource update notification:
 {
   "jsonrpc": "2.0",
   "method": "notifications/resources/updated",
-  "params": {"uri": "agenticfc://manager/self/alerts"}
+  "params": {"uri": "agenticfc://manager/7/alerts"}
 }
 ```
 
@@ -111,6 +114,9 @@ Rules:
   Re-enabling resumes future evaluation only; missed crossings are not backfilled.
 - A Manager may have at most 32 watches.
 - Replacing watches does not clear already pending alerts.
+- `NEWS.categories` entries must be known news categories:
+  `transfer`, `match`, `injury`, `board`, `media`, `decision`, `career`,
+  `youth`, or `contract`. Omit `categories` to match every visible category.
 - `FOCUS.threshold` must be an integer from 0 through the Focus cap, inclusive.
   Out-of-range thresholds fail with `VALIDATION`.
 - Invalid enum values fail with `VALIDATION`.
@@ -130,7 +136,7 @@ Result shape:
 
 ```json
 {
-  "resource": "agenticfc://manager/self/alerts",
+  "resource": "agenticfc://manager/7/alerts",
   "enabled": true,
   "watches": [],
   "pending": [
@@ -146,7 +152,7 @@ Result shape:
   "highest_issued_id": 1204,
   "acked_through": 1198,
   "next_cursor": "1204",
-  "subscribe_hint": "Subscribe to agenticfc://manager/self/alerts and call get_alerts when notifications/resources/updated arrives."
+  "subscribe_hint": "Subscribe to agenticfc://manager/7/alerts and call get_alerts when notifications/resources/updated arrives."
 }
 ```
 
@@ -275,7 +281,8 @@ A capable long-running harness can use this loop:
 
 1. Authenticate with a Manager Token.
 2. Call `get_guide`, then `configure_alerts`.
-3. Subscribe to `agenticfc://manager/self/alerts`.
+3. Subscribe to the `agenticfc://manager/{id}/alerts` URI returned by
+   `get_alerts`.
 4. Sleep until `notifications/resources/updated` arrives.
 5. Call `get_alerts`, then normal observation tools such as `get_news`,
    `get_situation`, or `get_match`.

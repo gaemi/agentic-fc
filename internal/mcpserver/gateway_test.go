@@ -67,6 +67,7 @@ func newGatewayCfg(t *testing.T, cfg worldgen.WorldConfig) (*Gateway, *testHost,
 	}
 	inputs := &store.MemInputLog{}
 	g := New(host, inputs, narrative.Default, res.Manifest.Managers)
+	host.eng.SetAlertSink(g)
 	return g, host, inputs, res.Manifest
 }
 
@@ -167,7 +168,7 @@ func TestSyncFocusComposable(t *testing.T) {
 			a.FocusBalance, a.FocusRegenMark, b.FocusBalance, b.FocusRegenMark)
 	}
 	// The partial-tick remainder is preserved even across the cap.
-	if a.FocusRegenMark%minutesPerFP != 0 || a.FocusRegenMark > 9999 {
+	if a.FocusRegenMark%worldgen.FocusMinutesPerFP != 0 || a.FocusRegenMark > 9999 {
 		t.Fatalf("mark off the tick grid: %d", a.FocusRegenMark)
 	}
 }

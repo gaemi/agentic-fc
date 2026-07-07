@@ -123,7 +123,8 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 		return e.log(ev, "match", nil, "unknown_fixture", 0, 0)
 	}
 	e.emitKickoff(ev)
-	e.world.AddNews(worldgen.NewsItem{
+	e.issueMatchAlerts(ev.Due, f, "OWN_KICKOFF")
+	e.addNews(worldgen.NewsItem{
 		GameTime: ev.Due, Category: "match", Key: FeedKickoff,
 		Params: map[string]any{
 			"home": e.clubName(f.HomeID), "away": e.clubName(f.AwayID),
@@ -364,7 +365,7 @@ func (e *Engine) injureOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand
 
 	e.comment(lm, at, "comment.injury", map[string]any{"player": p.Name, "club": e.clubName(club)})
 	params := map[string]any{"player": p.Name, "club": e.clubName(club)}
-	e.world.AddNews(worldgen.NewsItem{
+	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "injury", Key: injuryNewsKey(band), Params: params, ClubIDs: []int64{club},
 	})
 	e.emit(at, injuryNewsKey(band), cloneParams(params))
@@ -735,7 +736,10 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 		resultKey = FeedCupResult
 	}
 	e.emit(ev.Due, resultKey, params)
-	e.world.AddNews(worldgen.NewsItem{
+	if f, ok := e.fixtures[lm.FixtureID]; ok {
+		e.issueMatchAlerts(ev.Due, f, "OWN_FULL_TIME")
+	}
+	e.addNews(worldgen.NewsItem{
 		GameTime: ev.Due, Category: "match", Key: resultKey,
 		Params: params, ClubIDs: []int64{lm.HomeID, lm.AwayID},
 	})

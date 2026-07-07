@@ -81,7 +81,7 @@ func (e *Engine) handleDecisionRoll(ev *sim.Event) error {
 		if m.ClubID != 0 {
 			item.ClubIDs = []int64{m.ClubID}
 		}
-		e.world.AddNews(item)
+		e.addNews(item)
 	}
 
 	// Transfer window open → a signing may complete here. Explicit SIGN

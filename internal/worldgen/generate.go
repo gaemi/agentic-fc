@@ -129,15 +129,17 @@ func MintManagerToken(entropy io.Reader) (string, error) {
 // Queue-priming payloads (stage 9). Typed payloads arrive with the sim core
 // The executor contract is the string tag.
 const (
-	PayloadKickoff      = "kickoff"
-	PayloadMatchMoment  = "match_moment" // one sampled key moment
-	PayloadFinanceTick  = "finance_tick"
-	PayloadDecisionRoll = "decision_roll"
-	PayloadPlayerDrift  = "player_drift"
-	PayloadWindowClose  = "window_close"
-	PayloadWindowOpen   = "window_open"
-	PayloadSeasonEnd    = "season_rollover"
-	PayloadYouthIntake  = "youth_intake" // youth intake: a club's spring academy intake
+	PayloadKickoff       = "kickoff"
+	PayloadMatchMoment   = "match_moment" // one sampled key moment
+	PayloadFinanceTick   = "finance_tick"
+	PayloadDecisionRoll  = "decision_roll"
+	PayloadPlayerDrift   = "player_drift"
+	PayloadWindowClose   = "window_close"
+	PayloadWindowOpen    = "window_open"
+	PayloadSeasonEnd     = "season_rollover"
+	PayloadYouthIntake   = "youth_intake" // youth intake: a club's spring academy intake
+	PayloadFocusAlert    = "focus_alert"
+	PayloadCalendarAlert = "calendar_alert"
 )
 
 // primeQueue (stage 9) stages the first roll for every entity — staggered so
