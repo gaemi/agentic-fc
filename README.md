@@ -109,9 +109,9 @@ go build ./...
 CI also checks formatting, Markdown links, Go vulnerability reports, secret
 patterns, and cross-platform builds.
 
-Merges to `main` publish automated GitHub prereleases after CI succeeds. See
-[docs/13-operations.md](docs/13-operations.md) for the versioning and packaging
-policy.
+Merges to `main` create a replaceable draft GitHub Release after CI succeeds.
+See [docs/13-operations.md](docs/13-operations.md) for the versioning and
+packaging policy.
 
 ## Documentation
 

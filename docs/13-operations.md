@@ -149,30 +149,33 @@ test -z "$(gofmt -l .)"
 
 CI runs the same core checks.
 
-## Automated Prereleases
+## Automated Draft Releases
 
-The `prerelease` GitHub Actions workflow publishes packaged prereleases from
-`main`. It is intentionally downstream of CI:
+The `draft-release` GitHub Actions workflow builds packages from `main` and
+creates a draft GitHub Release. It does not publish the release; an approver
+reviews the draft and decides when to publish it. The workflow is intentionally
+downstream of CI:
 
 1. A commit lands on `main`.
 2. The `ci` workflow runs for that push.
-3. If CI succeeds, the `prerelease` workflow checks out the exact passing commit
-   SHA.
-4. The workflow reads the base version from the root `VERSION` file and computes
-   a SemVer prerelease tag: `v0.1.0-pre.<commit_count>.g<short_sha>`.
+3. If CI succeeds, the `draft-release` workflow checks out the exact passing
+   commit SHA.
+4. The workflow reads the release version from the root `VERSION` file. For
+   `VERSION=0.1.0`, the draft release tag is `v0.1.0`.
 5. It cross-compiles all shipped commands and creates a GitHub Release marked as
-   a prerelease.
+   a draft.
 
-The prerelease packages include:
+The draft release packages include:
 
 - `agenticfc`
 - `agenticfc-console`
 - `agenticfc-calibrate`
 - `README.md`, `CHANGELOG.md`, and `LICENSE`
 
-Each binary supports `--version`. Release builds inject the prerelease tag and
-commit SHA into that output so bug reports can be traced back to the published
-artifact.
+Each binary supports `--version`. Release builds inject the release tag and
+commit SHA into that output, using the build metadata form
+`v0.1.0+<commit_count>.g<short_sha>`, so bug reports can be traced back to the
+published artifact.
 
 Published target triples:
 
@@ -183,15 +186,27 @@ Published target triples:
 | Windows | `amd64`, `arm64` | `.zip` |
 
 The release also includes `checksums.txt` with SHA-256 hashes for every archive
-and release notes linking back to the CI run and prerelease build run.
+and release notes linking back to the CI run and draft build run.
 
-Prereleases are not stable API or save-format commitments. They are intended for
-early testing of the current `main` branch. A failed CI run does not publish a
-release, and pull requests do not publish releases. Re-running CI for the same
-commit is idempotent: the prerelease tag is derived from the commit, so the
-workflow re-uploads assets with `--clobber` when that release already exists
-instead of creating a duplicate prerelease.
+The workflow replaces only an automation-owned draft release for the current
+`VERSION`: if `v0.1.0` is still a draft with the workflow marker in its notes, a
+later successful `main` build updates that draft's target, notes, and packaged
+assets. It does not delete a published release. If `v0.1.0` has already been
+published, the workflow fails instead of replacing it. Bump `VERSION` before
+creating the next draft release.
 
-When bumping the prerelease base, update `VERSION`. CI runs `make
-version-check` to ensure the documented prerelease tag shape still matches the
-tracked base version.
+Draft replacement is monotonic. A re-run from an older CI attempt cannot rewind
+the draft to an older commit; the incoming commit must be the same as or a
+descendant of the draft's current target.
+
+The workflow marker is an HTML comment in the release notes. Removing that
+marker, or using the same tag for a manually created draft, makes the workflow
+fail rather than overwrite human-curated release notes or assets. Publish the
+draft, delete it, or bump `VERSION` before the next automated draft is allowed.
+
+A failed CI run does not create a draft release, and pull requests do not create
+releases. Publishing a draft release is a manual approval step in GitHub.
+
+When bumping the release version, update `VERSION`. CI runs `make version-check`
+to ensure the documented release tag and build metadata shape still match the
+tracked version.
