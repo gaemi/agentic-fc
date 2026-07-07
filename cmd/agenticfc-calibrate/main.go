@@ -8,13 +8,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gaemi/agentic-fc/internal/buildinfo"
 	"github.com/gaemi/agentic-fc/internal/engine"
 )
 
 func main() {
 	seedList := flag.String("seeds", "1,2,3,4,5", "comma-separated seeds")
 	days := flag.Int("days", 365, "simulation horizon in game days")
+	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println(buildinfo.String("agenticfc-calibrate"))
+		return
+	}
 
 	seeds, err := parseSeeds(*seedList)
 	if err != nil {

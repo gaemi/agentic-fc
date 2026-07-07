@@ -30,6 +30,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/gaemi/agentic-fc/internal/buildinfo"
 	"github.com/gaemi/agentic-fc/internal/consoleapi"
 	"github.com/gaemi/agentic-fc/internal/engine"
 	"github.com/gaemi/agentic-fc/internal/mcpserver"
@@ -53,7 +54,12 @@ func main() {
 	start := flag.Bool("start", false, "begin running immediately")
 	snapshotEvery := flag.Duration("snapshot-interval", time.Minute, "periodic snapshot cadence (real time)")
 	widgetMode := flag.String("widget-mode", "apps", "MCP UI mode: apps (official MCP Apps resource) | meta/content (compatibility fallbacks)")
+	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println(buildinfo.String("agenticfc"))
+		return
+	}
 	explicitFlags := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { explicitFlags[f.Name] = true })
 

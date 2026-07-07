@@ -34,6 +34,8 @@ jobs:
         run: make test
       - name: markdown links
         run: make lint-docs
+      - name: version docs
+        run: make version-check
       - name: actionlint
         run: make lint-actions
       - name: govulncheck

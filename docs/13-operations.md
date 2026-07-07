@@ -148,3 +148,70 @@ test -z "$(gofmt -l .)"
 ```
 
 CI runs the same core checks.
+
+## Automated Draft Releases
+
+The `draft-release` GitHub Actions workflow is a manual release-preparation
+workflow. It builds packages from a selected ref and creates a draft GitHub
+Release. It does not publish the release; an approver reviews the draft and
+decides when to publish it.
+
+Typical flow:
+
+1. Merge the release-preparation changes, including any `VERSION` bump.
+2. Let CI pass on the intended release ref, usually `main`.
+3. Manually run the `draft-release` workflow from GitHub Actions. The workflow
+   input `ref` selects the branch, tag, or commit SHA to package; the default is
+   `main`.
+4. The workflow runs `make verify` on that checkout.
+5. The workflow reads the release version from the root `VERSION` file. For
+   `VERSION=0.1.0`, the draft release tag is `v0.1.0`.
+6. It cross-compiles all shipped commands and creates a GitHub Release marked as
+   a draft.
+
+The draft release packages include:
+
+- `agenticfc`
+- `agenticfc-console`
+- `agenticfc-calibrate`
+- `README.md`, `CHANGELOG.md`, and `LICENSE`
+
+Each binary supports `--version`. Release builds inject the release tag and
+commit SHA into that output, using the build metadata form
+`v0.1.0+<commit_count>.g<short_sha>`, so bug reports can be traced back to the
+published artifact.
+
+Published target triples:
+
+| OS | Architectures | Archive |
+|----|---------------|---------|
+| Linux | `amd64`, `arm64` | `.tar.gz` |
+| macOS | `amd64`, `arm64` | `.tar.gz` |
+| Windows | `amd64`, `arm64` | `.zip` |
+
+The release also includes `checksums.txt` with SHA-256 hashes for every archive
+and release notes linking back to the draft build run.
+
+The workflow updates only an automation-owned draft release for the current
+`VERSION`: if `v0.1.0` is still a draft with the workflow marker in its notes, a
+later manual run can update that draft's target, notes, and packaged assets when
+`replace_existing_draft=true`. It does not delete a published release. If
+`v0.1.0` has already been published, the workflow fails instead of replacing it.
+Bump `VERSION` before creating the next draft release.
+
+Draft replacement is monotonic. A manual run for an older commit cannot rewind
+the draft; the incoming commit must be the same as or a descendant of the
+draft's current target.
+
+The workflow marker is an HTML comment in the release notes. Removing that
+marker, or using the same tag for a manually created draft, makes the workflow
+fail rather than overwrite human-curated release notes or assets. Publish the
+draft, delete it, or bump `VERSION` before the next workflow-owned draft is
+allowed.
+
+Pull requests do not create releases. Publishing a draft release is a manual
+approval step in GitHub.
+
+When bumping the release version, update `VERSION`. CI runs `make version-check`
+to ensure the documented release tag and build metadata shape still match the
+tracked version.

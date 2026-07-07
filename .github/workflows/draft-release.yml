@@ -1,0 +1,259 @@
+name: draft-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit SHA to package"
+        required: true
+        default: "main"
+      replace_existing_draft:
+        description: "Update an existing automation-owned draft for VERSION"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compute release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          version_base="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "${version_base}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must be MAJOR.MINOR.PATCH, got ${version_base}" >&2
+            exit 1
+          fi
+          short_sha="$(git rev-parse --short=12 "${sha}")"
+          commit_count="$(git rev-list --count "${sha}")"
+          commit_ts="$(git show -s --format=%ct "${sha}")"
+          version="v${version_base}"
+          build_version="${version}+${commit_count}.g${short_sha}"
+          {
+            echo "version=${version}"
+            echo "build_version=${build_version}"
+            echo "sha=${sha}"
+            echo "commit_ts=${commit_ts}"
+            echo "commit_count=${commit_count}"
+            echo "short_sha=${short_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Inspect existing release
+        id: existing
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          err_file="$(mktemp)"
+          if gh release view "${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json id,isDraft,body,targetCommitish \
+            > existing-release.json 2>"${err_file}"; then
+            is_draft="$(jq -r '.isDraft' existing-release.json)"
+            body="$(jq -r '.body // ""' existing-release.json)"
+            target="$(jq -r '.targetCommitish // ""' existing-release.json)"
+            {
+              echo "exists=true"
+              echo "target=${target}"
+            } >> "${GITHUB_OUTPUT}"
+            if [[ "${is_draft}" != "true" ]]; then
+              echo "Release ${VERSION} is already published. Bump VERSION before creating the next draft." >&2
+              exit 1
+            fi
+            if [[ -z "${target}" ]]; then
+              echo "Draft release ${VERSION} has no target commit. Refusing to replace it." >&2
+              exit 1
+            fi
+            if [[ "${{ github.event.inputs.replace_existing_draft }}" != "true" ]]; then
+              echo "Draft release ${VERSION} already exists and replace_existing_draft is false." >&2
+              exit 1
+            fi
+            if ! grep -Fq "<!-- agentic-fc:auto-draft -->" <<< "${body}"; then
+              echo "Draft release ${VERSION} was not created by this workflow or has been manually edited." >&2
+              echo "Publish it, delete it, or bump VERSION before creating the next workflow-owned draft." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "${target}" "${{ steps.version.outputs.sha }}"; then
+              echo "Incoming commit ${{ steps.version.outputs.sha }} is not newer than current draft target ${target}." >&2
+              exit 1
+            fi
+          else
+            if grep -Eiq "(not found|could not find|404)" "${err_file}"; then
+              {
+                echo "exists=false"
+                echo "target="
+              } >> "${GITHUB_OUTPUT}"
+            else
+              cat "${err_file}" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Verify release candidate
+        run: make verify
+
+      - name: Package binaries
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_VERSION: ${{ steps.version.outputs.build_version }}
+          TARGET_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p dist/assets dist/package
+
+          smoke_version() {
+            local bin="$1"
+            local out
+            out="$(timeout 10s "${bin}" --version)"
+            grep -Fq "${BUILD_VERSION}" <<< "${out}"
+            grep -Fq "${TARGET_SHA}" <<< "${out}"
+          }
+
+          ldflags="-s -w"
+          ldflags="${ldflags} -X github.com/gaemi/agentic-fc/internal/buildinfo.Version=${BUILD_VERSION}"
+          ldflags="${ldflags} -X github.com/gaemi/agentic-fc/internal/buildinfo.Commit=${TARGET_SHA}"
+
+          commands=(
+            "agenticfc:./cmd/agenticfc"
+            "agenticfc-console:./cmd/agenticfc-console"
+            "agenticfc-calibrate:./cmd/agenticfc-calibrate"
+          )
+          targets=(
+            "linux:amd64"
+            "linux:arm64"
+            "darwin:amd64"
+            "darwin:arm64"
+            "windows:amd64"
+            "windows:arm64"
+          )
+
+          for target in "${targets[@]}"; do
+            IFS=: read -r goos goarch <<< "${target}"
+            archive="agentic-fc_${VERSION}_${goos}_${goarch}"
+            pkgdir="dist/package/${archive}"
+            mkdir -p "${pkgdir}"
+
+            for command in "${commands[@]}"; do
+              IFS=: read -r name path <<< "${command}"
+              bin="${name}"
+              if [[ "${goos}" == "windows" ]]; then
+                bin="${bin}.exe"
+              fi
+              GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
+                go build -trimpath -ldflags="${ldflags}" -o "${pkgdir}/${bin}" "${path}"
+            done
+
+            cp README.md CHANGELOG.md LICENSE "${pkgdir}/"
+
+            if [[ "${goos}" == "linux" && "${goarch}" == "amd64" ]]; then
+              smoke_version "${pkgdir}/agenticfc"
+              smoke_version "${pkgdir}/agenticfc-console"
+              smoke_version "${pkgdir}/agenticfc-calibrate"
+            fi
+
+            if [[ "${goos}" == "windows" ]]; then
+              (cd dist/package && zip -qr "../assets/${archive}.zip" "${archive}")
+            else
+              tar -C dist/package -czf "dist/assets/${archive}.tar.gz" "${archive}"
+            fi
+          done
+
+          (cd dist/assets && sha256sum -- ./*.tar.gz ./*.zip > checksums.txt)
+          (cd dist/assets && sha256sum -c checksums.txt)
+
+      - name: Replace GitHub draft release
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_VERSION: ${{ steps.version.outputs.build_version }}
+          TARGET_SHA: ${{ steps.version.outputs.sha }}
+          COMMIT_TS: ${{ steps.version.outputs.commit_ts }}
+          COMMIT_COUNT: ${{ steps.version.outputs.commit_count }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+          REF_NAME: ${{ github.event.inputs.ref }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          cat > release-notes.md <<EOF
+          <!-- agentic-fc:auto-draft -->
+          Automated draft release for ${TARGET_SHA}.
+
+          This draft was generated by a manual draft-release workflow run.
+          Review the assets, then publish this draft release when it is approved.
+          It contains cross-platform packages for the daemon, spectator console,
+          and calibration CLI.
+
+          Source ref: ${REF_NAME}
+          Build version: ${BUILD_VERSION}
+          Commit count: ${COMMIT_COUNT}
+          Short SHA: ${SHORT_SHA}
+          Commit timestamp: ${COMMIT_TS}
+          Draft build run: ${RELEASE_RUN_URL}
+          EOF
+
+          if [[ "${{ steps.existing.outputs.exists }}" == "true" ]]; then
+            current="$(gh release view "${VERSION}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,body,targetCommitish)"
+            if [[ "$(jq -r '.isDraft' <<< "${current}")" != "true" ]]; then
+              echo "Release ${VERSION} was published while this workflow was running. Bump VERSION." >&2
+              exit 1
+            fi
+            current_target="$(jq -r '.targetCommitish // ""' <<< "${current}")"
+            if [[ -z "${current_target}" ]] || ! git merge-base --is-ancestor "${current_target}" "${TARGET_SHA}"; then
+              echo "Incoming commit ${TARGET_SHA} is not newer than current draft target ${current_target}." >&2
+              exit 1
+            fi
+            if ! jq -r '.body // ""' <<< "${current}" | grep -Fq "<!-- agentic-fc:auto-draft -->"; then
+              echo "Draft release ${VERSION} is no longer automation-owned. Refusing to replace it." >&2
+              exit 1
+            fi
+            gh release upload "${VERSION}" dist/assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+            gh release edit "${VERSION}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${TARGET_SHA}" \
+              --title "${VERSION}" \
+              --notes-file release-notes.md
+          elif git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists without a draft release. Delete it or bump VERSION." >&2
+            exit 1
+          else
+            gh release create "${VERSION}" dist/assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${TARGET_SHA}" \
+              --draft \
+              --title "${VERSION}" \
+              --notes-file release-notes.md
+          fi
