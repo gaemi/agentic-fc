@@ -30,6 +30,9 @@ go build ./...
   -preset compact \
   -profile fast \
   -seed 42 \
+  -world-name "Codex Fastest Run" \
+  -club-names "Agentic FC,Codex United" \
+  -manager-names-file ./manager-names.txt \
   -start
 ```
 
@@ -43,6 +46,10 @@ Useful daemon flags:
 | `-preset` | `classic` | New-world preset: `compact`, `classic`, `deep`, `sprawling`. |
 | `-seed` | `0` | New-world seed; `0` means random. |
 | `-world-name` | generated | Display name for a new world. |
+| `-club-names` | none | CSV list of custom club names, applied from the first generated club onward. |
+| `-club-names-file` | none | Line-separated custom club names appended after `-club-names`; blank lines and `#` comments ignored. |
+| `-manager-names` | none | CSV list of custom manager names, applied to club managers first, then unemployed managers. |
+| `-manager-names-file` | none | Line-separated custom manager names appended after `-manager-names`; blank lines and `#` comments ignored. |
 | `-profile` | `default` | Run profile: `default`, `fast`, `slow`, `custom`. |
 | `-speed` | profile value | Match-window speed override: `5`, `15`, `30`, or `60`. |
 | `-idle-accel` | profile value | In-season idle acceleration multiplier. |
@@ -56,7 +63,21 @@ Invalid `-widget-locale` values fail startup so deployments do not silently pin
 the UI to an unintended language.
 
 Generation flags apply only when no world exists in the data directory. A
-subsequent daemon run resumes the existing world.
+subsequent daemon run resumes the existing world and ignores these creation
+flags.
+
+Custom name rules:
+
+- A custom name list may provide only the first few names; the rest of the clubs
+  or managers keep generated names.
+- Empty names, duplicate names within the same list, names longer than 64
+  characters, names containing tabs or newlines, or lists longer than the
+  generated entity count fail world creation before anything is written.
+- Club short names are derived automatically from custom club names after common
+  football tokens such as `FC`, `AFC`, and `United` are ignored. The current
+  short-name derivation keeps only ASCII `A`-`Z` letters and pads short sources.
+- In name files, a `#` as the first non-whitespace character marks a comment
+  line rather than a literal name.
 
 ## Data Directory
 

@@ -179,6 +179,7 @@ Worlds are created and configured from the **Console in Admin Mode**. The full s
 | **World quality & Economy scale** | Presets scaling talent bands and all money in the world. |
 | **World seed** | For reproducible world generation. |
 | **Name culture mix** | Weights over the four cultures (default 40/25/25/10). |
+| **Display names** | Optional world display name plus club and manager display-name overrides. Club/manager lists may be partial; unspecified slots keep generated names. |
 | **Competitions (v1 decision)** | Fixed structure: the league pyramid + **one national cup** (all divisions, knockout) + **two transfer windows** (summer/winter). Continental competitions are a later expansion. |
 
 **World scope (v1 decision):** the generated pyramid **is the whole universe** — no foreign leagues, no international duty. Players enter via Youth Intake and leave via retirement only. The world-generation layer must keep an extension seam for external leagues later, but v1 simulates a closed ecosystem.

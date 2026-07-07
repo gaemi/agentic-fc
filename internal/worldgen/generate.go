@@ -53,6 +53,7 @@ func Generate(cfg WorldConfig, opts ...Option) (*Result, error) {
 	for _, opt := range opts {
 		opt(&o)
 	}
+	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil { // stage 0
 		return nil, fmt.Errorf("world config: %w", err)
 	}

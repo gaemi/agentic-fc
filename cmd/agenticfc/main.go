@@ -12,16 +12,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -47,6 +50,10 @@ func main() {
 	preset := flag.String("preset", "classic", "world preset: compact|classic|deep|sprawling (new worlds only)")
 	seed := flag.Uint64("seed", 0, "world seed, 0 = random (new worlds only)")
 	worldName := flag.String("world-name", "", "world display name, empty = generated (new worlds only)")
+	clubNames := flag.String("club-names", "", "comma-separated custom club names in generation order; appended before -club-names-file entries (new worlds only)")
+	clubNamesFile := flag.String("club-names-file", "", "line-separated custom club names appended after -club-names entries (new worlds only)")
+	managerNames := flag.String("manager-names", "", "comma-separated custom manager names in generation order; appended before -manager-names-file entries (new worlds only)")
+	managerNamesFile := flag.String("manager-names-file", "", "line-separated custom manager names appended after -manager-names entries (new worlds only)")
 	profile := flag.String("profile", "default", "run profile: default|fast|slow|custom (new worlds only)")
 	speed := flag.Int("speed", 0, "override match speed: 5|15|30|60 (new worlds only)")
 	idleAccel := flag.Int("idle-accel", 0, "override in-season idle acceleration: 2..64 × game speed (new worlds only)")
@@ -85,7 +92,8 @@ func main() {
 	fstore := &store.FileStore{Dir: *dataDir}
 	manifestPath := filepath.Join(*dataDir, "manifest.json")
 
-	loaded, err := loadOrGenerate(fstore, manifestPath, *preset, *seed, *worldName, runProfile, *start)
+	loaded, err := loadOrGenerate(fstore, manifestPath, *preset, *seed, *worldName,
+		*clubNames, *clubNamesFile, *managerNames, *managerNamesFile, runProfile, *start)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -369,7 +377,8 @@ func configRunProfile(cfg worldgen.WorldConfig) string {
 // FR-34a). The reverse order would let a crash silently regenerate a
 // different world — an FR-28a violation.
 func loadOrGenerate(fstore *store.FileStore, manifestPath, preset string,
-	seed uint64, worldName string, profile runProfile, start bool) (*loadResult, error) {
+	seed uint64, worldName, clubNames, clubNamesFile, managerNames, managerNamesFile string,
+	profile runProfile, start bool) (*loadResult, error) {
 
 	snap, err := fstore.LoadSnapshot()
 	if err != nil {
@@ -403,7 +412,12 @@ func loadOrGenerate(fstore *store.FileStore, manifestPath, preset string,
 	if err != nil {
 		return nil, err
 	}
+	overrides, err := parseNameOverrides(clubNames, clubNamesFile, managerNames, managerNamesFile)
+	if err != nil {
+		return nil, err
+	}
 	cfg.Name = worldName
+	cfg.NameOverrides = overrides
 	cfg.RunProfile = profile.Name
 	cfg.GameSpeed = profile.Speed
 	cfg.IdleAcceleration = profile.IdleAcceleration
@@ -428,6 +442,54 @@ func loadOrGenerate(fstore *store.FileStore, manifestPath, preset string,
 		queue: res.Queue,
 		creds: res.Manifest.Managers,
 	}, nil
+}
+
+func parseNameOverrides(clubInline, clubFile, managerInline, managerFile string) (worldgen.NameOverrides, error) {
+	clubNames, err := parseNameListFlag(clubInline, clubFile)
+	if err != nil {
+		return worldgen.NameOverrides{}, fmt.Errorf("club names: %w", err)
+	}
+	managerNames, err := parseNameListFlag(managerInline, managerFile)
+	if err != nil {
+		return worldgen.NameOverrides{}, fmt.Errorf("manager names: %w", err)
+	}
+	return worldgen.NameOverrides{ClubNames: clubNames, ManagerNames: managerNames}, nil
+}
+
+func parseNameListFlag(inline, file string) ([]string, error) {
+	var names []string
+	if strings.TrimSpace(inline) != "" {
+		r := csv.NewReader(strings.NewReader(inline))
+		r.TrimLeadingSpace = true
+		fields, err := r.Read()
+		if err != nil {
+			return nil, err
+		}
+		more, err := r.Read()
+		switch {
+		case err == nil:
+			return nil, fmt.Errorf("expected one CSV record, got extra record %q", strings.Join(more, ","))
+		case err == io.EOF:
+		default:
+			return nil, err
+		}
+		names = append(names, fields...)
+	}
+	file = strings.TrimSpace(file)
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			names = append(names, line)
+		}
+	}
+	return names, nil
 }
 
 func presetConfig(name string, seed uint64) (worldgen.WorldConfig, error) {

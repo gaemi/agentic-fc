@@ -26,6 +26,7 @@ Every gameplay value marked *(tunable)* or *(initial)* in the design docs, with 
 | Weak-foot Pool cost | GK 0.2 · DF 0.5 · MF 0.8 · FW 1.0 per point above 1 | `internal/attr` `WeakFootCosts` | [08 §4.5](08-attributes.md) |
 | Familiarity descriptor thresholds | 18/13/7 | `internal/attr` `FamiliarityDescriptor` | [08 §2](08-attributes.md) |
 | Default culture mix | 40/25/25/10 | `internal/worldgen` `DefaultCultureMix` | [09 §2.2](09-world-generation.md) |
+| Custom name override length | 64 characters | `internal/worldgen` `maxCustomNameLen` | [09 §2.2](09-world-generation.md) |
 | World quality pool bands | D1 band + per-div decrement table | `internal/worldgen` `qualityBands` | [09 §4.2](09-world-generation.md) |
 | Pro/rel slots | 15% of division, min 2 | `internal/worldgen` `promotionSlotShare` | [09 §3](09-world-generation.md) |
 | Unemployed manager pool | 10% of clubs, min 2 | `internal/worldgen` `unemployedPoolShare` | [09 §4.3](09-world-generation.md) |
