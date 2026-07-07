@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/gaemi/agentic-fc/internal/buildinfo"
 	"github.com/gaemi/agentic-fc/internal/narrative"
 	"github.com/gaemi/agentic-fc/internal/tui"
 )
@@ -18,7 +19,12 @@ func main() {
 	server := flag.String("server", "http://127.0.0.1:7420", "Console API base URL")
 	adminToken := flag.String("admin-token", "", "Admin Token (reserved for operator screens)")
 	localeFlag := flag.String("locale", "", "display locale override (en|ko); default: system language")
+	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println(buildinfo.String("agenticfc-console"))
+		return
+	}
 	_ = adminToken // reserved for Admin Mode
 
 	// Locale follows the system language with English fallback (FR-35c);

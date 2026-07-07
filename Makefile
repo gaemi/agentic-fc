@@ -1,4 +1,4 @@
-.PHONY: build test fmt fmt-check vet lint-docs lint-actions vulncheck secret-scan security verify ci run-daemon run-console
+.PHONY: build test fmt fmt-check vet lint-docs lint-actions version-check vulncheck secret-scan security verify ci run-daemon run-console
 
 build:
 	go build ./...
@@ -25,6 +25,11 @@ lint-actions:
 	go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 	"$$(go env GOPATH)/bin/actionlint"
 
+version-check:
+	version="$$(tr -d '[:space:]' < VERSION)"; \
+	printf '%s\n' "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; \
+	grep -Fq "v$${version}-pre.<commit_count>.g<short_sha>" docs/13-operations.md
+
 vulncheck:
 	go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 	"$$(go env GOPATH)/bin/govulncheck" ./...
@@ -35,7 +40,7 @@ secret-scan:
 
 security: vulncheck secret-scan
 
-verify: fmt-check vet build test lint-docs lint-actions
+verify: fmt-check vet build test lint-docs lint-actions version-check
 
 ci: verify security
 

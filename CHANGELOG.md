@@ -14,3 +14,4 @@ version has not been cut yet.
 - Living football world systems: league, cup, careers, board confidence,
   transfers, contracts, youth intake, injuries, substitutions, form, season
   archive, and calibration tooling.
+- Automated main-branch prerelease packaging for Linux, macOS, and Windows.

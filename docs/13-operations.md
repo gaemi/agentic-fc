@@ -148,3 +148,50 @@ test -z "$(gofmt -l .)"
 ```
 
 CI runs the same core checks.
+
+## Automated Prereleases
+
+The `prerelease` GitHub Actions workflow publishes packaged prereleases from
+`main`. It is intentionally downstream of CI:
+
+1. A commit lands on `main`.
+2. The `ci` workflow runs for that push.
+3. If CI succeeds, the `prerelease` workflow checks out the exact passing commit
+   SHA.
+4. The workflow reads the base version from the root `VERSION` file and computes
+   a SemVer prerelease tag: `v0.1.0-pre.<commit_count>.g<short_sha>`.
+5. It cross-compiles all shipped commands and creates a GitHub Release marked as
+   a prerelease.
+
+The prerelease packages include:
+
+- `agenticfc`
+- `agenticfc-console`
+- `agenticfc-calibrate`
+- `README.md`, `CHANGELOG.md`, and `LICENSE`
+
+Each binary supports `--version`. Release builds inject the prerelease tag and
+commit SHA into that output so bug reports can be traced back to the published
+artifact.
+
+Published target triples:
+
+| OS | Architectures | Archive |
+|----|---------------|---------|
+| Linux | `amd64`, `arm64` | `.tar.gz` |
+| macOS | `amd64`, `arm64` | `.tar.gz` |
+| Windows | `amd64`, `arm64` | `.zip` |
+
+The release also includes `checksums.txt` with SHA-256 hashes for every archive
+and release notes linking back to the CI run and prerelease build run.
+
+Prereleases are not stable API or save-format commitments. They are intended for
+early testing of the current `main` branch. A failed CI run does not publish a
+release, and pull requests do not publish releases. Re-running CI for the same
+commit is idempotent: the prerelease tag is derived from the commit, so the
+workflow re-uploads assets with `--clobber` when that release already exists
+instead of creating a duplicate prerelease.
+
+When bumping the prerelease base, update `VERSION`. CI runs `make
+version-check` to ensure the documented prerelease tag shape still matches the
+tracked base version.
