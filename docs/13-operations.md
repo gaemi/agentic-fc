@@ -50,6 +50,10 @@ Useful daemon flags:
 | `-start` | `false` | Start simulation immediately. |
 | `-snapshot-interval` | `1m` | Periodic snapshot cadence. |
 | `-widget-mode` | `apps` | MCP UI mode: `apps`, `meta`, or `content`. |
+| `-widget-locale` | `""` | MCP UI locale override: supported language tag resolving to `en` or `ko` (for example `ko-KR`); empty follows client/system language. |
+
+Invalid `-widget-locale` values fail startup so deployments do not silently pin
+the UI to an unintended language.
 
 Generation flags apply only when no world exists in the data directory. A
 subsequent daemon run resumes the existing world.

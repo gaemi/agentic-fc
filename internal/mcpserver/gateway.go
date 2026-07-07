@@ -500,17 +500,21 @@ func (g *Gateway) MCPServer() *mcp.Server {
 }
 
 // handle adapts a gateway tool method to an SDK handler: resolve auth,
-// delegate, and return the envelope as structured output.
+// delegate, and return the envelope as structured output. Tool results are
+// intentionally content-silent; StructuredContent is the canonical machine
+// envelope, while human-visible rendering belongs to the host/widget layer.
 func handle[In any](g *Gateway, fn func(managerID int64, sessionID string, in In) map[string]any) mcp.ToolHandlerFor[In, map[string]any] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, map[string]any, error) {
 		id, aerr := managerIDFromCtx(ctx)
 		if aerr != nil {
-			return nil, g.errEnvelope(nil, aerr), nil
+			env := g.errEnvelope(nil, aerr)
+			return quietResult(), env, nil
 		}
 		session := ""
 		if req != nil && req.Session != nil {
 			session = req.Session.ID()
 		}
-		return nil, fn(id, session, in), nil
+		env := fn(id, session, in)
+		return quietResult(), env, nil
 	}
 }

@@ -30,11 +30,11 @@ func (g *Gateway) registerTools(s *mcp.Server) {
 	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetTime),
 		Description: "Free. Game date-time, tempo, run profile, speed, next match window, season phase.",
-	}), handle(g, g.getTime))
+	}), handleUI(g, g.getTime, timeCard))
 	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetSettings),
 		Description: "Free. Non-seed world settings and pacing table: league shape, run profile, economy/quality, current speed, and real-time estimates.",
-	}), handle(g, g.getSettings))
+	}), handleUI(g, g.getSettings, settingsCard))
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        string(focus.GetFocus),
 		Description: "Free. Focus balance, cap, regen rate, and recent spend history.",

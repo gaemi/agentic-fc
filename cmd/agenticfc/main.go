@@ -54,6 +54,7 @@ func main() {
 	start := flag.Bool("start", false, "begin running immediately")
 	snapshotEvery := flag.Duration("snapshot-interval", time.Minute, "periodic snapshot cadence (real time)")
 	widgetMode := flag.String("widget-mode", "apps", "MCP UI mode: apps (official MCP Apps resource) | meta/content (compatibility fallbacks)")
+	widgetLocale := flag.String("widget-locale", "", "MCP UI locale override: supported language tag (en/ko, e.g. ko-KR); empty = client/system language")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *versionFlag {
@@ -110,7 +111,14 @@ func main() {
 	}
 	gateway := mcpserver.New(host, inputLog, narrative.Default, loaded.creds)
 	gateway.SetWidgetMode(*widgetMode) // human-facing UI cards; locale follows the system language (FR-35c)
-	host.gateway = gateway             // single owner of the cred set (admin listing + auth)
+	if *widgetLocale != "" {
+		loc, ok := narrative.TryResolveTag(*widgetLocale)
+		if !ok {
+			log.Fatalf("invalid -widget-locale %q: supported language tags resolve to en or ko", *widgetLocale)
+		}
+		gateway.Locale = loc
+	}
+	host.gateway = gateway // single owner of the cred set (admin listing + auth)
 	eng.SetAlertSink(gateway)
 
 	// The run intent (a resumed world returns to its persisted state; --start forces).
