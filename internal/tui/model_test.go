@@ -462,6 +462,26 @@ func TestViewTooSmall(t *testing.T) {
 	}
 }
 
+func TestUIFallbacksAvoidRawKeysForNewerClient(t *testing.T) {
+	m := liveModel(100, 24)
+	delete(m.UI, "ui.match.current_scene")
+	delete(m.UI, "ui.match.history")
+	delete(m.UI, "ui.match.goalflash")
+	delete(m.UI, "ui.match.scene.build")
+
+	v := m.liveMatchModal(100, 24)
+	for _, raw := range []string{"ui.match.current_scene", "ui.match.history", "ui.match.goalflash", "ui.match.scene.build"} {
+		if strings.Contains(v, raw) {
+			t.Fatalf("raw fallback key leaked %q:\n%s", raw, v)
+		}
+	}
+	for _, want := range []string{"Current scene", "Earlier flow", "Build-up"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("fallback label missing %q:\n%s", want, v)
+		}
+	}
+}
+
 func TestMediaAndClubScreens(t *testing.T) {
 	m := testModel()
 	if v := m.View(); !strings.Contains(v, "Alderton appoint Lee Carter") || !strings.Contains(v, "Recent press") {
@@ -515,6 +535,38 @@ func TestMascotNoticeOverlay(t *testing.T) {
 	}
 	if m.Notice != "" || strings.Contains(m.View(), "Fresh story") {
 		t.Fatal("notice should expire after its TTL")
+	}
+}
+
+func TestCompactNoticeUsesInlineStatus(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 80, 24
+	m.Notice = "새 기사: Stanton Albion이 중요한 소식을 전했습니다."
+	v := m.View()
+	if !strings.Contains(v, "새 기사: Stanton Albion") {
+		t.Fatalf("compact notice missing:\n%s", v)
+	}
+	if strings.Contains(v, "o-o") || strings.Contains(v, "/|\\") {
+		t.Fatalf("compact notice should not render mascot overlay:\n%s", v)
+	}
+	if lines := strings.Split(v, "\n"); len(lines) != 24 {
+		t.Fatalf("compact notice changed frame height = %d, want 24:\n%s", len(lines), v)
+	}
+
+	m.Err = "network stalled"
+	v = m.View()
+	if !strings.Contains(v, "network stalled") || !strings.Contains(v, "새 기사: Stanton Albion") {
+		t.Fatalf("compact status should include both error and notice:\n%s", v)
+	}
+	if strings.Contains(v, "o-o") || strings.Contains(v, "/|\\") {
+		t.Fatalf("compact error+notice should not render mascot overlay:\n%s", v)
+	}
+
+	m.Err = ""
+	m.Width = 100
+	v = m.View()
+	if !strings.Contains(v, "o-o") || !strings.Contains(v, "/|\\") {
+		t.Fatalf("width 100 should use overlay notice path:\n%s", v)
 	}
 }
 
@@ -994,22 +1046,40 @@ func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
 		{"A high delivery hangs perfectly; Rao rises above everyone.", "cross"},
 		{"Alpha swing it in early; Rao gets there, but the header loops over.", "cross"},
 		{"Rao attacks the far-post ball for Alpha, glancing it just beyond the upright.", "cross"},
+		{"The winger is crossing into the box with two runners waiting.", "cross"},
+		{"A header flashes wide after the delivery bends in.", "cross"},
 		{"The pull-back is on a plate and the shot flashes wide.", "cutback"},
 		{"A threaded pass splits the defence and Kim races clear.", "through"},
 		{"No one closes him down and he lets fly from distance.", "longshot"},
 		{"The crowd urges Rao to shoot, and the strike whistles over the bar.", "longshot"},
 		{"Alpha settle for the long shot, but Rao cannot keep it down.", "longshot"},
+		{"He hits a long-distance drive that bends late.", "longshot"},
+		{"The distance strike forces everyone to turn.", "longshot"},
 		{"The dead ball drops into danger from the set piece.", "setpiece"},
 		{"Alpha burst forward on the counter with grass ahead.", "counter"},
 		{"The ball ricochets around the six-yard box in chaos.", "scramble"},
 		{"The runner darts between two shirts and keeps going.", "dribble"},
+		{"Rao is denied — a fine stop keeps Alpha out.", "save"},
 		{"The goalkeeper reacts fast to palm it away.", "save"},
+		{"The keeper claws through bodies to save.", "save"},
+		{"Rao races clear on the break, but the goalkeeper reads it and makes the stop.", "save"},
+		{"The keeper throws it out to launch a counter.", "counter"},
+		{"They battle to save the point in midfield.", "build"},
+		{"일대일 상황, 골키퍼가 크게 버티며 막아냅니다.", "save"},
+		{"중거리 슛을 골키퍼가 손끝으로 밀어냅니다.", "save"},
+		{"세트피스가 위험했지만 골키퍼가 몸들 사이로 걷어냅니다.", "save"},
+		{"혼전 속에서 골키퍼가 어떻게든 막아냅니다.", "save"},
+		{"역습을 골키퍼가 읽고 나와 막아냅니다.", "save"},
+		{"구석이 열린 줄 알았지만 슛이 마지막 순간 걷어 올려집니다.", "save"},
 		{"A clean shot opens up on the edge of the area.", "chance"},
+		{"The goalkeeper watches it fizz wide.", "chance"},
 		{"Goal! Rao finds the net for Alpha.", "goal"},
 		{"ordinary midfield exchange", "build"},
+		{"The players keep their distance while the referee talks.", "build"},
 		{"Booked — the referee shows yellow.", "card"},
 		{"경고 — 수비수가 카드를 받습니다.", "card"},
 		{"정확한 컷백, 늦게 들어온 선수가 마무리합니다.", "cutback"},
+		{"수비수가 슛을 막아냅니다.", "chance"},
 		{"그 대신 공을 뒤로 돌립니다.", "build"},
 		{"막바지에 양 팀이 서로를 살핍니다.", "build"},
 		{"The ball runs across the six-yard box in chaos.", "scramble"},
@@ -1053,8 +1123,21 @@ func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
 	if history := recentHistory(nil, 3); len(history) != 0 {
 		t.Fatalf("empty history = %q, want none", history)
 	}
-	if history := recentHistory([]string{"current only"}, 3); len(history) != 1 || history[0] != "· -" {
-		t.Fatalf("single-line history = %q, want placeholder", history)
+	if history := recentHistory([]string{"current only"}, 3); len(history) != 0 {
+		t.Fatalf("single-line history = %q, want none", history)
+	}
+}
+
+func TestLiveMatchModalSkipsHistoryWhenOnlyCurrentLine(t *testing.T) {
+	m := liveModel(120, 32)
+	m.Matches[0].Commentary = []string{"The runner darts between two shirts and keeps going."}
+
+	got := m.liveMatchModal(100, 24)
+	if !strings.Contains(got, "Current scene") || !strings.Contains(got, "▶ The runner darts") {
+		t.Fatalf("live modal missing current scene:\n%s", got)
+	}
+	if strings.Contains(got, "Earlier flow") || strings.Contains(got, "· -") {
+		t.Fatalf("live modal rendered empty history:\n%s", got)
 	}
 }
 
