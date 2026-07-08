@@ -42,3 +42,13 @@ func TestOverlayZOrder(t *testing.T) {
 		t.Fatalf("overlay result = %q", got[0])
 	}
 }
+
+func TestOverlayKeepsWidthWhenReplacingHalfWideCell(t *testing.T) {
+	got := writeCells("abc중de", 3, "X")
+	if got != "abcX de" {
+		t.Fatalf("overlay wide boundary result = %q", got)
+	}
+	if w := lipgloss.Width(got); w != 7 {
+		t.Fatalf("overlay width = %d, want 7: %q", w, got)
+	}
+}

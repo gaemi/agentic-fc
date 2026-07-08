@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -57,30 +56,63 @@ func writeCells(base string, x int, text string) string {
 	if text == "" {
 		return base
 	}
-	cells := []rune(base)
-	for len(cells) < x {
-		cells = append(cells, ' ')
+	width := lipgloss.Width(base)
+	// Overlays are clipped to the fixed-width frame surface. Drawing fully past
+	// the right edge is intentionally a no-op rather than a line extension.
+	if x >= width {
+		return base
 	}
-	for i, r := range []rune(text) {
-		idx := x + i
-		if idx >= len(cells) {
+	if lipgloss.Width(text) > width-x {
+		text = truncate(text, width-x)
+	}
+	out := takeCells(base, x) + text + dropCells(base, x+lipgloss.Width(text))
+	return fitLine(out, width, alignLeft)
+}
+
+func takeCells(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		w := lipgloss.Width(string(r))
+		if w <= 0 {
+			continue
+		}
+		if used+w > n {
 			break
 		}
-		cells[idx] = r
+		b.WriteRune(r)
+		used += w
 	}
-	return string(cells)
+	if used < n {
+		b.WriteString(strings.Repeat(" ", n-used))
+	}
+	return b.String()
 }
 
 func dropCells(s string, n int) string {
-	for n > 0 && s != "" {
-		_, size := utf8.DecodeRuneInString(s)
-		if size == 0 {
-			return ""
-		}
-		s = s[size:]
-		n--
+	if n <= 0 {
+		return s
 	}
-	return s
+	used := 0
+	runes := []rune(s)
+	for i, r := range runes {
+		w := lipgloss.Width(string(r))
+		if w <= 0 {
+			continue
+		}
+		if used+w <= n {
+			used += w
+			continue
+		}
+		if used < n {
+			return strings.Repeat(" ", used+w-n) + string(runes[i+1:])
+		}
+		return string(runes[i:])
+	}
+	return ""
 }
 
 type appFrame struct {
@@ -136,6 +168,9 @@ func (f appFrame) Render() string {
 		lines = applyOverlays(lines, append(f.Overlays, textOverlay((f.Width-lipgloss.Width(label))/2, 0, 100, label)))
 	} else {
 		lines = applyOverlays(lines, f.Overlays)
+	}
+	for i := range lines {
+		lines[i] = fitLine(lines[i], f.Width, alignLeft)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -203,19 +238,19 @@ func renderTextTable(width int, columns []tableColumn, rows [][]string) string {
 		return ""
 	}
 	cols := resolveTableColumns(width, columns)
-	var b strings.Builder
-	b.WriteString(tableRule("┌", "┬", "┐", cols))
-	b.WriteString("\n")
-	b.WriteString(tableRow(cols, headers(cols), true))
-	b.WriteString("\n")
-	b.WriteString(tableRule("├", "┼", "┤", cols))
-	for _, row := range rows {
-		b.WriteString("\n")
-		b.WriteString(tableRow(cols, row, false))
+	lines := []string{
+		tableRule("┌", "┬", "┐", cols),
+		tableRow(cols, headers(cols), true),
+		tableRule("├", "┼", "┤", cols),
 	}
-	b.WriteString("\n")
-	b.WriteString(tableRule("└", "┴", "┘", cols))
-	return b.String()
+	for _, row := range rows {
+		lines = append(lines, tableRow(cols, row, false))
+	}
+	lines = append(lines, tableRule("└", "┴", "┘", cols))
+	for i := range lines {
+		lines[i] = fitLine(lines[i], width, alignLeft)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func resolveTableColumns(width int, columns []tableColumn) []tableColumn {
