@@ -30,7 +30,37 @@ const (
 	pollInterval           = 2 * time.Second
 	settingsUpdateDebounce = 250 * time.Millisecond
 	runtimeSettingCount    = 3
+	sceneFrameRows         = 9
 )
+
+const preformattedLinePrefix = "\x1f"
+
+type attrPair struct {
+	key string
+	val int
+}
+
+var playerProfileAttrOrder = []string{
+	"REFLEXES", "ONE_ON_ONES", "HANDLING", "AERIAL_REACH", "COMMAND_OF_AREA",
+	"COMMUNICATION", "DISTRIBUTION", "SWEEPING", "ECCENTRICITY", "PUNCHING",
+	"FINISHING", "LONG_SHOTS", "FIRST_TOUCH", "PASSING", "CROSSING",
+	"DRIBBLING", "TECHNIQUE", "HEADING", "TACKLING", "MARKING", "SET_PIECES",
+	"AGGRESSION", "VISION", "DECISIONS", "COMPOSURE", "CONCENTRATION",
+	"POSITIONING", "OFF_BALL", "ANTICIPATION", "WORK_RATE", "BRAVERY",
+	"TEAMWORK", "LEADERSHIP", "DETERMINATION", "FLAIR",
+	"ACCELERATION", "PACE", "AGILITY", "BALANCE", "STRENGTH", "STAMINA",
+	"NATURAL_FITNESS", "JUMPING_REACH",
+}
+
+var playerProfileAttrRank = buildPlayerProfileAttrRank()
+
+func buildPlayerProfileAttrRank() map[string]int {
+	rank := make(map[string]int, len(playerProfileAttrOrder))
+	for i, key := range playerProfileAttrOrder {
+		rank[key] = i
+	}
+	return rank
+}
 
 type matchModalKind string
 
@@ -984,6 +1014,12 @@ func (m Model) liveMatchModal(width, height int) string {
 	mv := m.Matches[idx]
 	title := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
 	compact := matchModalCompact(width, height)
+	contentRows := height - 2
+	current := ""
+	if len(mv.Commentary) > 0 {
+		current = mv.Commentary[len(mv.Commentary)-1]
+	}
+	sc := matchSceneFromLive(mv, current)
 	lines := []string{
 		fmt.Sprintf("%d' · %s · %d/%d · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close")),
 	}
@@ -1002,54 +1038,31 @@ func (m Model) liveMatchModal(width, height int) string {
 	if !compact {
 		lines = append(lines, m.diagnosticLines(mv.Stats.Diagnostics, width-4, 3)...)
 	}
-	contentRows := height - 2
-	commentRows := 6
-	if compact || contentRows < 12 {
-		commentRows = 4
-	}
-	if commentRows > contentRows/2 {
-		commentRows = contentRows / 2
-	}
-	ratingRows := contentRows - len(lines) - commentRows - 2
-	if !compact && len(mv.Ratings) > 0 && ratingRows > 1 {
-		lines = append(lines, "", m.ui("ui.match.ratings"))
-		written := 0
-		side := ""
-		for _, r := range balancedRatings(mv.Ratings, 2) {
-			if written >= ratingRows {
-				break
-			}
-			if r.Side != side {
-				side = r.Side
-				club := mv.Home
-				if r.Side == "AWAY" {
-					club = mv.Away
-				}
-				lines = append(lines, club)
-				written++
-				if written >= ratingRows {
-					break
-				}
-			}
-			lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
-			written++
+	if !compact && contentRows-len(lines) >= 14 {
+		if frame := sceneFrame(m, sc, width-2, sceneFrameRows); len(frame) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, frame...)
 		}
 	}
-	lines = append(lines, "", m.ui("ui.match.replay"))
-	commentRows = contentRows - len(lines)
-	if commentRows < 3 {
-		commentRows = 3
+	lines = append(lines, "")
+	lines = append(lines, m.ui("ui.match.current_scene"))
+	if current == "" {
+		lines = append(lines, "▶ "+sceneLabel(m, sc))
+	} else {
+		lines = append(lines, "▶ "+current)
 	}
-	commentary := mv.Commentary
-	if len(commentary) > commentRows {
-		commentary = commentary[len(commentary)-commentRows:]
-	}
-	for i, line := range commentary {
-		prefix := "  "
-		if i == len(commentary)-1 {
-			prefix = "▸ "
+	ratingsRoom := contentRows - len(lines) - 2
+	if !compact && len(mv.Ratings) > 0 && ratingsRoom >= 8 {
+		if summary := liveRatingsSummary(m, mv, width-4); summary != "" {
+			lines = append(lines, summary)
 		}
-		lines = append(lines, prefix+line)
+	}
+	historyRows := contentRows - len(lines) - 2
+	if historyRows > 0 {
+		lines = append(lines, "", m.ui("ui.match.history"))
+		for _, line := range recentHistory(mv.Commentary, historyRows) {
+			lines = append(lines, line)
+		}
 	}
 	return modalBox(width, height, title, lines)
 }
@@ -1132,18 +1145,35 @@ func (m Model) replayMatchModal(width, height int) string {
 			lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
 		}
 	}
-	lines = append(lines, "", m.ui("ui.match.replay"))
-	commentRows := height - len(lines) - 4
-	if commentRows < 3 {
-		commentRows = 3
-	}
 	start := m.ReplayOffset
 	if start < 0 || start >= len(md.Commentary) {
 		start = 0
 	}
-	for i := start; i < len(md.Commentary) && len(lines) < height-2; i++ {
-		lines = append(lines, "▸ "+md.Commentary[i])
-		if len(lines) >= height-2 || i-start+1 >= commentRows {
+	current := ""
+	if start < len(md.Commentary) {
+		current = md.Commentary[start]
+	}
+	sc := matchSceneFromLine(current, nil)
+	if !compact && height-2-len(lines) >= 14 {
+		if frame := sceneFrame(m, sc, width-2, sceneFrameRows); len(frame) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, frame...)
+		}
+	}
+	lines = append(lines, "", m.ui("ui.match.current_scene"))
+	if current == "" {
+		lines = append(lines, "▶ "+sceneLabel(m, sc))
+	} else {
+		lines = append(lines, "▶ "+current)
+	}
+	lines = append(lines, "", m.ui("ui.match.replay"))
+	commentRows := height - len(lines) - 2
+	if commentRows < 3 {
+		commentRows = 3
+	}
+	for i := start + 1; i < len(md.Commentary) && len(lines) < height-2; i++ {
+		lines = append(lines, "· "+md.Commentary[i])
+		if i-start >= commentRows {
 			break
 		}
 	}
@@ -1151,6 +1181,287 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, m.ui("ui.match.replay.archived"))
 	}
 	return modalBox(width, height, title, lines)
+}
+
+type matchScene struct {
+	kind  string
+	title string
+	art   []string
+}
+
+func newScene(kind, title string, art ...string) matchScene {
+	return matchScene{kind: kind, title: title, art: art}
+}
+
+func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
+	if line != "" {
+		// Prefer the prose shape over the marker so goal cut-backs, counters, and crosses
+		// can show the specific action frame instead of a generic goal frame.
+		return matchSceneFromLine(line, nil)
+	}
+	if len(mv.Markers) == 0 {
+		return matchSceneFromLine("", nil)
+	}
+	return matchSceneFromLine("", &mv.Markers[len(mv.Markers)-1])
+}
+
+func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
+	kind := ""
+	if marker != nil {
+		kind = strings.ToUpper(marker.Kind)
+	}
+	lower := strings.ToLower(line)
+	switch {
+	case kind == "GOAL" || containsAny(lower, "goal!", "scores", "scored", "finds the net", "it's in", "득점", "골!", "골망", "들어갔"):
+		return newScene("goal", "GOAL SCENE",
+			"      . . .        _____________________",
+			"   \\  |  /        |        NET          |",
+			"    \\ | /     o   |   *  *  *      o/  |",
+			"-----\\|/-----/|\\--|-------------- /|---|",
+			"     / \\     / \\  |              / \\   |",
+			"   striker follows through as the net snaps",
+			"________________________________________________")
+	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
+		return newScene("card", "REFEREE'S BOOK",
+			"        _______",
+			"   o   | CARD! |        o",
+			"  /|\\  |_______|       /|\\",
+			"  / \\      |           / \\",
+			"____ touchline freezes, one arm points __",
+			"       the book comes out of the pocket",
+			"________________________________________________")
+	case kind == "INJURY" || containsAny(lower, "injury", "treatment", "is down", "stays down", "goes down", "쓰러", "치료", "부상"):
+		return newScene("injury", "STOPPAGE",
+			"                 +",
+			"       o        /_\\       o",
+			"______/|\\______/___\\_____/|\\___________",
+			"      / \\       staff     / \\",
+			"   one player stays down, the crowd hushes",
+			"   benches rise and the referee waves them on",
+			"________________________________________________")
+	case kind == "SUB" || containsAny(lower, "replaces", "fresh legs", "make a change", "comes on", "교체", "투입"):
+		return newScene("sub", "TECHNICAL AREA",
+			"   o  --->             <---  o",
+			"  /|\\                       /|\\",
+			"  / \\       [ 62 ]          / \\",
+			"__________ touchline board raised ______",
+			"   tired legs off, fresh legs bouncing",
+			"   shape changes before the restart",
+			"________________________________________________")
+	case kind == "CHANCE":
+		return newScene("chance", "CHANCE",
+			"               shooting lane",
+			"      o      o      ---->       [ ]",
+			"     /|\\    /|\\                [   ]",
+			"_____/ \\____/ \\_________________[___]",
+			"        space opens for the strike",
+			"        the stadium draws breath",
+			"________________________________________________")
+	case containsAny(lower, "save", "keeper", "선방", "골키퍼", "막아", "막았", "막습니다", "막힙", "막히"):
+		return newScene("save", "KEEPER'S SAVE",
+			"        o  ---- shot ---->       \\o/",
+			"       /|\\                       |",
+			"_______/ \\______________________/ \\_____",
+			"        the keeper springs across the line",
+			"        gloves meet the ball at full stretch",
+			"        danger spills away from the six-yard box",
+			"________________________________________________")
+	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses"):
+		return newScene("cross", "WIDE DELIVERY",
+			"  touchline                         far post",
+			"     o  ~~~~~ high cross ~~~~~>        o",
+			"    /|\\                              /|\\",
+			"____/ \\______________________________/ \\____",
+			"        ball hangs, defenders turn and climb",
+			"        the box waits for first contact",
+			"________________________________________________")
+	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
+		return newScene("cutback", "CUT-BACK",
+			" goal line",
+			"     o",
+			"    /|\\__ sharp pass back __>   o",
+			"____/ \\_______________________ /|\\______",
+			"                               / \\",
+			"        the defence faces its own goal",
+			"________________________________________________")
+	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "스루패스", "수비 라인", "일대일"):
+		return newScene("through", "THROUGH BALL",
+			" midfield         gap              box",
+			"    o  ---- threaded pass ---->      o",
+			"   /|\\        |   |   |            /|\\",
+			"___/ \\________|___|___|____________/ \\__",
+			"        one runner bends beyond the line",
+			"        the pass arrives before the flag",
+			"________________________________________________")
+	case containsAny(lower, "from range", "from distance", "long-range", "long shot", "distance", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
+		return newScene("longshot", "FROM RANGE",
+			"                 o",
+			"                /|\\    ________>",
+			"____ centre ____/ \\____________________",
+			"                         [ keeper ]",
+			"        the strike rises through traffic",
+			"        everyone tracks the flight late",
+			"________________________________________________")
+	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
+		return newScene("setpiece", "SET PIECE",
+			"        wall          crowded area",
+			"     o o o o      o  o  o  o",
+			"       |          /|\\/|\\/|\\/|\\",
+			"  o ---+---->     / \\/ \\/ \\/ \\",
+			" /|\\  delivery bends into bodies",
+			" / \\  one touch will decide it",
+			"________________________________________________")
+	case containsAny(lower, "counter", "on the break", "burst forward", "races clear", "grass ahead", "역습", "공간", "빠른"):
+		return newScene("counter", "COUNTER ATTACK",
+			" own box                         open grass",
+			"   o ---->     o ---->      o ---->",
+			"  /|\\         /|\\          /|\\",
+			"__/ \\_________/ \\__________/ \\___________",
+			"        three shirts pour into the gap",
+			"        the retreating line is stretched",
+			"________________________________________________")
+	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "혼전", "튕", "흐른 공"):
+		return newScene("scramble", "SIX-YARD SCRAMBLE",
+			"     [ goalmouth ]",
+			"   o   o  *ball*  o",
+			"  /|\\ /|\\   .    /|\\",
+			"__/ \\/ \\___/ \\___/ \\____________",
+			"        bodies swing and nobody clears",
+			"        one touch could settle it",
+			"________________________________________________")
+	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
+		return newScene("dribble", "DRIBBLE",
+			"          defender      defender",
+			"             o             o",
+			"            /|\\   o       /|\\",
+			"____ ball _/ \\___/|\\______/ \\________",
+			"                / \\",
+			"        the runner slips through the lane",
+			"________________________________________________")
+	case containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "슛", "슈팅", "기회", "마무리"):
+		return newScene("chance", "CHANCE",
+			"               shooting lane",
+			"      o      o      ---->       [ ]",
+			"     /|\\    /|\\                [   ]",
+			"_____/ \\____/ \\_________________[___]",
+			"        space opens for the strike",
+			"        the stadium draws breath",
+			"________________________________________________")
+	default:
+		return newScene("build", "BUILD-UP",
+			"   o          o          o",
+			"  /|\\  pass  /|\\  pass  /|\\",
+			"__/ \\________/ \\________/ \\__________",
+			"        midfield lines shift and reset",
+			"        one pass may change the angle",
+			"        the next opening is being shaped",
+			"________________________________________________")
+	}
+}
+
+func sceneFrame(m Model, scene matchScene, width, height int) []string {
+	if width < 28 || height < 5 {
+		return nil
+	}
+	content := width - 2
+	if content < maxSceneArtWidth(scene) {
+		return nil
+	}
+	if artHeight := len(scene.art) + 2; artHeight < height {
+		height = artHeight
+	}
+	title := m.ui("ui.match.scene." + scene.kind)
+	if strings.HasPrefix(title, "ui.match.scene.") {
+		title = scene.title
+	}
+	out := []string{preformattedLinePrefix + "╭" + fitLine(" "+title+" ", content, alignCenter) + "╮"}
+	for i := 0; i < height-2; i++ {
+		line := ""
+		if i < len(scene.art) {
+			line = scene.art[i]
+		}
+		out = append(out, preformattedLinePrefix+"│"+fitLine(line, content, alignCenter)+"│")
+	}
+	out = append(out, preformattedLinePrefix+"╰"+strings.Repeat("─", content)+"╯")
+	return out
+}
+
+func sceneLabel(m Model, scene matchScene) string {
+	title := m.ui("ui.match.scene." + scene.kind)
+	if strings.HasPrefix(title, "ui.match.scene.") {
+		return scene.title
+	}
+	return title
+}
+
+func maxSceneArtWidth(scene matchScene) int {
+	max := 0
+	for _, line := range scene.art {
+		if w := lipgloss.Width(line); w > max {
+			max = w
+		}
+	}
+	return max
+}
+
+func recentHistory(commentary []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	if len(commentary) == 0 {
+		return nil
+	}
+	if len(commentary) == 1 {
+		return []string{"· -"}
+	}
+	history := commentary[:len(commentary)-1]
+	if len(history) > limit {
+		history = history[len(history)-limit:]
+	}
+	out := make([]string, 0, len(history))
+	for _, line := range history {
+		out = append(out, "· "+line)
+	}
+	return out
+}
+
+func liveRatingsSummary(m Model, mv LiveMatchView, width int) string {
+	ratings := balancedRatings(mv.Ratings, 1)
+	if len(ratings) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(ratings))
+	for _, r := range ratings {
+		club := mv.Home
+		if r.Side == "AWAY" {
+			club = mv.Away
+		}
+		parts = append(parts, fmt.Sprintf("%s %d.%d %s", club, r.RatingX10/10, r.RatingX10%10, r.Name))
+	}
+	return truncate(m.ui("ui.match.ratings")+": "+strings.Join(parts, " · "), width)
+}
+
+func containsAny(s string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(s, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsWordAny(s string, words ...string) bool {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z')
+	})
+	for _, word := range words {
+		for _, field := range fields {
+			if field == word {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
@@ -1179,6 +1490,13 @@ func modalBox(width, height int, title string, lines []string) string {
 	content := width - 2
 	out := []string{"╔" + fitLine(title, content, alignCenter) + "╗"}
 	for _, line := range lines {
+		if raw, ok := strings.CutPrefix(line, preformattedLinePrefix); ok {
+			out = append(out, "║"+fitLine(raw, content, alignLeft)+"║")
+			if len(out) >= height-1 {
+				break
+			}
+			continue
+		}
 		for _, wrapped := range wrapText(line, content) {
 			out = append(out, "║"+fitLine(wrapped, content, alignLeft)+"║")
 			if len(out) >= height-1 {
@@ -1800,20 +2118,7 @@ func weakFootLabel(p Player) string {
 }
 
 func (m Model) playerAttrLines(p Player, width int) []string {
-	type pair struct {
-		key string
-		val int
-	}
-	pairs := make([]pair, 0, len(p.Attributes))
-	for k, v := range p.Attributes {
-		pairs = append(pairs, pair{k, v})
-	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].val != pairs[j].val {
-			return pairs[i].val > pairs[j].val
-		}
-		return pairs[i].key < pairs[j].key
-	})
+	pairs := orderedPlayerProfileAttrs(p.Attributes)
 	out := make([]string, 0, len(pairs))
 	labelWidth := 0
 	for _, p := range pairs {
@@ -1850,6 +2155,28 @@ func (m Model) playerAttrLines(p Player, width int) []string {
 		out = append(out, truncate(line, width))
 	}
 	return out
+}
+
+func orderedPlayerProfileAttrs(attrs map[string]int) []attrPair {
+	pairs := make([]attrPair, 0, len(attrs))
+	for k, v := range attrs {
+		pairs = append(pairs, attrPair{k, v})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		ri, okI := playerProfileAttrRank[pairs[i].key]
+		rj, okJ := playerProfileAttrRank[pairs[j].key]
+		switch {
+		case okI && okJ:
+			return ri < rj
+		case okI:
+			return true
+		case okJ:
+			return false
+		default:
+			return pairs[i].key < pairs[j].key
+		}
+	})
+	return pairs
 }
 
 func (m Model) clickedSquadIndex(relY int) (int, bool) {
