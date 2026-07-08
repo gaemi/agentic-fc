@@ -33,6 +33,7 @@ const (
 	sceneFrameRows         = 9
 )
 
+// Sentinel for modalBox lines that are already width-aligned ASCII art.
 const preformattedLinePrefix = "\x1f"
 
 type attrPair struct {
@@ -867,7 +868,31 @@ func (m Model) ui(key string) string {
 	if s, ok := m.UI[key]; ok {
 		return s
 	}
+	if s, ok := uiFallbacks[key]; ok {
+		return s
+	}
 	return key
+}
+
+var uiFallbacks = map[string]string{
+	"ui.match.current_scene":  "Current scene",
+	"ui.match.history":        "Earlier flow",
+	"ui.match.goalflash":      "GOAL",
+	"ui.match.scene.goal":     "Goal scene",
+	"ui.match.scene.chance":   "Chance building",
+	"ui.match.scene.save":     "Keeper's save",
+	"ui.match.scene.cross":    "Wide delivery",
+	"ui.match.scene.cutback":  "Cut-back",
+	"ui.match.scene.through":  "Through ball",
+	"ui.match.scene.longshot": "From range",
+	"ui.match.scene.setpiece": "Set piece",
+	"ui.match.scene.counter":  "Counter attack",
+	"ui.match.scene.scramble": "Six-yard scramble",
+	"ui.match.scene.dribble":  "Dribble",
+	"ui.match.scene.card":     "Referee's book",
+	"ui.match.scene.injury":   "Stoppage",
+	"ui.match.scene.sub":      "Technical area",
+	"ui.match.scene.build":    "Build-up",
 }
 
 var (
@@ -890,8 +915,9 @@ func (m Model) View() string {
 		height = 30
 	}
 	bodyWidth := width - 2
+	noticeInline := m.Notice != "" && width < 100
 	errRows := 0
-	if m.Err != "" {
+	if m.Err != "" || noticeInline {
 		errRows = 1
 	}
 	bodyHeight := height - 6 - errRows
@@ -922,11 +948,23 @@ func (m Model) View() string {
 		helpKey = "ui.help.keys_admin"
 	}
 	footer := styleDim.Render(truncate(m.ui(helpKey), bodyWidth))
-	err := ""
+	status := ""
 	if m.Err != "" {
-		err = styleDim.Render(truncate(m.ui("ui.error.prefix")+" "+m.Err, bodyWidth))
+		status = m.ui("ui.error.prefix") + " " + m.Err
+		if noticeInline {
+			status += " · " + m.Notice
+		}
+	} else if noticeInline {
+		status = m.Notice
 	}
-	overlays := m.noticeOverlays(width, height)
+	statusLine := ""
+	if status != "" {
+		statusLine = styleDim.Render(truncate(status, bodyWidth))
+	}
+	var overlays []Overlay
+	if !noticeInline {
+		overlays = m.noticeOverlays(width, height)
+	}
 	if ov, ok := m.matchModalOverlay(width, height); ok {
 		overlays = append(overlays, ov)
 	}
@@ -937,7 +975,7 @@ func (m Model) View() string {
 		Header:   header,
 		Tabs:     m.tabBar(bodyWidth),
 		Body:     body,
-		Error:    err,
+		Error:    statusLine,
 		Footer:   footer,
 		Overlays: overlays,
 	}.Render()
@@ -1059,9 +1097,10 @@ func (m Model) liveMatchModal(width, height int) string {
 	}
 	historyRows := contentRows - len(lines) - 2
 	if historyRows > 0 {
-		lines = append(lines, "", m.ui("ui.match.history"))
-		for _, line := range recentHistory(mv.Commentary, historyRows) {
-			lines = append(lines, line)
+		history := recentHistory(mv.Commentary, historyRows)
+		if len(history) > 0 {
+			lines = append(lines, "", m.ui("ui.match.history"))
+			lines = append(lines, history...)
 		}
 	}
 	return modalBox(width, height, title, lines)
@@ -1257,7 +1296,13 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 			"        space opens for the strike",
 			"        the stadium draws breath",
 			"________________________________________________")
-	case containsAny(lower, "save", "keeper", "선방", "골키퍼", "막아", "막았", "막습니다", "막힙", "막히"):
+	case containsAny(lower,
+		"fine stop", "strong hand", "gets down sharply", "clawed out", "palm it away",
+		"tip it away", "makes the stop", "strong save", "somehow blocks", "keeper stays big",
+		"throws up a strong hand", "goalkeeper reacts", "goalkeeper gets down", "keeper claws through bodies to save",
+		"선방", "강한 손", "쳐냅니다", "쳐냅", "낮게 몸을 던져", "빠르게 반응해", "걷어 올려집니다",
+		"골키퍼가 크게 버티며", "손끝으로 밀어냅니다", "몸들 사이로 걷어냅니다",
+		"골키퍼가 어떻게든", "골키퍼가 읽고 나와"):
 		return newScene("save", "KEEPER'S SAVE",
 			"        o  ---- shot ---->       \\o/",
 			"       /|\\                       |",
@@ -1266,7 +1311,7 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 			"        gloves meet the ball at full stretch",
 			"        danger spills away from the six-yard box",
 			"________________________________________________")
-	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses"):
+	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
 		return newScene("cross", "WIDE DELIVERY",
 			"  touchline                         far post",
 			"     o  ~~~~~ high cross ~~~~~>        o",
@@ -1293,7 +1338,7 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 			"        one runner bends beyond the line",
 			"        the pass arrives before the flag",
 			"________________________________________________")
-	case containsAny(lower, "from range", "from distance", "long-range", "long shot", "distance", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
+	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
 		return newScene("longshot", "FROM RANGE",
 			"                 o",
 			"                /|\\    ________>",
@@ -1338,7 +1383,7 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 			"                / \\",
 			"        the runner slips through the lane",
 			"________________________________________________")
-	case containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "슛", "슈팅", "기회", "마무리"):
+	case containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "fizz wide", "skids wide", "dragged wide", "슛", "슈팅", "기회", "마무리"):
 		return newScene("chance", "CHANCE",
 			"               shooting lane",
 			"      o      o      ---->       [ ]",
@@ -1412,7 +1457,7 @@ func recentHistory(commentary []string, limit int) []string {
 		return nil
 	}
 	if len(commentary) == 1 {
-		return []string{"· -"}
+		return nil
 	}
 	history := commentary[:len(commentary)-1]
 	if len(history) > limit {
