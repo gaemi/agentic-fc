@@ -380,13 +380,16 @@ func TestKoreanClubViewKeepsWidthsAndAttributeColumns(t *testing.T) {
 	for _, size := range []struct {
 		width  int
 		height int
-	}{{92, 36}, {172, 36}} {
+	}{{80, 24}, {92, 36}, {172, 36}} {
 		m.Width, m.Height = size.width, size.height
 		v := m.View()
 		for i, line := range strings.Split(v, "\n") {
 			if got := lipgloss.Width(line); got != size.width {
 				t.Fatalf("club view line %d width = %d, want %d: %q\n%s", i, got, size.width, line, v)
 			}
+		}
+		if size.width == 80 && !strings.Contains(v, "선수 파일") {
+			t.Fatalf("compact club view should reserve selected player detail:\n%s", v)
 		}
 	}
 
@@ -635,6 +638,46 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 	}
 }
 
+func TestCompactReplayModalPrioritizesCommentary(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 80, 24
+	m.Tab = tabFixtures
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalReplay {
+		t.Fatalf("enter did not open replay modal: %q", m.MatchModal)
+	}
+	v := m.View()
+	for _, want := range []string{"A 2-1 B", "Scorers", "Rae Quinn", "Replay log", "lashes it home"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("compact replay missing %q:\n%s", want, v)
+		}
+	}
+	for _, hidden := range []string{"Cards", "Lee Ward", "Ratings", "7.8 Rae Quinn"} {
+		if strings.Contains(v, hidden) {
+			t.Fatalf("compact replay rendered secondary %q:\n%s", hidden, v)
+		}
+	}
+}
+
+func TestReplayModalAtEightyCellBoxPrioritizesCommentary(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 82, 30
+	m.Tab = tabFixtures
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalReplay {
+		t.Fatalf("enter did not open replay modal: %q", m.MatchModal)
+	}
+	v := m.View()
+	if !strings.Contains(v, "Replay log") || !strings.Contains(v, "lashes it home") {
+		t.Fatalf("80-cell replay box should still show commentary:\n%s", v)
+	}
+	if strings.Contains(v, "Ratings") || strings.Contains(v, "7.8 Rae Quinn") {
+		t.Fatalf("80-cell replay box should omit secondary ratings:\n%s", v)
+	}
+}
+
 func TestFixtureResultsEnterAndSpaceOpenLiveModal(t *testing.T) {
 	m := testModel()
 	m.Tab = tabFixtures
@@ -721,15 +764,15 @@ func TestMatchModalOverlayUsesNearlyFullScreen(t *testing.T) {
 	if !ok {
 		t.Fatal("modal overlay missing")
 	}
-	if overlay.X != 2 {
-		t.Fatalf("overlay x = %d, want 2", overlay.X)
+	if overlay.X != 1 {
+		t.Fatalf("overlay x = %d, want 1", overlay.X)
 	}
 	if len(overlay.Lines) != 38 {
 		t.Fatalf("overlay height = %d, want 38", len(overlay.Lines))
 	}
 	for i, line := range overlay.Lines {
-		if got := lipgloss.Width(line); got != 156 {
-			t.Fatalf("overlay line %d width = %d, want 156: %q", i, got, line)
+		if got := lipgloss.Width(line); got != 158 {
+			t.Fatalf("overlay line %d width = %d, want 158: %q", i, got, line)
 		}
 	}
 }

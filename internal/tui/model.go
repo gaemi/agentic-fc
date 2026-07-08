@@ -942,10 +942,7 @@ func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
 }
 
 func matchModalSize(width, height int) (int, int) {
-	xMargin := 2
-	if width < 72 {
-		xMargin = 1
-	}
+	xMargin := 1
 	yMargin := 3
 	if height < 24 {
 		yMargin = 2
@@ -959,7 +956,7 @@ func matchModalSize(width, height int) (int, int) {
 }
 
 func matchModalCompact(boxWidth, boxHeight int) bool {
-	return boxWidth < 76 || boxHeight < 18
+	return boxWidth <= 80 || boxHeight <= 18
 }
 
 func (m Model) waitingMatchModal(width, height int) string {
@@ -1625,7 +1622,7 @@ func (m Model) clubDetail(width, height int) string {
 	}
 	lines := []string{}
 	badge := clubBadge(c.Name)
-	if width >= 80 {
+	if width >= 80 && height >= 24 {
 		info := []string{
 			styleHeader.Render(truncate(c.Name, width-24)),
 			styleDim.Render(truncate(fmt.Sprintf("%s · %s", c.Region, c.Stadium), width-24)),
@@ -1642,7 +1639,9 @@ func (m Model) clubDetail(width, height int) string {
 		), "\n")...)
 	} else {
 		lines = append(lines, styleHeader.Render(truncate(c.Name, width)))
-		lines = append(lines, strings.Split(badge, "\n")...)
+		if height >= 24 {
+			lines = append(lines, strings.Split(badge, "\n")...)
+		}
 		lines = append(lines, styleDim.Render(truncate(fmt.Sprintf("%s · %s · %s", c.Region, c.Stadium, c.Manager), width)))
 	}
 	if c.Caretaker {
@@ -1684,9 +1683,26 @@ func (m Model) clubDetail(width, height int) string {
 			lipgloss.NewStyle().Width(detailWidth).Render(player),
 		), "\n")...)
 	} else {
-		lines = append(lines, styleDim.Render(truncate(m.ui("ui.club.squad"), width)))
-		lines = append(lines, m.squadTable(width, tableHeight-1, c.Squad, m.PlayerIdx))
-		lines = append(lines, "", m.playerDetail(width, 8, c.Squad))
+		remaining := height - len(lines)
+		playerRows := 0
+		if height >= 18 {
+			playerRows = clampInt(height/3, 5, 8)
+		}
+		squadBlockRows := remaining
+		if playerRows > 0 {
+			squadBlockRows = remaining - playerRows - 1
+		}
+		if squadBlockRows < 5 {
+			playerRows = 0
+			squadBlockRows = remaining
+		}
+		if squadBlockRows > 1 {
+			lines = append(lines, styleDim.Render(truncate(m.ui("ui.club.squad"), width)))
+			lines = append(lines, m.squadTable(width, squadBlockRows-1, c.Squad, m.PlayerIdx))
+		}
+		if playerRows > 0 {
+			lines = append(lines, "", m.playerDetail(width, playerRows, c.Squad))
+		}
 	}
 	if len(lines) > height {
 		lines = lines[:height]

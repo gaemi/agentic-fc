@@ -287,8 +287,29 @@ func resolveTableColumns(width int, columns []tableColumn) []tableColumn {
 	if flexCount == 0 {
 		return cols
 	}
+	if remaining < flexCount {
+		remaining = flexCount
+	}
 	if remaining < flexMin {
-		remaining = flexMin
+		flexWidths := make([]int, len(cols))
+		for i := range cols {
+			if cols[i].Flex {
+				flexWidths[i] = cols[i].MinWidth
+			}
+		}
+		for totalFlexWidth(flexWidths) > remaining {
+			idx := widestFlexColumn(flexWidths)
+			if idx < 0 {
+				break
+			}
+			flexWidths[idx]--
+		}
+		for i := range cols {
+			if cols[i].Flex {
+				cols[i].Width = flexWidths[i]
+			}
+		}
+		return cols
 	}
 	extra := remaining - flexMin
 	share := extra / flexCount
@@ -304,6 +325,26 @@ func resolveTableColumns(width int, columns []tableColumn) []tableColumn {
 		}
 	}
 	return cols
+}
+
+func totalFlexWidth(widths []int) int {
+	total := 0
+	for _, w := range widths {
+		total += w
+	}
+	return total
+}
+
+func widestFlexColumn(widths []int) int {
+	idx := -1
+	width := 0
+	for i, w := range widths {
+		if w > 1 && w > width {
+			idx = i
+			width = w
+		}
+	}
+	return idx
 }
 
 func headers(cols []tableColumn) []string {
