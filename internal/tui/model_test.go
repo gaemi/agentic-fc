@@ -410,6 +410,41 @@ func TestKoreanClubViewKeepsWidthsAndAttributeColumns(t *testing.T) {
 	}
 }
 
+func TestPlayerAttributeProfileUsesFixedOrder(t *testing.T) {
+	m := testModel()
+	m.UI["attr.FINISHING"] = "Finishing"
+	m.UI["attr.PASSING"] = "Passing"
+	m.UI["attr.VISION"] = "Vision"
+	m.UI["attr.ACCELERATION"] = "Acceleration"
+	m.UI["attr.PACE"] = "Pace"
+	p := Player{
+		Attributes: map[string]int{
+			"PACE":         20,
+			"ACCELERATION": 19,
+			"VISION":       9,
+			"PASSING":      10,
+			"FINISHING":    1,
+		},
+	}
+
+	lines := plain(strings.Join(m.playerAttrLines(p, 72), "\n"))
+	positions := []int{
+		strings.Index(lines, "Finishing"),
+		strings.Index(lines, "Passing"),
+		strings.Index(lines, "Vision"),
+		strings.Index(lines, "Acceleration"),
+		strings.Index(lines, "Pace"),
+	}
+	for i, pos := range positions {
+		if pos < 0 {
+			t.Fatalf("missing attribute %d in:\n%s", i, lines)
+		}
+		if i > 0 && pos <= positions[i-1] {
+			t.Fatalf("attributes are not in fixed profile order: %v\n%s", positions, lines)
+		}
+	}
+}
+
 func cellIndexAny(s, chars string) int {
 	idx := strings.IndexAny(s, chars)
 	if idx < 0 {
@@ -858,6 +893,23 @@ func liveModel(width, height int) Model {
 		"ui.match.ended":             "Match ended",
 		"ui.match.waiting_result":    "Waiting result",
 		"ui.match.goalflash":         "GOAL",
+		"ui.match.current_scene":     "Current scene",
+		"ui.match.history":           "Earlier flow",
+		"ui.match.scene.goal":        "Goal scene",
+		"ui.match.scene.chance":      "Chance building",
+		"ui.match.scene.save":        "Keeper's save",
+		"ui.match.scene.cross":       "Wide delivery",
+		"ui.match.scene.cutback":     "Cut-back",
+		"ui.match.scene.through":     "Through ball",
+		"ui.match.scene.longshot":    "From range",
+		"ui.match.scene.setpiece":    "Set piece",
+		"ui.match.scene.counter":     "Counter attack",
+		"ui.match.scene.scramble":    "Six-yard scramble",
+		"ui.match.scene.dribble":     "Dribble",
+		"ui.match.scene.card":        "Referee's book",
+		"ui.match.scene.injury":      "Stoppage",
+		"ui.match.scene.sub":         "Technical area",
+		"ui.match.scene.build":       "Build-up",
 		"ui.match.modal.close":       "Esc close",
 		"ui.match.modal.replay_help": "PgUp/PgDn",
 		"ui.match.replay":            "COMMENTARY",
@@ -907,7 +959,7 @@ func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
 		{Side: "AWAY", Name: "Villain", RatingX10: 61},
 	}
 	v := m.View()
-	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "RATINGS", "Alpha", "Beta", "7.6 Hero", "line two"} {
+	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "Build-up", "Current scene", "Earlier flow", "line two"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("live modal missing %q:\n%s", want, v)
 		}
@@ -917,6 +969,149 @@ func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
 	}
 	if strings.Contains(v, "+--") || strings.Contains(v, "legend") {
 		t.Fatalf("live modal should not render the old pitch:\n%s", v)
+	}
+	foundFrame := false
+	for _, line := range strings.Split(v, "\n") {
+		if !strings.Contains(line, "Build-up") {
+			continue
+		}
+		foundFrame = true
+		corner := strings.LastIndex(line, "╮")
+		if corner < 0 || lipgloss.Width(line[:corner]) < 60 {
+			t.Fatalf("scene frame title row collapsed:\n%s", line)
+		}
+	}
+	if !foundFrame {
+		t.Fatalf("live modal did not render a scene frame:\n%s", v)
+	}
+}
+
+func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
+	cases := []struct {
+		line string
+		want string
+	}{
+		{"A high delivery hangs perfectly; Rao rises above everyone.", "cross"},
+		{"Alpha swing it in early; Rao gets there, but the header loops over.", "cross"},
+		{"Rao attacks the far-post ball for Alpha, glancing it just beyond the upright.", "cross"},
+		{"The pull-back is on a plate and the shot flashes wide.", "cutback"},
+		{"A threaded pass splits the defence and Kim races clear.", "through"},
+		{"No one closes him down and he lets fly from distance.", "longshot"},
+		{"The crowd urges Rao to shoot, and the strike whistles over the bar.", "longshot"},
+		{"Alpha settle for the long shot, but Rao cannot keep it down.", "longshot"},
+		{"The dead ball drops into danger from the set piece.", "setpiece"},
+		{"Alpha burst forward on the counter with grass ahead.", "counter"},
+		{"The ball ricochets around the six-yard box in chaos.", "scramble"},
+		{"The runner darts between two shirts and keeps going.", "dribble"},
+		{"The goalkeeper reacts fast to palm it away.", "save"},
+		{"A clean shot opens up on the edge of the area.", "chance"},
+		{"Goal! Rao finds the net for Alpha.", "goal"},
+		{"ordinary midfield exchange", "build"},
+		{"Booked — the referee shows yellow.", "card"},
+		{"경고 — 수비수가 카드를 받습니다.", "card"},
+		{"정확한 컷백, 늦게 들어온 선수가 마무리합니다.", "cutback"},
+		{"그 대신 공을 뒤로 돌립니다.", "build"},
+		{"막바지에 양 팀이 서로를 살핍니다.", "build"},
+		{"The ball runs across the six-yard box in chaos.", "scramble"},
+		{"The staff arrange the wall before the restart.", "build"},
+		{"The manager hangs a new header in the staff room.", "build"},
+	}
+	for _, tc := range cases {
+		if got := matchSceneFromLine(tc.line, nil).kind; got != tc.want {
+			t.Fatalf("scene for %q = %q, want %q", tc.line, got, tc.want)
+		}
+	}
+	if got := matchSceneFromLine("ordinary midfield exchange", &LiveMarker{Kind: "GOAL"}).kind; got != "goal" {
+		t.Fatalf("goal marker scene = %q, want goal", got)
+	}
+	if got := matchSceneFromLive(LiveMatchView{
+		Markers: []LiveMarker{{Minute: 20, Kind: "CHANCE", Side: "HOME"}},
+	}, "").kind; got != "chance" {
+		t.Fatalf("bare chance marker scene = %q, want chance", got)
+	}
+	if got := matchSceneFromLive(LiveMatchView{
+		Markers: []LiveMarker{{Minute: 20, Kind: "CARD", Side: "HOME"}},
+	}, "").kind; got != "card" {
+		t.Fatalf("bare card marker scene = %q, want card", got)
+	}
+	if got := matchSceneFromLive(LiveMatchView{
+		Commentary: []string{"Goal! Rao finds the net.", "The goalkeeper reacts fast to palm it away."},
+		Markers:    []LiveMarker{{Minute: 70, Kind: "GOAL", Side: "HOME"}},
+	}, "The goalkeeper reacts fast to palm it away.").kind; got != "save" {
+		t.Fatalf("stale goal marker should not override latest line: got %q, want save", got)
+	}
+	m := liveModel(120, 32)
+	if frame := sceneFrame(m, matchSceneFromLine("ordinary midfield exchange", nil), 26, 9); len(frame) != 0 {
+		t.Fatalf("narrow scene frame should be omitted: %q", frame)
+	}
+	if frame := sceneFrame(m, matchSceneFromLine("Goal! Rao finds the net for Alpha.", nil), 40, 9); len(frame) != 0 {
+		t.Fatalf("too-narrow art frame should be omitted instead of truncated:\n%s", strings.Join(frame, "\n"))
+	}
+	if frame := sceneFrame(m, matchSceneFromLine("Goal! Rao finds the net for Alpha.", nil), 80, 9); len(frame) != 9 {
+		t.Fatalf("goal scene frame height = %d, want 9:\n%s", len(frame), strings.Join(frame, "\n"))
+	}
+	if history := recentHistory(nil, 3); len(history) != 0 {
+		t.Fatalf("empty history = %q, want none", history)
+	}
+	if history := recentHistory([]string{"current only"}, 3); len(history) != 1 || history[0] != "· -" {
+		t.Fatalf("single-line history = %q, want placeholder", history)
+	}
+}
+
+func TestLiveMatchModalFallbackUsesLocalizedSceneLabel(t *testing.T) {
+	m := liveModel(120, 32)
+	m.UI["ui.match.scene.card"] = "심판 수첩"
+	m.Matches[0].Commentary = nil
+	m.Matches[0].Markers = []LiveMarker{{Minute: 40, Kind: "CARD", Side: "AWAY"}}
+
+	got := m.liveMatchModal(100, 24)
+	if !strings.Contains(got, "▶ 심판 수첩") {
+		t.Fatalf("live modal fallback did not use localized scene label:\n%s", got)
+	}
+	if strings.Contains(got, "▶ REFEREE'S BOOK") {
+		t.Fatalf("live modal fallback leaked internal scene title:\n%s", got)
+	}
+}
+
+func TestReplayMatchModalShowsCurrentSceneFallback(t *testing.T) {
+	m := liveModel(120, 32)
+	m.MatchModal = modalReplay
+	m.MatchModalID = 9
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Status: "RESULT", Competition: "LEAGUE", KickoffText: "Now",
+		Home: "Alpha", Away: "Beta", HomeGoals: 0, AwayGoals: 0,
+	}
+	got := m.replayMatchModal(100, 24)
+	for _, want := range []string{"Current scene", "▶ Build-up"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("replay modal missing fallback %q:\n%s", want, got)
+		}
+	}
+	m.MatchDetail.Commentary = []string{"A clean shot opens up on the edge of the area.", "The ball is cleared."}
+	got = m.replayMatchModal(100, 24)
+	for _, want := range []string{"Current scene", "▶ A clean shot opens up", "COMMENTARY", "· The ball is cleared."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("replay modal missing non-empty scene %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestLiveMatchModalDoesNotOverflowTightFrame(t *testing.T) {
+	m := liveModel(90, 20)
+	m.Matches[0].Ratings = []LiveRating{{Side: "HOME", Name: "Hero", RatingX10: 78}}
+	m.Matches[0].Commentary = []string{
+		"Goal! Rao finds the net.",
+		"A high delivery hangs perfectly.",
+		"The ball ricochets around the six-yard box in chaos.",
+		"The goalkeeper reacts fast to palm it away.",
+		"The runner darts between two shirts and keeps going.",
+	}
+	got := m.liveMatchModal(90, 20)
+	if lines := strings.Split(got, "\n"); len(lines) != 20 {
+		t.Fatalf("live modal line count = %d, want 20:\n%s", len(lines), got)
+	}
+	if !strings.Contains(got, "Dribble") || !strings.Contains(got, "Current scene") {
+		t.Fatalf("tight modal lost current scene:\n%s", got)
 	}
 }
 
