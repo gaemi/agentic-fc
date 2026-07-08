@@ -714,6 +714,54 @@ func TestArchivedResultOpensLedgerModal(t *testing.T) {
 	}
 }
 
+func TestMatchModalOverlayUsesNearlyFullScreen(t *testing.T) {
+	m := liveModel(160, 44)
+
+	overlay, ok := m.matchModalOverlay(160, 44)
+	if !ok {
+		t.Fatal("modal overlay missing")
+	}
+	if overlay.X != 2 {
+		t.Fatalf("overlay x = %d, want 2", overlay.X)
+	}
+	if len(overlay.Lines) != 38 {
+		t.Fatalf("overlay height = %d, want 38", len(overlay.Lines))
+	}
+	for i, line := range overlay.Lines {
+		if got := lipgloss.Width(line); got != 156 {
+			t.Fatalf("overlay line %d width = %d, want 156: %q", i, got, line)
+		}
+	}
+}
+
+func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
+	m := liveModel(64, 18)
+	m.Matches[0].Stats = LiveStats{
+		HomeShots: 7, AwayShots: 3, HomeCards: 1, AwayCards: 2, HomeSubs: 2, AwaySubs: 0,
+		ChanceTypes: map[string]int{"CUTBACK": 2},
+		Diagnostics: MatchDiagnostics{
+			ShotQuality: map[string]int{"HIGH": 1},
+		},
+	}
+	m.Matches[0].Ratings = []LiveRating{{Side: "HOME", Name: "Hero", RatingX10: 76}}
+
+	overlay, ok := m.matchModalOverlay(64, 18)
+	if !ok {
+		t.Fatal("modal overlay missing")
+	}
+	got := strings.Join(overlay.Lines, "\n")
+	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "line two"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("small modal missing essential %q:\n%s", want, got)
+		}
+	}
+	for _, hidden := range []string{"RATINGS", "Quality", "7.6 Hero"} {
+		if strings.Contains(got, hidden) {
+			t.Fatalf("small modal rendered secondary %q:\n%s", hidden, got)
+		}
+	}
+}
+
 func TestReplayModalTracksFixtureIDAcrossFixtureRefresh(t *testing.T) {
 	m := testModel()
 	m.Width, m.Height = 100, 28

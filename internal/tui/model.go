@@ -917,14 +917,7 @@ func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
 	if m.MatchModal == modalNone {
 		return Overlay{}, false
 	}
-	boxWidth := clampInt(width-10, 48, 118)
-	if width-4 < boxWidth {
-		boxWidth = width - 4
-	}
-	boxHeight := clampInt(height-8, 10, 28)
-	if height-4 < boxHeight {
-		boxHeight = height - 4
-	}
+	boxWidth, boxHeight := matchModalSize(width, height)
 	if boxWidth < 20 || boxHeight < 6 {
 		return Overlay{}, false
 	}
@@ -946,6 +939,27 @@ func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
 		y = 4
 	}
 	return textOverlay(x, y, 90, text), true
+}
+
+func matchModalSize(width, height int) (int, int) {
+	xMargin := 2
+	if width < 72 {
+		xMargin = 1
+	}
+	yMargin := 3
+	if height < 24 {
+		yMargin = 2
+	}
+	boxWidth := width - xMargin*2
+	boxHeight := height - yMargin*2
+	if boxWidth < 20 || boxHeight < 6 {
+		return 0, 0
+	}
+	return boxWidth, boxHeight
+}
+
+func matchModalCompact(boxWidth, boxHeight int) bool {
+	return boxWidth < 76 || boxHeight < 18
 }
 
 func (m Model) waitingMatchModal(width, height int) string {
@@ -972,6 +986,7 @@ func (m Model) liveMatchModal(width, height int) string {
 	}
 	mv := m.Matches[idx]
 	title := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
+	compact := matchModalCompact(width, height)
 	lines := []string{
 		fmt.Sprintf("%d' · %s · %d/%d · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close")),
 	}
@@ -987,17 +1002,19 @@ func (m Model) liveMatchModal(width, height int) string {
 	if mix := m.chanceMixLabel(mv.Stats.ChanceTypes, 3); mix != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
 	}
-	lines = append(lines, m.diagnosticLines(mv.Stats.Diagnostics, width-4, 3)...)
+	if !compact {
+		lines = append(lines, m.diagnosticLines(mv.Stats.Diagnostics, width-4, 3)...)
+	}
 	contentRows := height - 2
 	commentRows := 6
-	if contentRows < 12 {
+	if compact || contentRows < 12 {
 		commentRows = 4
 	}
 	if commentRows > contentRows/2 {
 		commentRows = contentRows / 2
 	}
 	ratingRows := contentRows - len(lines) - commentRows - 2
-	if len(mv.Ratings) > 0 && ratingRows > 1 {
+	if !compact && len(mv.Ratings) > 0 && ratingRows > 1 {
 		lines = append(lines, "", m.ui("ui.match.ratings"))
 		written := 0
 		side := ""
@@ -1062,6 +1079,7 @@ func (m Model) replayMatchModal(width, height int) string {
 	}
 	md := m.MatchDetail
 	title := fmt.Sprintf("%s %d-%d %s", md.Home, md.HomeGoals, md.AwayGoals, md.Away)
+	compact := matchModalCompact(width, height)
 	lines := []string{
 		fmt.Sprintf("%s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help")),
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), md.HomeShots, md.AwayShots),
@@ -1074,12 +1092,18 @@ func (m Model) replayMatchModal(width, height int) string {
 	}
 	if len(md.Scorers) > 0 {
 		lines = append(lines, "", m.ui("ui.match.scorers"))
+		const compactScorerLimit = 3
+		shown := 0
 		for _, e := range md.Scorers {
+			if compact && shown >= compactScorerLimit {
+				break
+			}
 			lines = append(lines, fmt.Sprintf("%d' %s · %s", e.Minute, e.Club, e.Player))
+			shown++
 		}
 	}
 	appendEvents := func(title string, events []MatchEvent) {
-		if len(events) == 0 {
+		if compact || len(events) == 0 {
 			return
 		}
 		lines = append(lines, "", title)
@@ -1092,7 +1116,7 @@ func (m Model) replayMatchModal(width, height int) string {
 		}
 	}
 	appendEvents(m.ui("ui.match.cards"), md.Cards)
-	if len(md.Subs) > 0 {
+	if !compact && len(md.Subs) > 0 {
 		lines = append(lines, "", m.ui("ui.match.subs"))
 		for _, s := range md.Subs {
 			on := s.On
@@ -1102,7 +1126,7 @@ func (m Model) replayMatchModal(width, height int) string {
 			lines = append(lines, fmt.Sprintf("%d' %s · %s -> %s %s", s.Minute, s.Club, s.Off, on, s.Reason))
 		}
 	}
-	if len(md.Ratings) > 0 {
+	if !compact && len(md.Ratings) > 0 {
 		lines = append(lines, "", m.ui("ui.match.ratings"))
 		for i, r := range md.Ratings {
 			if i >= 5 {
