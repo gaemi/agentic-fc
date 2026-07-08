@@ -547,6 +547,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				return m.liveModalFinished()
 			}
+		} else if m.MatchModal == modalWaiting {
+			if idx := m.liveIndexForFixture(m.MatchModalID); idx >= 0 {
+				m.MatchIdx = idx
+				m.MatchModal = modalLive
+			} else {
+				m.closeMatchModal()
+				m.setNotice(m.ui("ui.match.ended"))
+			}
 		} else if m.MatchIdx >= len(m.Matches) {
 			m.MatchIdx = 0
 		}
@@ -1767,8 +1775,39 @@ func (m Model) playerAttrLines(p Player, width int) []string {
 		return pairs[i].key < pairs[j].key
 	})
 	out := make([]string, 0, len(pairs))
+	labelWidth := 0
 	for _, p := range pairs {
-		out = append(out, truncate(fmt.Sprintf("%-18s %2d  %s", m.ui("attr."+p.key), p.val, attrBar(p.val, 20)), width))
+		if w := lipgloss.Width(m.ui("attr." + p.key)); w > labelWidth {
+			labelWidth = w
+		}
+	}
+	if labelWidth < 8 {
+		labelWidth = 8
+	}
+	const attrRowGutter = 5 // one gap, two value cells, two gaps before the bar
+	const minAttrLabelWidth = 8
+	const minAttrBarWidth = 4
+	barWidth := 20
+	if labelWidth+attrRowGutter+barWidth > width {
+		barWidth = width - attrRowGutter - labelWidth
+	}
+	if barWidth < minAttrBarWidth {
+		barWidth = minAttrBarWidth
+		labelWidth = width - attrRowGutter - barWidth
+	}
+	if labelWidth < minAttrLabelWidth {
+		labelWidth = minAttrLabelWidth
+		barWidth = width - attrRowGutter - labelWidth
+	}
+	if barWidth < 1 {
+		barWidth = 1
+	}
+	for _, p := range pairs {
+		line := fmt.Sprintf("%s %2d  %s",
+			fitLine(m.ui("attr."+p.key), labelWidth, alignLeft),
+			p.val,
+			attrBar(p.val, barWidth))
+		out = append(out, truncate(line, width))
 	}
 	return out
 }
@@ -1912,7 +1951,7 @@ func (m Model) fixtureList(width, height int) string {
 }
 
 func (m Model) fixtureStatus(f Fixture) string {
-	if _, ok := m.liveMatchForFixture(f.ID); ok {
+	if _, ok := m.liveMatchForFixture(f.ID); ok || f.Status == "LIVE" {
 		return m.ui("ui.fixture.live")
 	}
 	if f.Status == "RESULT" {
@@ -1976,6 +2015,11 @@ func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
 		}
 		m.MatchDetail = MatchDetail{}
 		return m, m.fetchMatch()
+	}
+	if f.Status == "LIVE" {
+		m.MatchModal = modalWaiting
+		m.MatchModalID = f.ID
+		return m, m.fetchLive()
 	}
 	m.setNotice(m.ui("ui.fixture.scheduled_notice"))
 	return m, nil

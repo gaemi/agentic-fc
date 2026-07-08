@@ -725,6 +725,15 @@ func TestFixturesAndMatchDetailServeResults(t *testing.T) {
 	if hp == nil || ap == nil {
 		t.Fatal("test world has no players for fixture sides")
 	}
+	tierFixtures := 0
+	for _, fx := range w.Fixtures {
+		if fx.Competition == worldgen.CompetitionLeague && fx.DivisionTier == 1 {
+			tierFixtures++
+		}
+	}
+	if tierFixtures < 10 {
+		t.Fatalf("test world has %d tier-1 fixtures, want at least 10", tierFixtures)
+	}
 	w.Results = append(w.Results, worldgen.MatchResult{
 		FixtureID: f.ID, Competition: f.Competition, DivisionTier: f.DivisionTier,
 		HomeID: f.HomeID, AwayID: f.AwayID, HomeGoals: 2, AwayGoals: 1,
@@ -742,6 +751,24 @@ func TestFixturesAndMatchDetailServeResults(t *testing.T) {
 				"player": hp.Name, "club": w.Clubs[0].Name, "home_goals": 1, "away_goals": 0}},
 		},
 	})
+	liveIdx := -1
+	for i := range w.Fixtures {
+		if w.Fixtures[i].ID != f.ID {
+			liveIdx = i
+			break
+		}
+	}
+	if liveIdx < 0 {
+		t.Fatal("test world has no second fixture for live fixture case")
+	}
+	liveFixture := &w.Fixtures[liveIdx]
+	liveFixture.Kickoff = sim.GameTime(-1)
+	w.LiveMatches = map[int64]*worldgen.LiveMatch{
+		liveFixture.ID: {
+			FixtureID: liveFixture.ID, Competition: liveFixture.Competition,
+			HomeID: liveFixture.HomeID, AwayID: liveFixture.AwayID,
+		},
+	}
 
 	code, body := get(t, s, "/v1/fixtures?tier=1&limit=1")
 	if code != http.StatusOK {
@@ -754,8 +781,11 @@ func TestFixturesAndMatchDetailServeResults(t *testing.T) {
 	if len(limited) != 1 {
 		t.Fatalf("limited fixtures = %d, want 1", len(limited))
 	}
+	if limited[0].Status != "LIVE" {
+		t.Fatalf("limited fixtures should show live match first: %+v", limited[0])
+	}
 
-	code, body = get(t, s, "/v1/fixtures?tier=1&limit=200")
+	code, body = get(t, s, "/v1/fixtures?tier=1&limit=10")
 	if code != http.StatusOK {
 		t.Fatalf("fixtures status %d", code)
 	}
@@ -763,8 +793,20 @@ func TestFixturesAndMatchDetailServeResults(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &fixtures); err != nil {
 		t.Fatal(err)
 	}
-	if len(fixtures) == 0 || fixtures[0].Status != "RESULT" || !fixtures[0].HasReplay || fixtures[0].HomeGoals != 2 {
-		t.Fatalf("result fixture not surfaced first: %+v", fixtures[:min(1, len(fixtures))])
+	if len(fixtures) != 10 || fixtures[0].Status != "LIVE" {
+		t.Fatalf("live fixture not surfaced first: %+v", fixtures[:min(1, len(fixtures))])
+	}
+	foundScheduled, foundResult := false, false
+	for _, fx := range fixtures {
+		if fx.Status == "SCHEDULED" {
+			foundScheduled = true
+		}
+		if fx.ID == f.ID && fx.Status == "RESULT" && fx.HasReplay && fx.HomeGoals == 2 {
+			foundResult = true
+		}
+	}
+	if !foundScheduled || !foundResult {
+		t.Fatalf("fixture list should preserve scheduled and result rows: %+v", fixtures)
 	}
 
 	code, body = get(t, s, fmt.Sprintf("/v1/matches/%d?locale=ko", f.ID))

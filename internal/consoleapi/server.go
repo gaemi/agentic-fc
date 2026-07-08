@@ -527,7 +527,7 @@ func trimZero(s string) string {
 
 type fixtureDTO struct {
 	ID          int64  `json:"id"`
-	Status      string `json:"status"` // RESULT | SCHEDULED
+	Status      string `json:"status"` // LIVE | SCHEDULED | RESULT
 	Competition string `json:"competition"`
 	Round       int    `json:"round"`
 	Kickoff     int64  `json:"kickoff"`
@@ -546,6 +546,7 @@ type fixtureDTO struct {
 const viewerHistoryLimit = 1000
 
 const defaultFixtureListLimit = 120
+const fixtureResultReserveCap = 20
 
 func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 	loc := s.locale(r)
@@ -574,9 +575,14 @@ func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 				out = append(out, resultFixtureDTO(s.Catalogs, loc, names, r, f.Round, false))
 				continue
 			}
-			if f.Kickoff >= now {
+			_, isLive := wd.LiveMatches[f.ID]
+			if f.Kickoff >= now || isLive {
+				status := "SCHEDULED"
+				if isLive {
+					status = "LIVE"
+				}
 				out = append(out, fixtureDTO{
-					ID: f.ID, Status: "SCHEDULED", Competition: f.Competition, Round: f.Round,
+					ID: f.ID, Status: status, Competition: f.Competition, Round: f.Round,
 					Kickoff:     int64(f.Kickoff),
 					KickoffText: renderClock(s.Catalogs, loc, f.Kickoff),
 					HomeID:      f.HomeID, Home: names[f.HomeID],
@@ -584,6 +590,11 @@ func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 		}
+		historyLimit := fixtureResultReserve(limit)
+		if historyLimit == 0 {
+			historyLimit = limit
+		}
+		historyAdded := 0
 		for h := len(wd.History) - 1; h >= 0; h-- {
 			for i := len(wd.History[h].Results) - 1; i >= 0; i-- {
 				r := &wd.History[h].Results[i]
@@ -591,17 +602,19 @@ func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				out = append(out, resultFixtureDTO(s.Catalogs, loc, names, r, 0, true))
-				if len(out) >= limit {
+				historyAdded++
+				if historyAdded >= historyLimit {
 					break
 				}
 			}
-			if len(out) >= limit {
+			if historyAdded >= historyLimit {
 				break
 			}
 		}
 		sort.Slice(out, func(i, j int) bool {
-			if out[i].Status != out[j].Status {
-				return out[i].Status == "RESULT"
+			ri, rj := fixtureListRank(out[i]), fixtureListRank(out[j])
+			if ri != rj {
+				return ri < rj
 			}
 			if out[i].Status == "RESULT" && out[i].Kickoff != out[j].Kickoff {
 				return out[i].Kickoff > out[j].Kickoff
@@ -612,10 +625,55 @@ func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 			return out[i].ID < out[j].ID
 		})
 		if len(out) > limit {
-			out = out[:limit]
+			out = trimFixtureList(out, limit)
 		}
 	})
 	writeJSON(w, out)
+}
+
+func fixtureListRank(f fixtureDTO) int {
+	if f.Status == "LIVE" {
+		return 0
+	}
+	if f.Status == "SCHEDULED" {
+		return 1
+	}
+	return 2
+}
+
+func trimFixtureList(fixtures []fixtureDTO, limit int) []fixtureDTO {
+	if len(fixtures) <= limit {
+		return fixtures
+	}
+	if limit <= 1 {
+		return fixtures[:limit]
+	}
+	upcoming := make([]fixtureDTO, 0, limit)
+	results := make([]fixtureDTO, 0, min(len(fixtures), limit))
+	for _, f := range fixtures {
+		if f.Status == "RESULT" {
+			results = append(results, f)
+			continue
+		}
+		upcoming = append(upcoming, f)
+	}
+	if len(results) == 0 || len(upcoming) < limit {
+		return fixtures[:limit]
+	}
+	// Keep a recency tail even when upcoming fixtures saturate the page.
+	keepResults := min(len(results), fixtureResultReserve(limit))
+	if keepResults == 0 {
+		return fixtures[:limit]
+	}
+	keepUpcoming := limit - keepResults
+	out := make([]fixtureDTO, 0, limit)
+	out = append(out, upcoming[:min(len(upcoming), keepUpcoming)]...)
+	out = append(out, results[:min(len(results), limit-len(out))]...)
+	return out
+}
+
+func fixtureResultReserve(limit int) int {
+	return min(fixtureResultReserveCap, limit/4)
 }
 
 func resultFixtureDTO(cats narrative.Catalogs, loc narrative.Locale, names map[int64]string, r *worldgen.MatchResult, round int, archived bool) fixtureDTO {

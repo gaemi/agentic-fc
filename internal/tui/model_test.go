@@ -351,6 +351,70 @@ func TestKoreanTableKeepsColumnWidths(t *testing.T) {
 	}
 }
 
+func TestKoreanClubViewKeepsWidthsAndAttributeColumns(t *testing.T) {
+	m := testModel()
+	m.Tab = tabClubs
+	m.UI["ui.tab.media"] = "매체"
+	m.UI["ui.tab.table"] = "순위표"
+	m.UI["ui.tab.clubs"] = "클럽"
+	m.UI["ui.tab.fixtures"] = "일정/결과"
+	m.UI["ui.help.keys"] = "1 매체 · 2 순위표 · 3 클럽 · 4 결과 · q 종료"
+	m.UI["ui.col.position"] = "포지션"
+	m.UI["ui.col.attributes"] = "능력치"
+	m.UI["ui.player.dossier"] = "선수 파일"
+	m.UI["ui.player.profile"] = "능력치 프로필"
+	m.UI["ui.club.manager"] = "감독"
+	m.UI["ui.club.predicted"] = "예상"
+	m.UI["ui.club.objective"] = "목표"
+	m.UI["ui.club.confidence"] = "보드 신뢰"
+	m.UI["ui.club.security"] = "직위"
+	m.UI["attr.COMPOSURE"] = "침착성"
+	m.UI["attr.REFLEXES"] = "반사신경"
+	m.UI["attr.SWEEPING"] = "스위핑"
+	m.UI["attr.CONCENTRATION"] = "집중력"
+	m.UI["attr.AERIAL_REACH"] = "공중 리치"
+	m.Club.Squad[0].Attributes = map[string]int{
+		"COMPOSURE": 14, "REFLEXES": 13, "SWEEPING": 12, "CONCENTRATION": 11, "AERIAL_REACH": 9,
+	}
+
+	for _, size := range []struct {
+		width  int
+		height int
+	}{{92, 36}, {172, 36}} {
+		m.Width, m.Height = size.width, size.height
+		v := m.View()
+		for i, line := range strings.Split(v, "\n") {
+			if got := lipgloss.Width(line); got != size.width {
+				t.Fatalf("club view line %d width = %d, want %d: %q\n%s", i, got, size.width, line, v)
+			}
+		}
+	}
+
+	attrLines := m.playerAttrLines(m.Club.Squad[0], 54)
+	barCol := -1
+	for _, line := range attrLines {
+		col := cellIndexAny(line, "█░")
+		if col < 0 {
+			t.Fatalf("attribute line missing bar: %q", line)
+		}
+		if barCol < 0 {
+			barCol = col
+			continue
+		}
+		if col != barCol {
+			t.Fatalf("attribute bar column = %d, want %d:\n%s", col, barCol, strings.Join(attrLines, "\n"))
+		}
+	}
+}
+
+func cellIndexAny(s, chars string) int {
+	idx := strings.IndexAny(s, chars)
+	if idx < 0 {
+		return -1
+	}
+	return lipgloss.Width(s[:idx])
+}
+
 func TestViewTooSmall(t *testing.T) {
 	m := testModel()
 	m.Width, m.Height = 40, 10
@@ -586,6 +650,41 @@ func TestFixtureResultsEnterAndSpaceOpenLiveModal(t *testing.T) {
 	m = update(m, tea.KeyMsg{Type: tea.KeySpace})
 	if m.MatchModal != modalLive || m.MatchModalID != 8 {
 		t.Fatalf("space did not open live modal: modal=%q id=%d", m.MatchModal, m.MatchModalID)
+	}
+}
+
+func TestFixtureListLiveStatusOpensWaitingThenLive(t *testing.T) {
+	m := testModel()
+	m.Tab = tabFixtures
+	m.Fixtures = []Fixture{{ID: 9, Status: "LIVE", Round: 2, KickoffText: "Now", Home: "Alpha", Away: "Beta"}}
+	m.Matches = nil
+	v := m.View()
+	if !strings.Contains(v, "Live") {
+		t.Fatalf("fixture LIVE status did not render live label:\n%s", v)
+	}
+
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalWaiting || m.MatchModalID != 9 {
+		t.Fatalf("live fixture without detail should open waiting modal: modal=%q id=%d", m.MatchModal, m.MatchModalID)
+	}
+	m = update(m, MatchesMsg{{Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 1, AwayGoals: 0}})
+	if m.MatchModal != modalLive || m.MatchIdx != 0 {
+		t.Fatalf("waiting live fixture did not promote to live modal: modal=%q idx=%d", m.MatchModal, m.MatchIdx)
+	}
+}
+
+func TestFixtureListLiveStatusClosesWaitingWhenLiveMissing(t *testing.T) {
+	m := testModel()
+	m.Tab = tabFixtures
+	m.Fixtures = []Fixture{{ID: 9, Status: "LIVE", Round: 2, KickoffText: "Now", Home: "Alpha", Away: "Beta"}}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.MatchModal != modalWaiting {
+		t.Fatalf("live fixture should open waiting modal first: %q", m.MatchModal)
+	}
+
+	m = update(m, MatchesMsg{})
+	if m.MatchModal != modalNone || m.Notice != m.ui("ui.match.ended") {
+		t.Fatalf("missing live match should close waiting modal: modal=%q notice=%q", m.MatchModal, m.Notice)
 	}
 }
 
