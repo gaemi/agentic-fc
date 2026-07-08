@@ -317,6 +317,156 @@ func TestNewsArticles(t *testing.T) {
 	}
 }
 
+func TestNewsHidesMatchdayPreviewArticles(t *testing.T) {
+	s, host := newTestServer(t)
+	host.world.AddNews(worldgen.NewsItem{
+		GameTime: 123,
+		Category: "match",
+		Key:      "feed.matchday.preview",
+		Params: map[string]any{
+			"count":        2,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+			"fixtures": []map[string]any{
+				{"round": 1, "home": "AFC Castleden", "away": "Eastvale Town"},
+			},
+		},
+	})
+
+	code, body := get(t, s, "/v1/news?limit=10&locale=ko")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	var out struct {
+		Items []newsArticleDTO `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 0 {
+		t.Fatalf("preview article leaked into console media: %#v", out.Items)
+	}
+}
+
+func TestMatchdayResultsArticleRendersDetailedConsoleBody(t *testing.T) {
+	s, host := newTestServer(t)
+	host.world.AddNews(worldgen.NewsItem{
+		GameTime: 124,
+		Category: "match",
+		Key:      "feed.matchday.results",
+		Params: map[string]any{
+			"count":        2,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+			"results": []map[string]any{
+				{"home": "AFC Castleden", "away": "Eastvale Town", "home_goals": 2, "away_goals": 1},
+				{"home": "Stanton Albion", "away": "Union Steindorf", "home_goals": 0, "away_goals": 0},
+			},
+			"table": []map[string]any{
+				{"division": 1, "club": "AFC Castleden", "points": 6},
+			},
+			"story": map[string]any{
+				"best_margin": 1,
+				"best_home":   "AFC Castleden",
+				"best_away":   "Eastvale Town",
+				"home_goals":  2,
+				"away_goals":  1,
+				"draws":       1,
+			},
+		},
+	})
+
+	code, body := get(t, s, "/v1/news?limit=10&locale=ko")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	var out struct {
+		Items []newsArticleDTO `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("news items = %d, body = %s", len(out.Items), body)
+	}
+	item := out.Items[0]
+	all := item.Source + item.Title + item.Deck + item.Body
+	for _, want := range []string{
+		"매치 센터",
+		"매치데이 라운드업",
+		"결과:",
+		"AFC Castleden 2-1 Eastvale Town",
+		"Stanton Albion 0-0 Union Steindorf",
+		"순위표 흐름:",
+		"AFC Castleden, 승점 6로 선두",
+		"핵심 흐름:",
+		"무승부 1경기",
+		"다음 선발 회의와 훈련장 메시지",
+	} {
+		if !strings.Contains(all, want) {
+			t.Fatalf("matchday article missing %q: %#v", want, item)
+		}
+	}
+	if strings.Contains(all, "프리뷰") || strings.Contains(all, "경기 일정:") {
+		t.Fatalf("preview article leaked into console media: %#v", item)
+	}
+}
+
+func TestMatchdayResultsArticleRendersAllWinnersStory(t *testing.T) {
+	s, host := newTestServer(t)
+	host.world.AddNews(worldgen.NewsItem{
+		GameTime: 124,
+		Category: "match",
+		Key:      "feed.matchday.results",
+		Params: map[string]any{
+			"count":        2,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+			"results": []map[string]any{
+				{"home": "AFC Castleden", "away": "Eastvale Town", "home_goals": 4, "away_goals": 1, "winner": "AFC Castleden"},
+				{"home": "Stanton Albion", "away": "Union Steindorf", "home_goals": 2, "away_goals": 1, "winner": "Stanton Albion"},
+			},
+			"table": []map[string]any{
+				{"division": 1, "club": "AFC Castleden", "points": 6},
+			},
+			"story": map[string]any{
+				"best_margin": 3,
+				"best_home":   "AFC Castleden",
+				"best_away":   "Eastvale Town",
+				"home_goals":  4,
+				"away_goals":  1,
+				"draws":       0,
+			},
+		},
+	})
+
+	code, body := get(t, s, "/v1/news?limit=10&locale=ko")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	var out struct {
+		Items []newsArticleDTO `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("news items = %d, body = %s", len(out.Items), body)
+	}
+	bodyText := out.Items[0].Body
+	for _, want := range []string{
+		"최다 점수 차: AFC Castleden 4-1 Eastvale Town",
+		"무승부가 없어 순위표의 움직임도 더 선명했습니다",
+	} {
+		if !strings.Contains(bodyText, want) {
+			t.Fatalf("all-winners story missing %q: %s", want, bodyText)
+		}
+	}
+}
+
 // TestHiddenNeverLeaks is the FR-22 guardrail: no viewer endpoint may emit
 // hidden attributes, trajectory values, reputation, raw tendencies, wages,
 // balances, tokens, or the world seed.

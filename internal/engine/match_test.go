@@ -80,7 +80,6 @@ func TestMatchdayNewsGroupsFixturesAndResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	preview, roundUp := 0, 0
-	previewKeys := map[string]bool{}
 	roundUpKeys := map[string]bool{}
 	for _, n := range e.world.News {
 		switch n.Key {
@@ -88,14 +87,6 @@ func TestMatchdayNewsGroupsFixturesAndResults(t *testing.T) {
 			t.Fatalf("individual match news should be grouped, got %s: %+v", n.Key, n)
 		case FeedMatchdayPreview:
 			preview++
-			key := matchdayTestKey(n.Params)
-			if previewKeys[key] {
-				t.Fatalf("duplicate preview for %s", key)
-			}
-			previewKeys[key] = true
-			if len(n.ClubIDs) == 0 || len(mapsParam(t, n.Params["fixtures"])) == 0 || n.Params["spotlight"] == nil {
-				t.Fatalf("preview missing article params: %+v", n.Params)
-			}
 		case FeedMatchdayResults:
 			roundUp++
 			key := matchdayTestKey(n.Params)
@@ -108,8 +99,8 @@ func TestMatchdayNewsGroupsFixturesAndResults(t *testing.T) {
 			}
 		}
 	}
-	if preview == 0 || roundUp == 0 {
-		t.Fatalf("grouped matchday news missing: preview=%d roundUp=%d", preview, roundUp)
+	if preview != 0 || roundUp == 0 {
+		t.Fatalf("matchday news policy mismatch: preview=%d roundUp=%d", preview, roundUp)
 	}
 }
 

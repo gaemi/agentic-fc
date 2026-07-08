@@ -126,7 +126,6 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 	}
 	e.emitKickoff(ev)
 	e.issueMatchAlerts(ev.Due, f, "OWN_KICKOFF")
-	e.addMatchdayPreviewNews(ev.Due, f.Competition, f.DivisionTier)
 
 	homeXI, homeBench := e.selectSquad(f.HomeID, ev.Due, e.tacticalFor(f.HomeID))
 	awayXI, awayBench := e.selectSquad(f.AwayID, ev.Due, e.tacticalFor(f.AwayID))
@@ -785,23 +784,6 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 	return e.log(ev, "match", factors, "full_time", 0, 0)
 }
 
-func (e *Engine) addMatchdayPreviewNews(kickoff sim.GameTime, competition string, division int) {
-	if e.newsExists(FeedMatchdayPreview, kickoff, competition, division) {
-		return
-	}
-	fixtures := e.fixturesAt(kickoff, competition, division)
-	if len(fixtures) == 0 {
-		return
-	}
-	params := e.matchdayBaseParams(kickoff, competition, division, len(fixtures))
-	params["fixtures"] = e.fixturePayloads(fixtures)
-	params["spotlight"] = e.fixturePayload(fixtures[0])
-	e.addNews(worldgen.NewsItem{
-		GameTime: kickoff, Category: "match", Key: FeedMatchdayPreview,
-		Params: params, ClubIDs: fixtureClubRefs(fixtures),
-	})
-}
-
 func (e *Engine) addMatchdayResultsNews(at, kickoff sim.GameTime, competition string, division int) map[string]any {
 	if e.newsExists(FeedMatchdayResults, kickoff, competition, division) {
 		return nil
@@ -932,25 +914,6 @@ func (e *Engine) matchdayBaseParams(kickoff sim.GameTime, competition string, di
 		"month":        d.Month,
 		"day":          d.Day,
 		"kickoff_time": fmt.Sprintf("%02d:%02d", d.Hour, d.Minute),
-	}
-}
-
-func (e *Engine) fixturePayloads(fixtures []*worldgen.Fixture) []map[string]any {
-	out := make([]map[string]any, 0, len(fixtures))
-	for _, f := range fixtures {
-		out = append(out, e.fixturePayload(f))
-	}
-	return out
-}
-
-func (e *Engine) fixturePayload(f *worldgen.Fixture) map[string]any {
-	if f == nil {
-		return nil
-	}
-	return map[string]any{
-		"round": f.Round,
-		"home":  e.clubName(f.HomeID),
-		"away":  e.clubName(f.AwayID),
 	}
 }
 

@@ -127,9 +127,12 @@ Everything observable is rendered as **text**, in the voice of Championship Mana
 
 - **News items:** what a Manager decided, transfers agreed, injuries, milestones.
 - **Press articles:** journalists react to results, streaks, controversies. A
-  matchday produces preview and round-up articles that group fixtures/results
-  into a longer newspaper-style story instead of filing one tiny item per
-  kick-off or final whistle.
+  completed matchday produces round-up articles that group results, table
+  movement, and pressure points into a longer newspaper-style story instead of
+  filing one tiny item per kick-off or final whistle. Kick-off signals remain
+  live operational events rather than media articles; Agents that need kickoff
+  wakeups should use `MATCH` alerts, while `NEWS` alerts for match coverage now
+  arrive with the full-time round-up.
 - **Board & fan reactions:** sentiment expressed as quotes/statements, not bars.
 - **Live match commentary:** substitutions, chances, a winger skinning his man, the keeper's blunder — narrated minute by minute like a text commentator.
 
