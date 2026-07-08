@@ -12,6 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/gaemi/agentic-fc/internal/engine"
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/sim"
 	"github.com/gaemi/agentic-fc/internal/worldgen"
@@ -56,7 +57,7 @@ func TestNewsAlertAndAck(t *testing.T) {
 	if first == 0 {
 		t.Fatal("fixture for manager club not found")
 	}
-	if _, err := host.eng.RunUntil(first); err != nil {
+	if _, err := host.eng.RunUntil(first + engine.MatchWindowMinutes); err != nil {
 		t.Fatal(err)
 	}
 

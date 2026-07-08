@@ -77,6 +77,65 @@ func TestGetNewsHidesTransferFee(t *testing.T) {
 	}
 }
 
+func TestGetNewsHidesMatchdayPreviewArticles(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	mid, _ := employedManager(t, g)
+	w := g.Host.World()
+	w.AddNews(worldgen.NewsItem{
+		GameTime: 10,
+		Category: "match",
+		Key:      "feed.matchday.preview",
+		Params: map[string]any{
+			"count":        2,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+		},
+	})
+	w.AddNews(worldgen.NewsItem{
+		GameTime: 20,
+		Category: "match",
+		Key:      "feed.matchday.results",
+		Params: map[string]any{
+			"count":        1,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+			"results": []map[string]any{
+				{"home": "AFC Castleden", "away": "Eastvale Town", "home_goals": 2, "away_goals": 1, "winner": "AFC Castleden"},
+			},
+			"table": []map[string]any{
+				{"division": 1, "club": "AFC Castleden", "points": 6},
+			},
+			"story": map[string]any{
+				"best_margin": 1,
+				"best_home":   "AFC Castleden",
+				"best_away":   "Eastvale Town",
+				"home_goals":  2,
+				"away_goals":  1,
+				"draws":       0,
+			},
+		},
+	})
+
+	data := dataOf(t, g.getNews(mid, "s1", getNewsIn{Since: "0", Scope: "world", Limit: 10}))
+	items := data["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("news items = %d: %+v", len(items), items)
+	}
+	headline := items[0]["headline"].(map[string]any)
+	if got := headline["key"]; got != "feed.matchday.results" {
+		t.Fatalf("shown news key = %v, want feed.matchday.results", got)
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "matchday.preview") || strings.Contains(string(b), "preview") {
+		t.Fatalf("matchday preview leaked through get_news: %s", b)
+	}
+}
+
 // TestSearchPlayersListed locks the transfer-list discovery surface:
 // once a club SELL-lists one of its own players, search_players(contract_status=
 // "listed") surfaces exactly that player — and, in a freshly generated world

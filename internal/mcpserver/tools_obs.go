@@ -194,6 +194,10 @@ func (g *Gateway) getNews(mid int64, sid string, in getNewsIn) map[string]any {
 				if len(items) >= limit {
 					break
 				}
+				if n.Key == "feed.matchday.preview" {
+					cursor = n.ID
+					continue
+				}
 				if !g.newsVisible(&n, m, scope) {
 					continue
 				}
@@ -290,10 +294,6 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 	}
 	sourceClass := articleClass
 	articleParams := map[string]any{"headline": title}
-	if key == "feed.matchday.preview" {
-		articleClass = "matchday.preview"
-		articleParams = g.matchdayPreviewArticleParams(loc, params, title)
-	}
 	if key == "feed.matchday.results" {
 		articleClass = "matchday.results"
 		articleParams = g.matchdayResultsArticleParams(loc, params, title)
@@ -304,13 +304,6 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 		"deck":   g.tr2(loc, "news.article.deck."+articleClass, articleParams),
 		"body":   g.tr2(loc, "news.article.body."+articleClass, articleParams),
 	}
-}
-
-func (g *Gateway) matchdayPreviewArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
-	out := copyArticleParams(params, title)
-	out["fixtures"] = g.matchdayFixtureLines(loc, params["fixtures"])
-	out["spotlight"] = g.matchdayFixtureSpotlight(loc, params["spotlight"])
-	return out
 }
 
 func (g *Gateway) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
@@ -328,23 +321,6 @@ func copyArticleParams(params map[string]any, title string) map[string]any {
 	}
 	out["headline"] = title
 	return out
-}
-
-func (g *Gateway) matchdayFixtureLines(loc narrative.Locale, raw any) string {
-	rows := mapsFromAny(raw)
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, g.tr2(loc, "term.matchday.fixture_line", row))
-	}
-	return joinNonEmpty(lines)
-}
-
-func (g *Gateway) matchdayFixtureSpotlight(loc narrative.Locale, raw any) string {
-	rows := mapsFromAny(raw)
-	if len(rows) == 0 {
-		return ""
-	}
-	return g.tr2(loc, "term.matchday.fixture_spotlight", rows[0])
 }
 
 func (g *Gateway) matchdayResultLines(loc narrative.Locale, raw any) string {

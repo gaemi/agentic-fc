@@ -180,6 +180,9 @@ func (s *Server) handleNews(w http.ResponseWriter, r *http.Request) {
 			if n.ManagerID != 0 {
 				continue // private scout reports are manager inbox items, not public media.
 			}
+			if n.Key == "feed.matchday.preview" {
+				continue // Kickoff schedule briefings are useful operationally, but noisy as media articles.
+			}
 			out = append(out, s.newsArticleDTO(loc, n))
 		}
 	})
@@ -195,18 +198,91 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 	default:
 		class = "media"
 	}
+	sourceClass := class
 	articleParams := map[string]any{"headline": title}
+	if n.Key == "feed.matchday.results" {
+		class = "matchday.results"
+		articleParams = s.matchdayResultsArticleParams(loc, params, title)
+	}
 	return newsArticleDTO{
 		ID:       n.ID,
 		GameTime: int64(n.GameTime),
 		TimeText: renderClock(s.Catalogs, loc, n.GameTime),
 		Category: n.Category,
-		Source:   s.Catalogs.Render(loc, "news.article.source."+class, nil),
+		Source:   s.Catalogs.Render(loc, "news.article.source."+sourceClass, nil),
 		Title:    title,
 		Deck:     s.Catalogs.Render(loc, "news.article.deck."+class, articleParams),
 		Body:     s.Catalogs.Render(loc, "news.article.body."+class, articleParams),
 		Refs:     n.ClubIDs,
 	}
+}
+
+func (s *Server) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+	out := copyConsoleArticleParams(params, title)
+	out["results"] = s.matchdayResultLines(loc, params["results"])
+	out["table"] = s.matchdayTableLines(loc, params["table"])
+	out["story"] = s.matchdayStoryLine(loc, params["story"])
+	return out
+}
+
+func copyConsoleArticleParams(params map[string]any, title string) map[string]any {
+	out := make(map[string]any, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	out["headline"] = title
+	return out
+}
+
+func (s *Server) matchdayResultLines(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		key := "term.matchday.result_line"
+		if winner, ok := row["winner"].(string); ok && winner != "" {
+			key = "term.matchday.result_line.winner"
+		}
+		lines = append(lines, s.Catalogs.Render(loc, key, row))
+	}
+	return joinNonEmpty(lines)
+}
+
+func (s *Server) matchdayTableLines(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	if len(rows) == 0 {
+		return s.Catalogs.Render(loc, "term.matchday.table_cup", nil)
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, s.Catalogs.Render(loc, "term.matchday.table_leader", row))
+	}
+	return joinNonEmpty(lines)
+}
+
+func (s *Server) matchdayStoryLine(loc narrative.Locale, raw any) string {
+	rows := mapsFromAny(raw)
+	if len(rows) == 0 {
+		return ""
+	}
+	story := rows[0]
+	lines := []string{}
+	margin, hasMargin := numericParam(story["best_margin"])
+	draws, hasDraws := numericParam(story["draws"])
+	if hasMargin && margin > 0 {
+		lines = append(lines, s.Catalogs.Render(loc, "term.matchday.story_margin", story))
+	}
+	if hasDraws && draws > 0 {
+		lines = append(lines, s.Catalogs.Render(loc, "term.matchday.story_draws", story))
+	}
+	if hasDraws && draws == 0 && hasMargin && margin > 0 {
+		lines = append(lines, s.Catalogs.Render(loc, "term.matchday.story_all_winners", nil))
+	}
+	if len(lines) == 0 {
+		// Defensive fallback for malformed persisted params; normal engine
+		// payloads always contain draws and best_margin.
+		lines = append(lines, s.Catalogs.Render(loc, "term.matchday.story_unavailable", nil))
+	}
+	return joinNonEmpty(lines)
 }
 
 var consolePoolDerivedNewsParams = map[string]bool{"fee": true, "wage": true}
@@ -220,6 +296,53 @@ func consoleNewsParams(params map[string]any) map[string]any {
 		safe[k] = v
 	}
 	return safe
+}
+
+func mapsFromAny(raw any) []map[string]any {
+	switch v := raw.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		return []map[string]any{v}
+	case []map[string]any:
+		return v
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			if row, ok := item.(map[string]any); ok {
+				out = append(out, row)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func numericParam(raw any) (float64, bool) {
+	switch v := raw.(type) {
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case float64:
+		return v, true
+	case json.Number:
+		got, err := v.Float64()
+		return got, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func joinNonEmpty(lines []string) string {
+	out := []string{}
+	for _, line := range lines {
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 func (s *Server) renderNewsText(loc narrative.Locale, key string, params map[string]any) string {
