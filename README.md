@@ -120,6 +120,7 @@ Start with [docs/README.md](docs/README.md).
 Key documents:
 
 - [Concept](docs/01-concept.md)
+- [Game Introduction](docs/15-game-introduction.md)
 - [Game Design](docs/02-game-design.md)
 - [Simulation Engine](docs/03-simulation-engine.md)
 - [Agent Interface](docs/04-agent-interface.md)
