@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/gaemi/agentic-fc/security/advisories/new
     about: Please report vulnerabilities privately. Do not open a public issue for security reports.
   - name: Support and usage questions
-    url: https://github.com/gaemi/agentic-fc/issues/new/choose
-    about: Use the bug or feature templates for public, non-sensitive project questions.
+    url: https://github.com/gaemi/agentic-fc/discussions/new/choose
+    about: Use Discussions for public, non-sensitive support and usage questions.
