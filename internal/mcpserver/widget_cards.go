@@ -219,6 +219,30 @@ func headlineLines(g *Gateway, loc narrative.Locale, rows []map[string]any) []wi
 	return out
 }
 
+func trLines(g *Gateway, loc narrative.Locale, prefix string, n int) []widgetLine {
+	out := make([]widgetLine, 0, n)
+	for i := 1; i <= n; i++ {
+		out = append(out, widgetLine{primary: g.tr(loc, fmt.Sprintf("%s.%d", prefix, i))})
+	}
+	return out
+}
+
+// guideHighlightCount is intentionally the number of localized summary bullets
+// rendered in the human card, not the full model-facing guide length.
+const guideHighlightCount = 4
+
+func guideCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.read", string(focus.GetGuide), env)
+	c.headline = g.tr(loc, "widget.headline.guide")
+	d := envData(env)
+	c.section(g.tr(loc, "widget.section.first_step_highlights"), trLines(g, loc, "widget.guide.first", guideHighlightCount))
+	c.section(g.tr(loc, "widget.section.strategy_highlights"), trLines(g, loc, "widget.guide.loop", guideHighlightCount))
+	if vocab := anyMap(d["vocabularies"]); vocab != nil {
+		c.row(g.tr(loc, "widget.row.vocabularies"), fmt.Sprint(len(vocab)))
+	}
+	return renderCard(c)
+}
+
 func timeCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
 	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetTime), env)
 	c.headline = g.tr(loc, "widget.headline.time")
@@ -231,6 +255,75 @@ func timeCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) s
 	}
 	if next := anyMap(d["next_match_window"]); next != nil {
 		c.row(g.tr(loc, "widget.row.next_match"), mstr(next, "kickoff"))
+	}
+	return renderCard(c)
+}
+
+func focusCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetFocus), env)
+	c.headline = g.tr(loc, "widget.headline.focus")
+	d := envData(env)
+	if balance := d["balance"]; balance != nil {
+		if focusCap := d["cap"]; focusCap != nil {
+			c.row(g.tr(loc, "widget.row.focus_balance"), fmt.Sprintf("%v / %v", balance, focusCap))
+		} else {
+			c.row(g.tr(loc, "widget.row.focus_balance"), fmt.Sprint(balance))
+		}
+	}
+	if regen := d["regen_per_game_hour"]; regen != nil {
+		c.row(g.tr(loc, "widget.row.focus_regen"), fmt.Sprint(regen))
+	}
+	spends := mapList(d["spends"])
+	c.row(g.tr(loc, "widget.row.spends"), fmt.Sprint(len(spends)))
+	lines := make([]widgetLine, 0, len(spends))
+	for _, spend := range spends {
+		lines = append(lines, widgetLine{
+			primary: fmt.Sprintf("%v", spend["tool"]),
+			meta:    fmt.Sprintf("-%v · %v", spend["cost"], spend["game_time"]),
+		})
+	}
+	c.section(g.tr(loc, "widget.section.recent_spends"), limitLines(lines, 5))
+	return renderCard(c)
+}
+
+func mindsetCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetMindset), env)
+	c.headline = g.tr(loc, "widget.headline.mindset")
+	d := envData(env)
+	if employment := anyMap(d["employment"]); employment != nil {
+		if status := mstr(employment, "status"); status != "" {
+			c.row(g.tr(loc, "widget.row.employment"), g.enumLabel(loc, "employment", status))
+		}
+		if club := mstr(employment, "club_name"); club != "" {
+			c.row(g.tr(loc, "widget.row.club"), club)
+		}
+	}
+	if board := anyMap(d["board"]); board != nil {
+		if objective := board["objective_finish"]; objective != nil {
+			c.row(g.tr(loc, "widget.row.objective"), fmt.Sprint(objective))
+		}
+	}
+	if ms, ok := d["mindset"].(mindset.Mindset); ok {
+		c.row(g.tr(loc, "widget.row.version"), fmt.Sprint(ms.Version))
+		c.row(g.tr(loc, "widget.row.priorities"), fmt.Sprint(len(ms.Priorities)))
+		c.row(g.tr(loc, "widget.row.directives"), fmt.Sprint(len(ms.Directives)))
+		if len(ms.Priorities) > 0 {
+			lines := []widgetLine{}
+			for _, p := range ms.Priorities {
+				lines = append(lines, widgetLine{primary: g.enumLabel(loc, "goal", string(p.Goal)), meta: fmt.Sprintf("#%d", p.Rank)})
+			}
+			c.section(g.tr(loc, "widget.section.priorities"), limitLines(lines, 5))
+		}
+		if ms.Tactical.Formation != "" {
+			lines := []widgetLine{{primary: ms.Tactical.Formation, meta: g.enumLabel(loc, "mentality", ms.Tactical.Mentality)}}
+			if ms.Tactical.Pressing != "" || ms.Tactical.Tempo != "" {
+				lines = append(lines, widgetLine{
+					primary: g.enumLabel(loc, "pressing", ms.Tactical.Pressing),
+					meta:    g.enumLabel(loc, "tempo", ms.Tactical.Tempo),
+				})
+			}
+			c.section(g.tr(loc, "widget.section.tactical_plan"), lines)
+		}
 	}
 	return renderCard(c)
 }
@@ -407,6 +500,60 @@ func scoutCard(g *Gateway, loc narrative.Locale, _ scoutIn, env map[string]any) 
 	c.headline = g.tr(loc, "widget.headline.scout")
 	c.row(g.tr(loc, "widget.row.due"), mstr(envData(env), "report_due"))
 	return renderCard(c)
+}
+
+func configureAlertsCard(g *Gateway, loc narrative.Locale, in configureAlertsIn, env map[string]any) string {
+	kind, badge, headline := "write", "widget.badge.decided", "widget.headline.alerts_configured"
+	if in.Enabled == nil && in.Watches == nil {
+		kind, badge, headline = "read", "widget.badge.observed", "widget.headline.alerts"
+	}
+	c := g.baseCard(loc, kind, badge, string(focus.ConfigureAlerts), env)
+	c.headline = g.tr(loc, headline)
+	alertRows(g, loc, &c, envData(env))
+	return renderCard(c)
+}
+
+func getAlertsCard(g *Gateway, loc narrative.Locale, _ getAlertsIn, env map[string]any) string {
+	c := g.baseCard(loc, "read", "widget.badge.observed", string(focus.GetAlerts), env)
+	c.headline = g.tr(loc, "widget.headline.alerts")
+	alertRows(g, loc, &c, envData(env))
+	return renderCard(c)
+}
+
+func ackAlertsCard(g *Gateway, loc narrative.Locale, _ ackAlertsIn, env map[string]any) string {
+	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.AckAlerts), env)
+	c.headline = g.tr(loc, "widget.headline.alerts_acked")
+	d := envData(env)
+	c.countRow(g.tr(loc, "widget.row.acked_through"), d["acked_through"])
+	c.countRow(g.tr(loc, "widget.row.pending"), d["pending_count"])
+	return renderCard(c)
+}
+
+func alertRows(g *Gateway, loc narrative.Locale, c *widgetCard, d map[string]any) {
+	if enabled, ok := d["enabled"].(bool); ok {
+		c.row(g.tr(loc, "widget.row.enabled"), g.tr(loc, fmt.Sprintf("widget.bool.%t", enabled)))
+	}
+	watches := mapList(d["watches"])
+	pending := mapList(d["pending"])
+	c.row(g.tr(loc, "widget.row.watches"), fmt.Sprint(len(watches)))
+	c.row(g.tr(loc, "widget.row.pending"), fmt.Sprint(len(pending)))
+	c.row(g.tr(loc, "widget.row.resource"), mstr(d, "resource"))
+	lines := make([]widgetLine, 0, len(pending))
+	for _, item := range pending {
+		primary := mstr(item, "message")
+		if primary == "" {
+			primary = mstr(item, "reason")
+		}
+		if primary == "" {
+			continue
+		}
+		meta := ""
+		if gt := item["game_time"]; gt != nil {
+			meta = fmt.Sprint(gt)
+		}
+		lines = append(lines, widgetLine{primary: primary, meta: meta})
+	}
+	c.section(g.tr(loc, "widget.section.pending_alerts"), limitLines(lines, 5))
 }
 
 // ---- shaping-write renderers ----
