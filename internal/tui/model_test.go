@@ -1171,6 +1171,54 @@ func TestSceneFramePreservesArtBlockCoordinates(t *testing.T) {
 	}
 }
 
+func TestSceneArtTemplatesStayCompactAndVisual(t *testing.T) {
+	scenes := []struct {
+		name string
+		line string
+		kind string
+	}{
+		{"goal", "Goal! Rao finds the net for Alpha.", "goal"},
+		{"card", "Rao is booked for a late challenge.", "card"},
+		{"injury", "Rao stays down and needs treatment.", "injury"},
+		{"sub", "Alpha replaces Rao with fresh legs.", "sub"},
+		{"save", "The goalkeeper reacts fast to palm it away.", "save"},
+		{"cross", "A high delivery hangs perfectly at the far post.", "cross"},
+		{"cutback", "The pull-back is on a plate.", "cutback"},
+		{"through", "A threaded pass splits the defence.", "through"},
+		{"longshot", "No one closes him down and he lets fly from distance.", "longshot"},
+		{"setpiece", "A free kick bends toward the crowded area.", "setpiece"},
+		{"counter", "Alpha burst forward on the break.", "counter"},
+		{"scramble", "The loose ball ricochets around the six-yard box.", "scramble"},
+		{"dribble", "The runner darts between two shirts.", "dribble"},
+		{"chance", "A clean shot opens up on the edge of the area.", "chance"},
+		{"build", "ordinary midfield exchange", "build"},
+	}
+	proseWords := regexp.MustCompile(`(?i)\b(the|and|for|with|into|before|after|through|danger|defence|defenders|runner|player|crowd|stadium|everyone|bodies|benches|shape|space)\b`)
+	lowerLabel := regexp.MustCompile(`[a-z]{3,}`)
+	for _, tc := range scenes {
+		t.Run(tc.name, func(t *testing.T) {
+			scene := matchSceneFromLine(tc.line, nil)
+			if scene.kind != tc.kind {
+				t.Fatalf("scene kind = %q, want %q", scene.kind, tc.kind)
+			}
+			if len(scene.art) != 7 {
+				t.Fatalf("scene art lines = %d, want 7: %#v", len(scene.art), scene.art)
+			}
+			for _, line := range scene.art {
+				if lipgloss.Width(line) > 52 {
+					t.Fatalf("scene art line too wide (%d): %q", lipgloss.Width(line), line)
+				}
+				if proseWords.MatchString(line) {
+					t.Fatalf("scene art should stay diagram-like, got prose line: %q", line)
+				}
+				if lowerLabel.MatchString(line) {
+					t.Fatalf("scene art should avoid lowercase prose labels: %q", line)
+				}
+			}
+		})
+	}
+}
+
 func TestLiveMatchModalSkipsHistoryWhenOnlyCurrentLine(t *testing.T) {
 	m := liveModel(120, 32)
 	m.Matches[0].Commentary = []string{"The runner darts between two shirts and keeps going."}
