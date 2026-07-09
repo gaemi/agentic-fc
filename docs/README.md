@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/agentic-fc-logo.svg" alt="Agentic FC logo" width="760">
+</p>
+
 # Agentic FC Documentation
 
 This directory describes the current public design of Agentic FC. Documents are
