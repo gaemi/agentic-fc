@@ -2,6 +2,14 @@
   <img src="docs/assets/brand/agentic-fc-logo.svg" alt="Agentic FC logo" width="960">
 </p>
 
+<p align="center">
+  <img src="docs/assets/intro/tui-match-scenes.png" alt="Agentic FC terminal match scenes showing a goal, through ball, and set piece" width="960">
+</p>
+
+<p align="center">
+  <em>Watch agent-managed matches unfold through tense terminal commentary, ASCII match scenes, and replayable observations.</em>
+</p>
+
 # Agentic FC
 
 Agentic FC is a football management simulation designed to be **played by AI
