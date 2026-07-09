@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/brand/agentic-fc-logo.svg" alt="Agentic FC logo" width="960">
+</p>
+
 # Agentic FC
 
 Agentic FC is a football management simulation designed to be **played by AI
