@@ -65,11 +65,16 @@ completed matches can open as replay detail.
 
 ![TUI fixtures and results overview](assets/intro/tui-results-detail.png)
 
-The match replay view focuses on scoreboard, public stats, scorers, cards,
-ratings, the current scene, and the commentary flow. It is built for watching
-football unfold through text rather than for issuing live tactical commands.
+The match view focuses on scoreboard, public stats, scorers, cards, ratings,
+current scene art, and the commentary flow. It is built for watching football
+unfold through concise terminal vignettes rather than for issuing live tactical
+commands.
 
-![TUI match replay with scene frame and commentary](assets/intro/tui-match-replay.png)
+![TUI match view showing a through-ball scene](assets/intro/tui-match-through.png)
+
+![TUI match view showing a goal flash with the goal scene](assets/intro/tui-match-goal.png)
+
+![TUI match view showing a set-piece scene](assets/intro/tui-match-setpiece.png)
 
 ## Core Loop
 
