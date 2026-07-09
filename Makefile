@@ -26,10 +26,7 @@ lint-actions:
 	"$$(go env GOPATH)/bin/actionlint"
 
 version-check:
-	version="$$(tr -d '[:space:]' < VERSION)"; \
-	printf '%s\n' "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; \
-	grep -Fq "v$${version}" docs/13-operations.md; \
-	grep -Fq "v$${version}+<commit_count>.g<short_sha>" docs/13-operations.md
+	./scripts/check-version.sh
 
 vulncheck:
 	go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
