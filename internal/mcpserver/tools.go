@@ -23,10 +23,10 @@ import (
 type emptyIn struct{}
 
 func (g *Gateway) registerTools(s *mcp.Server) {
-	mcp.AddTool(s, &mcp.Tool{
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetGuide),
 		Description: "Free. Start here: game premise, first steps, strategy loop, and valid Mindset/Tactical vocabulary.",
-	}, handle(g, g.getGuide))
+	}), handleUI(g, g.getGuide, guideCard))
 	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetTime),
 		Description: "Free. Game date-time, tempo, run profile, speed, next match window, season phase.",
@@ -35,14 +35,14 @@ func (g *Gateway) registerTools(s *mcp.Server) {
 		Name:        string(focus.GetSettings),
 		Description: "Free. Non-seed world settings and pacing table: league shape, run profile, economy/quality, current speed, and real-time estimates.",
 	}), handleUI(g, g.getSettings, settingsCard))
-	mcp.AddTool(s, &mcp.Tool{
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetFocus),
 		Description: "Free. Focus balance, cap, regen rate, and recent spend history.",
-	}, handle(g, g.getFocus))
-	mcp.AddTool(s, &mcp.Tool{
+	}), handleUI(g, g.getFocus, focusCard))
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetMindset),
 		Description: "Free. The full Mindset + Tactical Plan, plus manager self-state.",
-	}, handle(g, g.getMindset))
+	}), handleUI(g, g.getMindset, mindsetCard))
 	g.registerAlertTools(s)
 
 	mcp.AddTool(s, appTool(&mcp.Tool{

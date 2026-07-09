@@ -538,6 +538,10 @@ func TestMCPOverHTTP(t *testing.T) {
 	}
 	var directiveTool, settingsTool *mcp.Tool
 	for _, tool := range tools.Tools {
+		uiMeta, ok := tool.Meta["ui"].(map[string]any)
+		if !ok || uiMeta["resourceUri"] != widgetURI {
+			t.Fatalf("%s UI metadata = %#v", tool.Name, tool.Meta)
+		}
 		switch tool.Name {
 		case string(focus.AddDirective):
 			directiveTool = tool
@@ -548,16 +552,8 @@ func TestMCPOverHTTP(t *testing.T) {
 	if directiveTool == nil {
 		t.Fatal("add_directive missing from tool list")
 	}
-	uiMeta, ok := directiveTool.Meta["ui"].(map[string]any)
-	if !ok || uiMeta["resourceUri"] != widgetURI {
-		t.Fatalf("tool UI metadata = %#v", directiveTool.Meta)
-	}
 	if settingsTool == nil {
 		t.Fatal("get_settings missing from tool list")
-	}
-	uiMeta, ok = settingsTool.Meta["ui"].(map[string]any)
-	if !ok || uiMeta["resourceUri"] != widgetURI {
-		t.Fatalf("settings UI metadata = %#v", settingsTool.Meta)
 	}
 	resources, err := session.ListResources(ctx, nil)
 	if err != nil {

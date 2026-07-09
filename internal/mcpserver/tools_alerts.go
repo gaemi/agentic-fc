@@ -48,18 +48,18 @@ var validAlertNewsCategories = map[string]bool{
 }
 
 func (g *Gateway) registerAlertTools(s *mcp.Server) {
-	mcp.AddTool(s, &mcp.Tool{
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.ConfigureAlerts),
 		Description: "0 FP. Configure manager-scoped Agent Alert watches for news, match, calendar, and Focus wake signals.",
-	}, handle(g, g.configureAlerts))
-	mcp.AddTool(s, &mcp.Tool{
+	}), handleUI(g, g.configureAlerts, configureAlertsCard))
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.GetAlerts),
 		Description: "1 FP. Read pending Agent Alert summaries; subscribe to the alert resource for push wake signals.",
-	}, handle(g, g.getAlerts))
-	mcp.AddTool(s, &mcp.Tool{
+	}), handleUI(g, g.getAlerts, getAlertsCard))
+	mcp.AddTool(s, appTool(&mcp.Tool{
 		Name:        string(focus.AckAlerts),
 		Description: "0 FP. Acknowledge pending Agent Alerts through an inclusive numeric cursor.",
-	}, handle(g, g.ackAlerts))
+	}), handleUI(g, g.ackAlerts, ackAlertsCard))
 }
 
 func (g *Gateway) configureAlerts(mid int64, sid string, in configureAlertsIn) map[string]any {
