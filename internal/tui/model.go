@@ -30,6 +30,7 @@ const (
 	pollInterval           = 2 * time.Second
 	settingsUpdateDebounce = 250 * time.Millisecond
 	runtimeSettingCount    = 3
+	minMatchModalHeight    = 6
 	sceneFrameRows         = 9
 )
 
@@ -986,18 +987,10 @@ func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
 		return Overlay{}, false
 	}
 	boxWidth, boxHeight := matchModalSize(width, height)
-	if boxWidth < 20 || boxHeight < 6 {
+	if boxWidth < 20 || boxHeight < minMatchModalHeight {
 		return Overlay{}, false
 	}
-	var text string
-	switch m.MatchModal {
-	case "live":
-		text = m.liveMatchModal(boxWidth, boxHeight)
-	case "waiting":
-		text = m.waitingMatchModal(boxWidth, boxHeight)
-	default:
-		text = m.replayMatchModal(boxWidth, boxHeight)
-	}
+	text := m.renderMatchModalText(boxWidth, boxHeight)
 	x := (width - boxWidth) / 2
 	y := (height - boxHeight) / 2
 	if x < 1 {
@@ -1006,7 +999,25 @@ func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {
 	if y < 4 {
 		y = 4
 	}
+	if maxHeight := height - y - 1; boxHeight > maxHeight {
+		boxHeight = maxHeight
+		if boxHeight < minMatchModalHeight {
+			return Overlay{}, false
+		}
+		text = m.renderMatchModalText(boxWidth, boxHeight)
+	}
 	return textOverlay(x, y, 90, text), true
+}
+
+func (m Model) renderMatchModalText(width, height int) string {
+	switch m.MatchModal {
+	case "live":
+		return m.liveMatchModal(width, height)
+	case "waiting":
+		return m.waitingMatchModal(width, height)
+	default:
+		return m.replayMatchModal(width, height)
+	}
 }
 
 func matchModalSize(width, height int) (int, int) {
@@ -1017,7 +1028,7 @@ func matchModalSize(width, height int) (int, int) {
 	}
 	boxWidth := width - xMargin*2
 	boxHeight := height - yMargin*2
-	if boxWidth < 20 || boxHeight < 6 {
+	if boxWidth < 20 || boxHeight < minMatchModalHeight {
 		return 0, 0
 	}
 	return boxWidth, boxHeight
@@ -1409,7 +1420,8 @@ func sceneFrame(m Model, scene matchScene, width, height int) []string {
 		return nil
 	}
 	content := width - 2
-	if content < maxSceneArtWidth(scene) {
+	artWidth := maxSceneArtWidth(scene)
+	if content < artWidth {
 		return nil
 	}
 	if artHeight := len(scene.art) + 2; artHeight < height {
@@ -1425,10 +1437,18 @@ func sceneFrame(m Model, scene matchScene, width, height int) []string {
 		if i < len(scene.art) {
 			line = scene.art[i]
 		}
-		out = append(out, preformattedLinePrefix+"│"+fitLine(line, content, alignCenter)+"│")
+		out = append(out, preformattedLinePrefix+"│"+centerSceneArtLine(line, artWidth, content)+"│")
 	}
 	out = append(out, preformattedLinePrefix+"╰"+strings.Repeat("─", content)+"╯")
 	return out
+}
+
+func centerSceneArtLine(line string, artWidth, contentWidth int) string {
+	if artWidth <= 0 {
+		return strings.Repeat(" ", contentWidth)
+	}
+	block := fitLine(line, artWidth, alignLeft)
+	return fitLine(block, contentWidth, alignCenter)
 }
 
 func sceneLabel(m Model, scene matchScene) string {

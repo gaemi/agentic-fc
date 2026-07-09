@@ -864,6 +864,28 @@ func TestMatchModalOverlayUsesNearlyFullScreen(t *testing.T) {
 	}
 }
 
+func TestMatchModalOverlayDoesNotCollideWithOuterFrameOnShortScreens(t *testing.T) {
+	m := liveModel(78, 20)
+	m.Matches[0].Commentary = []string{
+		"Goal! Rao finds the net.",
+		"The goalkeeper reacts fast to palm it away.",
+		"The runner darts between two shirts and keeps going.",
+	}
+
+	got := m.View()
+	lines := strings.Split(got, "\n")
+	if !strings.Contains(got, "╔") || !strings.Contains(got, "Alpha 2-1 Beta") {
+		t.Fatalf("short-screen modal did not render:\n%s", got)
+	}
+	last := lines[len(lines)-1]
+	if !strings.HasPrefix(last, "└") || !strings.HasSuffix(last, "┘") || strings.Contains(last, "╚") {
+		t.Fatalf("modal collided with outer frame bottom border:\n%s", got)
+	}
+	if strings.Contains(got, "└╚") || strings.Contains(got, "╝┘") {
+		t.Fatalf("modal and app frame borders overlapped:\n%s", got)
+	}
+}
+
 func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
 	m := liveModel(64, 18)
 	m.Matches[0].Stats = LiveStats{
@@ -1128,6 +1150,27 @@ func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
 	}
 }
 
+func TestSceneFramePreservesArtBlockCoordinates(t *testing.T) {
+	first := centerSceneArtLine("o", 8, 30)
+	second := centerSceneArtLine("  |", 8, 30)
+	got := strings.Index(second, "|") - strings.Index(first, "o")
+	if got != 2 {
+		t.Fatalf("scene art coordinates drifted by %d cells, want 2:\n%q\n%q", got, first, second)
+	}
+
+	m := liveModel(120, 32)
+	frame := sceneFrame(m, matchSceneFromLine("A threaded pass splits the defence and Kim races clear.", nil), 90, 9)
+	if len(frame) == 0 {
+		t.Fatal("through-ball scene frame was omitted")
+	}
+	for _, line := range frame {
+		raw := strings.TrimPrefix(line, preformattedLinePrefix)
+		if lipgloss.Width(raw) != 90 {
+			t.Fatalf("scene frame line width = %d, want 90: %q", lipgloss.Width(raw), raw)
+		}
+	}
+}
+
 func TestLiveMatchModalSkipsHistoryWhenOnlyCurrentLine(t *testing.T) {
 	m := liveModel(120, 32)
 	m.Matches[0].Commentary = []string{"The runner darts between two shirts and keeps going."}
@@ -1195,6 +1238,36 @@ func TestLiveMatchModalDoesNotOverflowTightFrame(t *testing.T) {
 	}
 	if !strings.Contains(got, "Dribble") || !strings.Contains(got, "Current scene") {
 		t.Fatalf("tight modal lost current scene:\n%s", got)
+	}
+}
+
+func TestMatchModalResponsiveWidthsStayFixed(t *testing.T) {
+	for _, tc := range []struct {
+		width  int
+		height int
+	}{
+		{70, 16},
+		{90, 20},
+		{140, 36},
+	} {
+		m := liveModel(tc.width, tc.height)
+		m.Matches[0].Commentary = []string{
+			"Goal! Rao finds the net.",
+			"A high delivery hangs perfectly.",
+			"The goalkeeper reacts fast to palm it away.",
+			"The runner darts between two shirts and keeps going.",
+		}
+		got := m.liveMatchModal(tc.width, tc.height)
+		lines := strings.Split(got, "\n")
+		if len(lines) != tc.height {
+			t.Fatalf("%dx%d modal line count = %d:\n%s", tc.width, tc.height, len(lines), got)
+		}
+		for i, line := range lines {
+			if w := lipgloss.Width(line); w != tc.width {
+				t.Fatalf("%dx%d modal line %d width = %d, want %d: %q\n%s",
+					tc.width, tc.height, i, w, tc.width, line, got)
+			}
+		}
 	}
 }
 
