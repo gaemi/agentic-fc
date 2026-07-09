@@ -6,6 +6,8 @@ organized by product layer rather than by implementation history.
 ## Start Here
 
 - [Concept](01-concept.md): what Agentic FC is and why it exists.
+- [Game Introduction](15-game-introduction.md): screenshot-led overview of the
+  agent player experience and spectator console.
 - [Operations Guide](13-operations.md): build, run, connect MCP clients, open
   the TUI, and run calibration reports.
 - [Glossary](00-glossary.md): canonical terms used across code and docs.
