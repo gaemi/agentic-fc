@@ -184,6 +184,42 @@ test -z "$(gofmt -l .)"
 
 CI runs the same core checks.
 
+## Versioning Policy
+
+The root `VERSION` file is the source of truth for public release identity. It
+contains a bare SemVer version with no `v` prefix, prerelease suffix, or build
+metadata. Agentic FC starts at `0.1.0`.
+
+Release tags add the `v` prefix. For `VERSION=0.1.0`, the release tag is
+`v0.1.0`.
+
+Release builds inject traceable build metadata into each binary's `--version`
+output. The binary version therefore has the form
+`v0.1.0+<commit_count>.g<short_sha>`, while the root `VERSION` file remains
+`0.1.0`.
+
+Before `1.0.0`, Agentic FC is still allowed to change public APIs, save data,
+game balance, MCP tool shapes, and TUI presentation. Use the following rules:
+
+- Bump **MINOR** for new user-facing gameplay systems, MCP/Console/TUI surface
+  changes, save format changes, or any breaking pre-1.0 contract change.
+- Bump **PATCH** for bug fixes, documentation updates, release tooling, and
+  compatible polish that does not change public behavior or data contracts.
+- Bump to **1.0.0** only when the project is ready to declare a stable public
+  compatibility contract.
+
+Every release-preparation change must update these files together:
+
+- `VERSION`
+- `CHANGELOG.md`, with a section exactly like `## 0.1.0 - YYYY-MM-DD`
+- `docs/13-operations.md`, whose release tag and build metadata examples are
+  pinned to the current `VERSION`
+
+CI runs `make version-check`, which calls `scripts/check-version.sh`. The
+version harness rejects malformed versions, missing changelog sections, stale
+operation examples, and release workflows that do not read `VERSION` and run
+`make verify` before packaging.
+
 ## Automated Draft Releases
 
 The `draft-release` GitHub Actions workflow is a manual release-preparation

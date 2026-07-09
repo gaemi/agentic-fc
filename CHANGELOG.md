@@ -1,9 +1,14 @@
 # Changelog
 
-This project follows a simple human-readable changelog. The public release
-version has not been cut yet.
+This project follows a simple human-readable changelog. The current release
+version is tracked in `VERSION`; each release must have a matching dated
+section below.
 
 ## Unreleased
+
+- No unreleased changes.
+
+## 0.1.0 - 2026-07-09
 
 - Core daemon with seeded world generation, persistent simulation, Console API,
   MCP gateway, and local token authentication.
