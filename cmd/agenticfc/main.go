@@ -80,21 +80,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dataDir, err := resolveDataDir(*dataFlag)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Bind both listen addresses before anything touches the data directory:
 	// a busy port must fail the launch while the generation flags are still
 	// unconsumed. Binding after generation would persist a fresh world during
 	// the failed launch, and the corrected relaunch would silently resume it
-	// with the creation flags ignored.
+	// with the creation flags ignored. Data-dir resolution comes after the
+	// bind for the same reason: the common second-daemon launch must surface
+	// the port hint, not whatever filesystem state that daemon happens to see.
 	consoleLn, err := listenTCP("console api", "-console-addr", *consoleAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	mcpLn, err := listenTCP("mcp gateway", "-mcp-addr", *mcpAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dataDir, err := resolveDataDir(*dataFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -884,7 +886,17 @@ func resolveDataDir(flagValue string) (string, error) {
 	if local {
 		return "./data", nil
 	}
-	return userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	dir, err := userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	if err != nil {
+		// No resolvable per-user location (HOME/XDG/LocalAppData unset —
+		// service-style launches under systemd, cron, or minimal containers).
+		// Keep the historical ./data default there instead of refusing to
+		// start; the environments without a home directory are exactly the
+		// ones that ran from a fixed working directory before.
+		log.Printf("data directory: %v — falling back to ./data", err)
+		return "./data", nil
+	}
+	return dir, nil
 }
 
 // isWorldDataDir reports whether dir holds Agentic FC world state. A bare
@@ -924,14 +936,14 @@ func userDataDir(goos string, getenv func(string) string, home func() (string, e
 	case "darwin":
 		h, err := home()
 		if err != nil {
-			return "", fmt.Errorf("resolving data directory: %w (pass -data)", err)
+			return "", fmt.Errorf("user home: %w", err)
 		}
 		return filepath.Join(h, "Library", "Application Support", "agenticfc"), nil
 	case "windows":
 		if d := getenv("LocalAppData"); d != "" {
 			return filepath.Join(d, "agenticfc"), nil
 		}
-		return "", errors.New("resolving data directory: LocalAppData is not set (pass -data)")
+		return "", errors.New("LocalAppData is not set")
 	default:
 		// The XDG spec requires XDG_DATA_HOME to be absolute; a relative
 		// value would make the world location depend on the working
@@ -941,7 +953,7 @@ func userDataDir(goos string, getenv func(string) string, home func() (string, e
 		}
 		h, err := home()
 		if err != nil {
-			return "", fmt.Errorf("resolving data directory: %w (pass -data)", err)
+			return "", fmt.Errorf("user home: %w", err)
 		}
 		return filepath.Join(h, ".local", "share", "agenticfc"), nil
 	}

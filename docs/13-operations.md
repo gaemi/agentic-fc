@@ -140,6 +140,13 @@ always resumes the same world. The startup banner prints the resolved
 directory as `data: …`. Pass `-data` explicitly to run several worlds side by
 side or to pin a custom location.
 
+Two edge cases are handled deliberately: if `./data` exists but cannot be
+inspected (broken permissions after a `sudo` run), the launch fails loudly
+instead of silently using a different location; and if no per-user directory
+can be resolved at all (unset `HOME`/`XDG_DATA_HOME` in service-style
+environments), the daemon logs a warning and keeps the historical `./data`
+default.
+
 The data directory contains local operational state:
 
 | File | Purpose |

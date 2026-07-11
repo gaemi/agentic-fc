@@ -62,6 +62,17 @@ func TestResolveDataDir(t *testing.T) {
 	}
 }
 
+func TestResolveDataDirNoHomeFallsBack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("LocalAppData", "")
+	got, err := resolveDataDir("")
+	if err != nil || got != "./data" {
+		t.Errorf("no home environment: got %q, %v; want ./data fallback", got, err)
+	}
+}
+
 func TestIsWorldDataDir(t *testing.T) {
 	dir := t.TempDir()
 	if got, err := isWorldDataDir(dir); err != nil || got {
