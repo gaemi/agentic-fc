@@ -179,6 +179,56 @@ func update(m Model, msg tea.Msg) Model {
 	return next.(Model)
 }
 
+func TestUIStringsRefreshPeriodicallyAndRetryWhileEmpty(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/ui" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{"strings": map[string]string{"ui.app.title": "Fresh title"}})
+	}))
+	defer server.Close()
+
+	m := NewModel(NewClient(server.URL, "en"))
+	cmd := m.refreshUIIfDue()
+	if cmd == nil {
+		t.Fatal("empty UI catalog did not schedule an immediate retry")
+	}
+	got := cmd()
+	msg, ok := got.(UIMsg)
+	if !ok {
+		t.Fatalf("UI refresh returned %T", got)
+	}
+	m = update(m, msg)
+	if requests != 1 || m.UI["ui.app.title"] != "Fresh title" {
+		t.Fatalf("UI refresh requests=%d strings=%v", requests, m.UI)
+	}
+
+	for i := 0; i < uiRefreshEveryPolls/2; i++ {
+		if cmd := m.refreshUIIfDue(); cmd != nil {
+			t.Fatalf("UI refreshed early before counter reset on poll %d", i)
+		}
+	}
+	m = update(m, UIMsg{"ui.app.title": "Newer title"})
+	if m.uiRefreshCountdown != uiRefreshEveryPolls {
+		t.Fatalf("applied UI catalog reset countdown to %d, want %d", m.uiRefreshCountdown, uiRefreshEveryPolls)
+	}
+
+	for i := 1; i < uiRefreshEveryPolls; i++ {
+		if cmd := m.refreshUIIfDue(); cmd != nil {
+			t.Fatalf("UI refreshed early on poll %d of %d", i, uiRefreshEveryPolls)
+		}
+	}
+	if cmd := m.refreshUIIfDue(); cmd == nil {
+		t.Fatalf("UI did not refresh after %s", uiRefreshInterval)
+	}
+	if cmd := m.refreshUIIfDue(); cmd == nil {
+		t.Fatal("unacknowledged UI refresh was not retried on the next poll")
+	}
+}
+
 func key(s string) tea.KeyMsg {
 	if s == "left" {
 		return tea.KeyMsg{Type: tea.KeyLeft}
