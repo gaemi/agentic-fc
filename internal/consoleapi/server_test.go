@@ -1134,6 +1134,76 @@ func TestLiveMatchPanes(t *testing.T) {
 	}
 }
 
+func TestPrioritizeFixtureWindowsSurfacesNextAndLatestMatchdays(t *testing.T) {
+	fixtures := []fixtureDTO{
+		{ID: 1, Status: "LIVE", Kickoff: 250},
+		{ID: 2, Status: "SCHEDULED", Kickoff: 300},
+		{ID: 3, Status: "SCHEDULED", Kickoff: 300},
+		{ID: 4, Status: "SCHEDULED", Kickoff: 500},
+		{ID: 5, Status: "RESULT", Kickoff: 200},
+		{ID: 6, Status: "RESULT", Kickoff: 200},
+		{ID: 7, Status: "RESULT", Kickoff: 100},
+	}
+	got := prioritizeFixtureWindows(fixtures)
+	want := []int64{1, 2, 3, 5, 6, 4, 7}
+	if len(got) != len(want) {
+		t.Fatalf("prioritized fixtures = %d, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("prioritized fixture %d = %d, want %d: %+v", i, got[i].ID, id, got)
+		}
+	}
+}
+
+func TestPrioritizeFixtureWindowsHandlesSparseStates(t *testing.T) {
+	tests := []struct {
+		name     string
+		fixtures []fixtureDTO
+		want     []int64
+	}{
+		{name: "empty"},
+		{
+			name: "scheduled only",
+			fixtures: []fixtureDTO{
+				{ID: 1, Status: "SCHEDULED", Kickoff: 100},
+				{ID: 2, Status: "SCHEDULED", Kickoff: 200},
+			},
+			want: []int64{1, 2},
+		},
+		{
+			name: "results only",
+			fixtures: []fixtureDTO{
+				{ID: 3, Status: "RESULT", Kickoff: 200},
+				{ID: 4, Status: "RESULT", Kickoff: 100},
+			},
+			want: []int64{3, 4},
+		},
+		{
+			name: "no live",
+			fixtures: []fixtureDTO{
+				{ID: 5, Status: "SCHEDULED", Kickoff: 300},
+				{ID: 6, Status: "SCHEDULED", Kickoff: 500},
+				{ID: 7, Status: "RESULT", Kickoff: 200},
+			},
+			want: []int64{5, 7, 6},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := prioritizeFixtureWindows(tt.fixtures)
+			if len(got) != len(tt.want) {
+				t.Fatalf("prioritized fixtures = %d, want %d: %+v", len(got), len(tt.want), got)
+			}
+			for i, id := range tt.want {
+				if got[i].ID != id {
+					t.Fatalf("prioritized fixture %d = %d, want %d: %+v", i, got[i].ID, id, got)
+				}
+			}
+		})
+	}
+}
+
 // commentaryWithScrolledGoal builds a stream long enough to push the opening
 // goal off the pitch-marker window: the 12' goal, a 33' away chance, a 55'
 // booking, then ten late home chances.
