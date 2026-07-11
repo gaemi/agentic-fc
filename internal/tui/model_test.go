@@ -358,7 +358,8 @@ func TestAdminSettingsLoadingDoesNotPatchDefaults(t *testing.T) {
 func TestViewDisconnectedShowsGuidance(t *testing.T) {
 	m := NewModel(NewClient("http://127.0.0.1:7599", "en"))
 	m.Width, m.Height = 80, 24
-	m.Err = "connection refused"
+	next, _ := m.Update(UIErrMsg{Err: errors.New("connection refused")})
+	m = next.(Model)
 	v := plain(m.View())
 	for _, want := range []string{"Cannot reach the world server",
 		"http://127.0.0.1:7599", "agenticfc daemon", "-server <url>",
@@ -389,6 +390,36 @@ func TestViewConnectedErrorKeepsTabBody(t *testing.T) {
 	}
 	if !strings.Contains(v, "temporary blip") {
 		t.Error("transient error missing from the status line")
+	}
+}
+
+func TestViewPreCatalogPollErrorIsNotDisconnect(t *testing.T) {
+	// A per-pane poll failure (admin auth, one bad endpoint) while the
+	// catalog is still loading must not claim the server is unreachable.
+	m := NewModel(NewClient("http://127.0.0.1:7599", "en"))
+	m.Width, m.Height = 80, 24
+	next, _ := m.Update(ErrMsg{Err: errors.New("admin token required")})
+	m = next.(Model)
+	if m.disconnected() {
+		t.Fatal("generic poll error must not enter the disconnected state")
+	}
+	if v := plain(m.View()); strings.Contains(v, "Cannot reach the world server") {
+		t.Error("generic poll error rendered the disconnected panel")
+	}
+}
+
+func TestUIMsgClearsConnErr(t *testing.T) {
+	m := NewModel(NewClient("http://127.0.0.1:7599", "en"))
+	m.Width, m.Height = 80, 24
+	next, _ := m.Update(UIErrMsg{Err: errors.New("connection refused")})
+	m = next.(Model)
+	next, _ = m.Update(UIMsg(map[string]string{"ui.app.title": "Agentic FC"}))
+	m = next.(Model)
+	if m.disconnected() {
+		t.Fatal("catalog arrival must leave the disconnected state")
+	}
+	if m.ConnErr != "" {
+		t.Fatalf("ConnErr not cleared: %q", m.ConnErr)
 	}
 }
 

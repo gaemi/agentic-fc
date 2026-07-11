@@ -123,6 +123,7 @@ type Model struct {
 	Width                  int
 	Height                 int
 	Err                    string
+	ConnErr                string // last /v1/ui fetch failure; "" once the catalog arrives
 
 	uiRefreshCountdown int
 }
@@ -152,6 +153,7 @@ type (
 	}
 	SettingsCommitMsg struct{ Rev int }
 	ErrMsg            struct{ Err error }
+	UIErrMsg          struct{ Err error }
 	tickMsg           struct{}
 	matchAnimationMsg struct{ Run uint64 }
 )
@@ -192,7 +194,7 @@ func (m Model) fetchUI() tea.Cmd {
 	return func() tea.Msg {
 		s, err := c.UIStrings()
 		if err != nil {
-			return ErrMsg{err}
+			return UIErrMsg{err}
 		}
 		return UIMsg(s)
 	}
@@ -535,7 +537,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Err = ""
 	case UIMsg:
 		m.UI = msg
+		m.ConnErr = ""
 		m.uiRefreshCountdown = uiRefreshEveryPolls
+	case UIErrMsg:
+		// The catalog endpoint is unauthenticated and always present, so a
+		// failure here — unlike per-pane poll errors — means the server
+		// itself is unreachable or unhealthy.
+		m.ConnErr = msg.Err.Error()
+		m.Err = msg.Err.Error()
 	case NewsMsg:
 		if len(msg) > 0 && msg[0].ID > m.LatestNewsID {
 			if m.LatestNewsID != 0 {
@@ -977,11 +986,14 @@ func (m Model) articleDetailWidth() int {
 }
 
 // disconnected reports the pre-first-connection failure state: the console
-// has never obtained the server-rendered catalog and the latest request
-// errored. Every string would otherwise render as a raw key, so the view
-// swaps the tab body for guidance built from the English fallbacks.
+// has never obtained the server-rendered catalog and the catalog fetch
+// itself failed. Per-pane poll errors (admin auth, a single bad endpoint)
+// do not qualify — only the unauthenticated /v1/ui probe decides, so a
+// healthy daemon is never reported as unreachable. In this state every
+// string would otherwise render as a raw key, so the view swaps the tab
+// body for guidance built from the English fallbacks.
 func (m Model) disconnected() bool {
-	return len(m.UI) == 0 && m.Err != ""
+	return len(m.UI) == 0 && m.ConnErr != ""
 }
 
 func (m Model) viewDisconnected(width int) string {
@@ -998,7 +1010,7 @@ func (m Model) viewDisconnected(width int) string {
 		truncate(m.ui("ui.disconnected.hint_daemon"), width),
 		truncate(m.ui("ui.disconnected.hint_server"), width),
 		"",
-		styleDim.Render(truncate(m.ui("ui.disconnected.retrying")+" "+m.Err, width)),
+		styleDim.Render(truncate(m.ui("ui.disconnected.retrying")+" "+m.ConnErr, width)),
 	}
 	return strings.Join(lines, "\n")
 }
