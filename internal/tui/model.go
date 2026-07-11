@@ -1274,9 +1274,10 @@ func (m Model) liveMatchModal(width, height int) string {
 	if !compact && contentRows >= 24 {
 		if rows := m.broadcastRows(mv, width-4); len(rows) > 0 {
 			lines = append(lines, rows...)
-			// Extra-tall layouts (docs/07 §2) can afford to explain the
+			// Extra-tall layouts (docs/07 §2: terminal >= 42 rows, i.e.
+			// content >= 34 after modal margins) can afford to explain the
 			// timeline glyphs right where they appear.
-			if contentRows >= 36 {
+			if contentRows >= 34 {
 				lines = append(lines, styleDim.Render(truncate(m.ui("ui.match.legend"), width-4)))
 			}
 		}

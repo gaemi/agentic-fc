@@ -186,7 +186,7 @@ func TestFixtureListShowsLiveMinute(t *testing.T) {
 }
 
 func TestTimelineLegendOnlyOnExtraTallLayouts(t *testing.T) {
-	m := liveModel(140, 44)
+	m := liveModel(140, 42)
 	m.UI["ui.match.legend"] = "G goal · o chance"
 	m.Matches[0].Markers = []LiveMarker{{Minute: 10, Kind: "GOAL", Side: "HOME"}}
 	m.Matches[0].Momentum = []int{1, 0, 0, 0, 0, 0, 0, 0, 0}
