@@ -886,6 +886,15 @@ func resolveDataDir(flagValue string) (string, error) {
 	if local {
 		return "./data", nil
 	}
+	// Not adopted, but present: say so once, loudly. This covers both an
+	// unrelated project's data/ folder and the corner case of a first launch
+	// that died before its world snapshot (only admin.token written) — the
+	// latter is deliberately not adopted, because adopting snapshot-less
+	// directories would reopen generating a fresh world into a foreign dir.
+	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+		log.Printf("note: ./data exists but holds no world snapshot; " +
+			"using the per-user data directory (pass -data ./data to override)")
+	}
 	dir, err := userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
 	if err != nil {
 		// No resolvable per-user location (HOME/XDG/LocalAppData unset —
