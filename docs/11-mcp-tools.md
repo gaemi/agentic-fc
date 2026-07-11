@@ -111,7 +111,7 @@ The world seed and equivalent replay-randomness inputs are intentionally not exp
 No params. → balance, cap, regen rate, last 20 spend entries `{tool, cost, game_time}`.
 
 ### `get_mindset` — 0 FP
-No params. → the full Mindset + Tactical Plan per [10 §7](10-mindset-schema.md): disposition (current/target/drift ETA), priorities, directives, tactical plan, version, archetype origin — plus manager self-state: employment status, club ref, reputation Descriptor, mood **Descriptor** (FR-20e), active board expectations summary.
+No params. → the full Mindset + Tactical Plan per [10 §7](10-mindset-schema.md): disposition (current/target/drift ETA), priorities, directives, tactical plan, version, archetype origin — plus manager self-state: employment status, club ref, reputation Descriptor, mood **Descriptor** (FR-20e), active board expectations summary. `mindset.priorities` and `mindset.directives` are always arrays; an empty list is `[]`, never `null`.
 
 ### `configure_alerts` — 0 FP
 Replaces the authenticated Manager's Agent Alert watch configuration. Params:
