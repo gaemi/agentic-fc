@@ -1704,6 +1704,29 @@ func TestLiveMatchModalGoalFlashAndClose(t *testing.T) {
 	}
 }
 
+// The flash banner is pre-sized to the modal content width; if it went through
+// word wrapping its double spaces would collapse and leave a ragged right edge.
+func TestGoalFlashBannerSpansFullModalWidth(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches[0].Minute = 62
+	m.Matches[0].Markers = append(m.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
+	box := m.liveMatchModal(98, 20)
+	found := false
+	for _, line := range strings.Split(box, "\n") {
+		if !strings.Contains(line, "█") {
+			continue
+		}
+		found = true
+		inner := strings.TrimSuffix(strings.TrimPrefix(line, "║"), "║")
+		if !strings.HasPrefix(inner, "█") || !strings.HasSuffix(inner, "█") {
+			t.Fatalf("goal flash does not span the modal: %q", inner)
+		}
+	}
+	if !found {
+		t.Fatalf("goal flash banner missing:\n%s", box)
+	}
+}
+
 func TestGoalFlashExpiresBeforeTheNextMoment(t *testing.T) {
 	m := liveModel(140, 36)
 	m.Matches[0].Markers = []LiveMarker{{Minute: 67, Kind: "GOAL", Side: "HOME"}}

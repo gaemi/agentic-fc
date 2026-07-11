@@ -33,7 +33,7 @@ const (
 	settingsUpdateDebounce = 250 * time.Millisecond
 	runtimeSettingCount    = 3
 	minMatchModalHeight    = 6
-	sceneFrameRows         = 9
+	sceneFrameRows         = sceneCanvasHeight + 2 // canvas rows plus box borders
 	goalFlashWindowMinutes = 4
 	matchAnimationInterval = 180 * time.Millisecond
 )
@@ -1234,7 +1234,9 @@ func (m Model) liveMatchModal(width, height int) string {
 		fmt.Sprintf("%d' · %s · %d/%d · %s · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
 	}
 	if flash := m.goalFlashLine(mv, width-2); flash != "" {
-		lines = append(lines, flash)
+		// Already exactly content-wide; wrapText would collapse its double
+		// spaces and leave a ragged right edge on the banner.
+		lines = append(lines, preformattedLinePrefix+flash)
 	}
 	lines = append(lines,
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), mv.Stats.HomeShots, mv.Stats.AwayShots),
