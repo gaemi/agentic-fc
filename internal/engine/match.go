@@ -176,7 +176,8 @@ func (e *Engine) handleMatchMoment(ev *sim.Event) error {
 	i := lm.MomentIndex
 	lm.Clock = momentClock(i)
 	if i == matchMoments/2 {
-		e.comment(lm, ev.Due, "comment.halftime", map[string]any{
+		e.comment(lm, ev.Due, halftimeCommentaryKey(lm.HomeGoals, lm.AwayGoals), map[string]any{
+			"home": e.clubName(lm.HomeID), "away": e.clubName(lm.AwayID),
 			"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
 		})
 	}
@@ -509,6 +510,46 @@ func goalCommentKeys(chanceType string) []string {
 	}
 }
 
+func halftimeCommentaryKey(homeGoals, awayGoals int) string {
+	margin := homeGoals - awayGoals
+	switch {
+	case homeGoals == 0 && awayGoals == 0:
+		return "comment.halftime.goalless"
+	case homeGoals == awayGoals:
+		return "comment.halftime.level"
+	case margin >= 3:
+		return "comment.halftime.home_big_lead"
+	case margin <= -3:
+		return "comment.halftime.away_big_lead"
+	case homeGoals > awayGoals:
+		return "comment.halftime.home_lead"
+	default:
+		return "comment.halftime.away_lead"
+	}
+}
+
+func fulltimeCommentaryKey(homeGoals, awayGoals int) string {
+	margin := homeGoals - awayGoals
+	switch {
+	case margin == 0 && homeGoals == 0:
+		return "comment.fulltime.goalless"
+	case margin == 0:
+		return "comment.fulltime.level"
+	case margin == 1:
+		return "comment.fulltime.home_edge"
+	case margin == -1:
+		return "comment.fulltime.away_edge"
+	case margin >= 3:
+		return "comment.fulltime.home_big"
+	case margin <= -3:
+		return "comment.fulltime.away_big"
+	case margin > 0:
+		return "comment.fulltime.home_win"
+	default:
+		return "comment.fulltime.away_win"
+	}
+}
+
 // withdrawInjured takes the injured player off: the strongest FIT bench player
 // comes on when the side has substitutions left (deterministic — strength with
 // an id tie-break, no dice), otherwise the withdrawal has no replacement and
@@ -764,7 +805,7 @@ func (e *Engine) freshLegsUpgrade(lm *worldgen.LiveMatch, club int64, at sim.Gam
 // announces the score.
 func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 	lm.Clock = matchFullTimeMinutes
-	e.comment(lm, ev.Due, "comment.fulltime", map[string]any{
+	e.comment(lm, ev.Due, fulltimeCommentaryKey(lm.HomeGoals, lm.AwayGoals), map[string]any{
 		"home": e.clubName(lm.HomeID), "away": e.clubName(lm.AwayID),
 		"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
 	})

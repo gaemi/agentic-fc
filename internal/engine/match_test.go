@@ -197,6 +197,29 @@ func TestMatchProducesResults(t *testing.T) {
 		if sumCounts(r.Diagnostics.AerialWins) > sumCounts(r.Diagnostics.AerialDuels) {
 			t.Fatalf("aerial wins exceed attempts: %+v", r.Diagnostics)
 		}
+		var halftime, fulltime *worldgen.CommentaryLine
+		for i := range r.Commentary {
+			line := &r.Commentary[i]
+			switch {
+			case strings.HasPrefix(line.Key, "comment.halftime"):
+				halftime = line
+			case strings.HasPrefix(line.Key, "comment.fulltime"):
+				fulltime = line
+			}
+		}
+		halfHome, halfHomeOK := "", false
+		halfAway, halfAwayOK := "", false
+		if halftime != nil {
+			halfHome, halfHomeOK = halftime.Params["home"].(string)
+			halfAway, halfAwayOK = halftime.Params["away"].(string)
+		}
+		if halftime == nil || halftime.Key == "comment.halftime" ||
+			!halfHomeOK || halfHome == "" || !halfAwayOK || halfAway == "" {
+			t.Fatalf("fixture %d missing contextual half-time commentary: %+v", r.FixtureID, halftime)
+		}
+		if fulltime == nil || fulltime.Key != fulltimeCommentaryKey(r.HomeGoals, r.AwayGoals) {
+			t.Fatalf("fixture %d full-time commentary = %+v, want %q", r.FixtureID, fulltime, fulltimeCommentaryKey(r.HomeGoals, r.AwayGoals))
+		}
 		participants := len(r.HomeXI) + len(r.AwayXI)
 		for _, s := range r.Subs {
 			if s.On != 0 {
@@ -384,6 +407,43 @@ func TestAdjustmentCommentaryCyclesPerClubWithoutRNG(t *testing.T) {
 	)
 	if got := adjustmentCommentaryKey(lm, 1); got != "comment.adj.push.1" {
 		t.Fatalf("club 1 wrapped adjustment key = %q, want first variant", got)
+	}
+}
+
+func TestWhistleCommentaryKeysReflectScore(t *testing.T) {
+	halftime := []struct {
+		home, away int
+		want       string
+	}{
+		{0, 0, "comment.halftime.goalless"},
+		{1, 1, "comment.halftime.level"},
+		{2, 1, "comment.halftime.home_lead"},
+		{0, 2, "comment.halftime.away_lead"},
+		{4, 1, "comment.halftime.home_big_lead"},
+		{0, 3, "comment.halftime.away_big_lead"},
+	}
+	for _, tc := range halftime {
+		if got := halftimeCommentaryKey(tc.home, tc.away); got != tc.want {
+			t.Fatalf("halftime %d-%d key = %q, want %q", tc.home, tc.away, got, tc.want)
+		}
+	}
+	fulltime := []struct {
+		home, away int
+		want       string
+	}{
+		{0, 0, "comment.fulltime.goalless"},
+		{2, 2, "comment.fulltime.level"},
+		{2, 1, "comment.fulltime.home_edge"},
+		{0, 1, "comment.fulltime.away_edge"},
+		{3, 1, "comment.fulltime.home_win"},
+		{1, 3, "comment.fulltime.away_win"},
+		{4, 1, "comment.fulltime.home_big"},
+		{0, 3, "comment.fulltime.away_big"},
+	}
+	for _, tc := range fulltime {
+		if got := fulltimeCommentaryKey(tc.home, tc.away); got != tc.want {
+			t.Fatalf("fulltime %d-%d key = %q, want %q", tc.home, tc.away, got, tc.want)
+		}
 	}
 }
 
