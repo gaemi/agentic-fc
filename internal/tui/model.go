@@ -563,7 +563,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case MatchMsg:
-		m.MatchDetail = MatchDetail(msg)
+		detail := MatchDetail(msg)
+		if m.MatchModal != modalReplay || detail.Fixture != m.MatchModalID {
+			break
+		}
+		m.MatchDetail = detail
 		if m.ReplayOffset >= len(m.MatchDetail.Commentary) {
 			m.ReplayOffset = 0
 		}
@@ -2487,7 +2491,8 @@ func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
 		m.MatchModalID = f.ID
 		m.ReplayOffset = 0
 		if m.MatchDetail.Fixture == f.ID {
-			return m, nil
+			// Refresh on reopen: facts are immutable, prose/localization can change.
+			return m, m.fetchMatch()
 		}
 		m.MatchDetail = MatchDetail{}
 		return m, m.fetchMatch()

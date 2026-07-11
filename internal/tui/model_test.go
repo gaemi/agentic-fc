@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -758,6 +761,54 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 	m = update(m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.MatchModal != modalNone || m.Notice != "Not kicked off" {
 		t.Fatalf("scheduled enter opened modal %q notice %q", m.MatchModal, m.Notice)
+	}
+}
+
+func TestReopeningCachedReplayRefreshesWithoutLoadingFlash(t *testing.T) {
+	m := testModel()
+	fresh := m.MatchDetail
+	fresh.Commentary = []string{"Freshly rendered replay prose."}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/matches/7" {
+			t.Errorf("refresh path = %q, want /v1/matches/7", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(fresh); err != nil {
+			t.Errorf("encode fresh replay: %v", err)
+		}
+	}))
+	defer srv.Close()
+	m.Client = NewClient(srv.URL, "en")
+	m.Tab = tabFixtures
+	cached := m.MatchDetail
+
+	next, cmd := m.openSelectedFixture()
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("reopening a cached replay did not request fresh server detail")
+	}
+	if m.MatchModal != modalReplay || m.MatchModalID != m.Fixtures[0].ID {
+		t.Fatalf("cached replay did not open immediately: modal=%q id=%d", m.MatchModal, m.MatchModalID)
+	}
+	if m.MatchDetail.Fixture != cached.Fixture || len(m.MatchDetail.Commentary) != len(cached.Commentary) {
+		t.Fatalf("cached detail was cleared before refresh: got=%+v want=%+v", m.MatchDetail, cached)
+	}
+	msg := cmd()
+	if _, ok := msg.(MatchMsg); !ok {
+		t.Fatalf("refresh returned %T, want MatchMsg", msg)
+	}
+	m = update(m, msg)
+	if got := m.MatchDetail.Commentary; len(got) != 1 || got[0] != fresh.Commentary[0] {
+		t.Fatalf("fresh replay did not replace cached prose: %q", got)
+	}
+
+	wrong := fresh
+	wrong.Fixture = 99
+	wrong.Commentary = []string{"Wrong fixture arrived late."}
+	m = update(m, MatchMsg(wrong))
+	if m.MatchDetail.Fixture != fresh.Fixture || m.MatchDetail.Commentary[0] != fresh.Commentary[0] {
+		t.Fatalf("late response for another fixture replaced open replay: %+v", m.MatchDetail)
 	}
 }
 
