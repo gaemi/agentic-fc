@@ -1367,10 +1367,31 @@ func (e *Engine) considerPush(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.R
 		return
 	}
 	*shift++
+	commentaryKey := adjustmentCommentaryKey(lm, club)
 	lm.Adjustments = append(lm.Adjustments, worldgen.Adjustment{
 		Minute: lm.Clock, ClubID: club, Key: "adj.push",
 	})
-	e.comment(lm, at, "comment.adj.push", map[string]any{"club": e.clubName(club)})
+	e.comment(lm, at, commentaryKey, map[string]any{"club": e.clubName(club)})
+}
+
+var adjustmentCommentaryKeys = []string{
+	"comment.adj.push.1",
+	"comment.adj.push.2",
+	"comment.adj.push.3",
+	"comment.adj.push.4",
+}
+
+// adjustmentCommentaryKey advances each club through the presentation pool
+// independently. It consumes no RNG, so richer prose cannot perturb match
+// simulation, and a club never repeats the same adjustment line back-to-back.
+func adjustmentCommentaryKey(lm *worldgen.LiveMatch, clubID int64) string {
+	used := 0
+	for _, adj := range lm.Adjustments {
+		if adj.ClubID == clubID && adj.Key == "adj.push" {
+			used++
+		}
+	}
+	return adjustmentCommentaryKeys[used%len(adjustmentCommentaryKeys)]
 }
 
 // effective is a player's effective value for a visible attribute: the base,
