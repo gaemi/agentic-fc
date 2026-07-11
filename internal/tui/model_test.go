@@ -1871,6 +1871,9 @@ func TestMinuteStampedBeatsInReplayAndHistory(t *testing.T) {
 	if stamped[0] != "34' line" {
 		t.Fatalf("beat line = %q, want minute prefix", stamped[0])
 	}
+	if got := beatLines([]CommentaryBeat{{Minute: 0, Text: "kickoff prose"}}, []string{"kickoff prose"}); got[0] != "kickoff prose" {
+		t.Fatalf("opening whistle must stay unstamped: %q", got[0])
+	}
 	if got := beatLines([]CommentaryBeat{{Minute: 1, Text: "x"}}, []string{"a", "b"}); got[0] != "a" {
 		t.Fatalf("length mismatch must fall back: %q", got)
 	}
@@ -1895,6 +1898,11 @@ func TestMinuteStampedBeatsInReplayAndHistory(t *testing.T) {
 	if !strings.Contains(box, "▶ 1' We're under way") {
 		t.Fatalf("replay current line missing minute stamp:\n%s", box)
 	}
+	m.MatchDetail.Beats[0].Minute = 0
+	if box := m.replayMatchModal(120, 30); !strings.Contains(box, "▶ We're under way") {
+		t.Fatalf("0' kickoff beat should render unstamped:\n%s", box)
+	}
+	m.MatchDetail.Beats[0].Minute = 1
 	if !strings.Contains(box, "· 27' Goal!") {
 		t.Fatalf("replay log missing minute stamp:\n%s", box)
 	}

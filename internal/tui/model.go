@@ -1467,6 +1467,12 @@ func beatLines(beats []CommentaryBeat, fallback []string) []string {
 	}
 	out := make([]string, len(beats))
 	for i, b := range beats {
+		if b.Minute < 1 {
+			// The opening whistle is recorded before the clock moves; "0'"
+			// is not a football minute, so kickoff prose stays unstamped.
+			out[i] = b.Text
+			continue
+		}
 		out[i] = fmt.Sprintf("%d' %s", b.Minute, b.Text)
 	}
 	return out
