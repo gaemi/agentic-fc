@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
+	"github.com/gaemi/agentic-fc/internal/engine"
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/narrative"
 	"github.com/gaemi/agentic-fc/internal/sim"
@@ -1132,7 +1133,7 @@ func (g *Gateway) liveMatch(w *worldgen.World, lm *worldgen.LiveMatch, viewerClu
 	if viewerClub != 0 && (lm.HomeID == viewerClub || lm.AwayID == viewerClub) {
 		// The CURRENT on-pitch set, not the starting XI — a sub-on appears the
 		// moment they enter and a withdrawn player drops out.
-		out["own_team"] = g.ownTeamState(w, lm.OnPitch(viewerClub), lm.Cards, viewerClub)
+		out["own_team"] = g.ownTeamState(w, lm, viewerClub)
 	}
 	return out
 }
@@ -1154,22 +1155,23 @@ func adjustmentRows(adjs []worldgen.Adjustment) []map[string]any {
 	return out
 }
 
-// ownTeamState is the viewer's own-match dashboard: each starter's condition
-// and any bookings picked up (own-match intel — never shown for a rival's
-// live match).
-func (g *Gateway) ownTeamState(w *worldgen.World, xi []int64, cards []worldgen.MatchEvent, club int64) map[string]any {
+// ownTeamState is the viewer's own-match dashboard: each current on-pitch
+// player's derived live condition and any bookings picked up (own-match intel
+// — never shown for a rival's live match).
+func (g *Gateway) ownTeamState(w *worldgen.World, lm *worldgen.LiveMatch, club int64) map[string]any {
 	booked := map[int64]string{}
-	for _, c := range cards {
+	for _, c := range lm.Cards {
 		if c.ClubID == club {
 			booked[c.PlayerID] = c.Detail
 		}
 	}
 	idx := playerIndex(w)
+	xi := lm.OnPitch(club)
 	players := make([]map[string]any, 0, len(xi))
 	for _, pid := range xi {
 		row := map[string]any{"player": pid}
 		if p := idx[pid]; p != nil {
-			row["name"], row["condition"] = p.Name, p.Condition
+			row["name"], row["condition"] = p.Name, engine.LivePlayerCondition(p, lm)
 		}
 		if card, ok := booked[pid]; ok {
 			row["card"] = card

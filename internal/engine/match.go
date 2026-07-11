@@ -599,6 +599,17 @@ func condAt(p *worldgen.Player, minutesOn int) int {
 	return p.Condition - conditionDrainPlay*minutesOn/matchFullTimeMinutes
 }
 
+// LivePlayerCondition is the public 0..100 condition shown for a player who is
+// currently on the pitch. Match simulation keeps the pre-match value stored
+// until full time for deterministic single-write accounting, so observers must
+// use this derived view instead of presenting that stale stored value. A
+// substitute drains only for the minutes since coming on. Callers must use it
+// only while the match is live, before applyPostMatch commits the full-time
+// drain to the stored player state.
+func LivePlayerCondition(p *worldgen.Player, lm *worldgen.LiveMatch) int {
+	return clampInt(condAt(p, minutesOn(lm, p.ID)), 0, worldgen.ConditionMax)
+}
+
 // minutesOn is how long a player has been on the pitch: since kickoff for a
 // starter, since their sub-on minute otherwise.
 func minutesOn(lm *worldgen.LiveMatch, pid int64) int {
