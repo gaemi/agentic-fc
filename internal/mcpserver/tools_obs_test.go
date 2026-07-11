@@ -271,6 +271,72 @@ func TestGetSituationEmployed(t *testing.T) {
 	}
 }
 
+func TestSituationHeadlinesStayCompact(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	mid, _ := employedManager(t, g)
+	g.Host.World().AddNews(worldgen.NewsItem{
+		GameTime: 100,
+		Category: "match",
+		Key:      "feed.matchday.results",
+		Params: map[string]any{
+			"count":        2,
+			"kickoff_time": "15:00",
+			"results": []map[string]any{
+				{"home": "Alpha", "away": "Beta", "home_goals": 2, "away_goals": 1},
+			},
+			"table": []map[string]any{{"division": 1, "club": "Alpha", "points": 6}},
+			"story": map[string]any{"best_home": "Alpha", "best_away": "Beta", "home_goals": 2, "away_goals": 1},
+		},
+	})
+
+	data := dataOf(t, g.getSituation(mid, "s1", emptyIn{}))
+	rows := data["headlines"].([]map[string]any)
+	if len(rows) == 0 {
+		t.Fatal("situation returned no headline preview")
+	}
+	row := rows[0]
+	article := row["article"].(map[string]any)
+	if article["title"] == "" || article["deck"] == "" || article["source"] == "" {
+		t.Fatalf("headline preview lost its article identity: %+v", article)
+	}
+	if _, ok := article["body"]; ok {
+		t.Fatalf("situation headline leaked full article body: %+v", article)
+	}
+	headline := row["headline"].(map[string]any)
+	params := headline["params"].(map[string]any)
+	for _, key := range []string{"fixtures", "results", "story", "table"} {
+		if _, ok := params[key]; ok {
+			t.Errorf("situation headline retained detail param %q: %+v", key, params)
+		}
+	}
+	if params["count"] != 2 || params["kickoff_time"] != "15:00" {
+		t.Fatalf("headline lost title params: %+v", params)
+	}
+
+	news := dataOf(t, g.getNews(mid, "news-detail", getNewsIn{Since: "0", Scope: "world", Limit: 100}))
+	items := news["items"].([]map[string]any)
+	var detailed map[string]any
+	for _, item := range items {
+		if item["id"] == row["id"] {
+			detailed = item
+			break
+		}
+	}
+	if detailed == nil {
+		t.Fatalf("get_news did not return situation headline id %v", row["id"])
+	}
+	detailArticle := detailed["article"].(map[string]any)
+	if detailArticle["body"] == "" {
+		t.Fatalf("get_news lost full article body: %+v", detailArticle)
+	}
+	detailParams := detailed["headline"].(map[string]any)["params"].(map[string]any)
+	for _, key := range []string{"results", "story", "table"} {
+		if _, ok := detailParams[key]; !ok {
+			t.Errorf("get_news lost detail param %q: %+v", key, detailParams)
+		}
+	}
+}
+
 func TestGetLeagueTableAndManagers(t *testing.T) {
 	g, _, _, _ := newGateway(t)
 	mid, _ := employedManager(t, g)
