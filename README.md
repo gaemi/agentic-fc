@@ -92,6 +92,16 @@ The daemon also starts an MCP Streamable HTTP endpoint at
 `./data/manifest.json`; use one as the bearer token when connecting an MCP
 client.
 
+First-run notes:
+
+- Without `-start`, a new world is created **ready but not running**: the game
+  clock stays frozen until you start it. The daemon prints the exact command
+  to start the world when this happens.
+- If a default port (`7420`, `7421`) is already taken, the daemon exits before
+  creating any world data and names the flag to change (`-console-addr`,
+  `-mcp-addr`). Passing port `0` picks a random free port, and the startup
+  banner shows the address that was actually bound.
+
 Run a match-model calibration sample:
 
 ```sh

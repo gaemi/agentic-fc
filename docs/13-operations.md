@@ -66,6 +66,45 @@ Generation flags apply only when no world exists in the data directory. A
 subsequent daemon run resumes the existing world and ignores these creation
 flags.
 
+### Listen Addresses and Port Conflicts
+
+The daemon binds both listen addresses before it reads or writes the data
+directory. If either address is unavailable — most commonly because another
+`agenticfc` daemon is already running on the default ports — the launch fails
+immediately with a hint naming the flag to change, and no world data is
+created or consumed by the failed launch.
+
+To run several daemons side by side, give each one its own data directory and
+its own ports:
+
+```sh
+./bin/agenticfc -data ./data-b -console-addr 127.0.0.1:7430 -mcp-addr 127.0.0.1:7431 -start
+```
+
+Port `0` asks the OS for a random free port. The startup banner always prints
+the addresses that were actually bound (wildcard hosts are shown as the
+matching loopback address — `127.0.0.1` or `::1` — so the URL is directly
+dialable), so `-console-addr 127.0.0.1:0` is a safe way to launch without
+picking a port first; point the console's `-server` flag at the printed
+address.
+
+Because the ports are bound before the world loads, a client that connects
+during startup receives `503 Service Unavailable` with a `Retry-After` header
+until the daemon is ready, rather than a connection refusal or a stalled
+request.
+
+### Ready Worlds
+
+A new world created without `-start` is **ready**: fully generated and
+observable, but with the game clock stopped (Focus does not regenerate
+either). The daemon prints how to start it. Either relaunch with `-start`, or
+start it in place through the Console API:
+
+```sh
+curl -X POST http://127.0.0.1:7420/v1/admin/start \
+  -H "Authorization: Bearer $(cat ./data/admin.token)"
+```
+
 Custom name rules:
 
 - A custom name list may provide only the first few names; the rest of the clubs
