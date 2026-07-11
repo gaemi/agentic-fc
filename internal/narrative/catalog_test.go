@@ -1,6 +1,7 @@
 package narrative
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,6 +22,38 @@ func TestCatalogParity(t *testing.T) {
 	for key := range ko {
 		if _, ok := en[key]; !ok {
 			t.Errorf("key %q has no English template (English is the fallback)", key)
+		}
+	}
+}
+
+// TestKoreanPlaceholdersAvoidFixedParticles prevents generated Latin and
+// mixed-script values from producing broken phrases such as "Kim Ha-jun가".
+// Korean templates should add a stable noun or rewrite the sentence whenever
+// the following particle depends on a final consonant. Checking every named
+// placeholder keeps future scorer/coach/team parameters inside the guardrail.
+func TestKoreanPlaceholdersAvoidFixedParticles(t *testing.T) {
+	unsafe := regexp.MustCompile(`\{[a-z_]+\}(?:이라고|라고|으로|이라|이나|이랑|은|는|이|가|을|를|과|와|로|라|나|랑)(?:$|[\s.,!?—:;)])`)
+	for key, tmpl := range Default[LocaleKO] {
+		if match := unsafe.FindString(tmpl); match != "" {
+			t.Errorf("Korean template %q attaches unsafe fixed particle %q", key, match)
+		}
+	}
+}
+
+func TestKoreanCommentaryRendersGeneratedNamesGrammatically(t *testing.T) {
+	tests := []struct {
+		key    string
+		params map[string]any
+		want   string
+	}{
+		{"comment.chance.long.2", map[string]any{"player": "Kim Ha-jun"}, "Kim Ha-jun 선수가"},
+		{"comment.goal.setpiece.3", map[string]any{"player": "Tom Kennedy", "club": "AFC Moorfield", "home_goals": 1, "away_goals": 0}, "AFC Moorfield 팀이"},
+		{"comment.sub.fatigue", map[string]any{"off": "Connor Allen", "on": "Jung Ji-ho", "club": "Deportivo Rosales"}, "Connor Allen 선수의 체력이"},
+	}
+	for _, tt := range tests {
+		got := Default.Render(LocaleKO, tt.key, tt.params)
+		if !strings.Contains(got, tt.want) {
+			t.Errorf("%s rendered %q, want phrase %q", tt.key, got, tt.want)
 		}
 	}
 }
