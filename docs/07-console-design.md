@@ -53,6 +53,9 @@ controls.
 
 The pop-up carries the score/clock header, public match stats and diagnostics,
 live ratings, and the rhythmic commentary stream ([FR-35a](06-requirements.md)).
+Wide replay pop-ups retain the same shot-quality, aerial, pressing, and set-piece
+diagnostics after full time so tactical review does not lose evidence that was
+visible live; compact layouts continue to prioritize score, events, and prose.
 It deliberately drops the ASCII pitch: the useful surface is the score/state
 board plus commentary. Goal events produce a visible text flash in the pop-up
 without pretending the model is a continuous spatial simulation.
