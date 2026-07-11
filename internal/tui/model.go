@@ -2115,12 +2115,17 @@ func (m Model) clubDetail(width, height int) string {
 	if c.Caretaker {
 		lines = append(lines, styleDim.Render(truncate(m.ui("ui.club.caretaker"), width)))
 	}
-	lines = append(lines,
-		fmt.Sprintf("%s %d  %s %d  %s %s  %s %s",
+	// Compact layouts do not have room for the identity header's two board
+	// rows, so retain the one-line summary there. Wide layouts already show the
+	// same facts beside the badge and should move straight on to club context.
+	if width < 80 || height < 24 {
+		lines = append(lines, fmt.Sprintf("%s %d  %s %d  %s %s  %s %s",
 			m.ui("ui.club.predicted"), c.PredictedFinish,
 			m.ui("ui.club.objective"), c.BoardObjectiveFinish,
 			m.ui("ui.club.confidence"), c.Board["confidence"],
-			m.ui("ui.club.security"), c.Board["security"]),
+			m.ui("ui.club.security"), c.Board["security"]))
+	}
+	lines = append(lines,
 		fmt.Sprintf("%s %s  %s %s  %s %s  %s %s",
 			m.ui("ui.club.fan_mood"), c.Board["fan_mood"],
 			m.ui("ui.club.balance"), c.Finances["cash"],

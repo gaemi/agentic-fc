@@ -499,6 +499,22 @@ func TestKoreanClubViewKeepsWidthsAndAttributeColumns(t *testing.T) {
 	}
 }
 
+func TestWideClubDetailDoesNotRepeatBoardSummary(t *testing.T) {
+	m := testModel()
+	wide := plain(m.clubDetail(100, 30))
+	for _, want := range []string{"Predicted 4", "Objective 6", "Board Watchful", "Job Stable"} {
+		if got := strings.Count(wide, want); got != 1 {
+			t.Fatalf("wide club detail contains %q %d times, want once:\n%s", want, got, wide)
+		}
+	}
+	compact := plain(m.clubDetail(70, 20))
+	for _, want := range []string{"Predicted 4", "Objective 6", "Board Watchful", "Job Stable"} {
+		if !strings.Contains(compact, want) {
+			t.Fatalf("compact club detail lost %q:\n%s", want, compact)
+		}
+	}
+}
+
 func TestPlayerAttributeProfileUsesFixedOrder(t *testing.T) {
 	m := testModel()
 	m.UI["attr.FINISHING"] = "Finishing"

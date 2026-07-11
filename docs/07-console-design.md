@@ -124,7 +124,7 @@ live and scheduled fixture flows keep their existing polling behavior.
 | Related-entity navigator (club list → selected club) | ↑/↓ | ↑/↓ | ✔ left list pane | ✔ left list pane |
 | Side-by-side comparison (two players/clubs) | — | — | — | ✔ |
 
-Club views include a deterministic ASCII club badge generated from the club name and a selected-player dossier. Player dossiers show the public squad facts the viewer already receives — name, age, body profile (height/weight), preferred foot, weak-foot descriptor, position/unit, familiarity, contract season, academy flag, and visible attributes with bar graphs. The body profile comes from the simulation model and feeds small match modifiers for aerial reach and physical duels.
+Club views include a deterministic ASCII club badge generated from the club name and a selected-player dossier. On wide layouts, the badge-side identity header owns predicted finish, board objective, confidence, and job security; the context rows below start with fan mood and finances rather than repeating those board facts. Compact layouts retain a single board summary because they do not render the wide identity header. Player dossiers show the public squad facts the viewer already receives — name, age, body profile (height/weight), preferred foot, weak-foot descriptor, position/unit, familiarity, contract season, academy flag, and visible attributes with bar graphs. The body profile comes from the simulation model and feeds small match modifiers for aerial reach and physical duels.
 
 ### 4.5 Admin screens (Admin Mode)
 
