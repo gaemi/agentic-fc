@@ -670,7 +670,12 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 	}
 	lower := strings.ToLower(line)
 	switch {
-	case kind == "GOAL" || containsAny(lower, "goal!", "scores", "scored", "finds the net", "it's in", "득점", "골!", "골망", "들어갔"):
+	case kind == "GOAL" || containsAny(lower,
+		"goal!", "scores", "scored", "finds the net", "it's in",
+		"strikes!", "lashes it home", "ruthless finish", "buries it", "smashes",
+		"finish, noise", "rolls it home", "bundles it",
+		"득점", "골!", "골망", "들어갔", "꽂아 넣", "냉정한 마무리", "첫 터치, 슛",
+		"밀어 넣", "굴려 넣"):
 		return sceneByKind("goal")
 	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
 		return sceneByKind("card")
@@ -692,15 +697,15 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 		return sceneByKind("cross")
 	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
 		return sceneByKind("cutback")
-	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "스루패스", "수비 라인", "일대일"):
+	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투"):
 		return sceneByKind("through")
 	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
 		return sceneByKind("longshot")
 	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
 		return sceneByKind("setpiece")
-	case containsAny(lower, "counter", "on the break", "burst forward", "races clear", "grass ahead", "역습", "공간", "빠른"):
+	case containsAny(lower, "counter", "on the break", "the break is", "burst forward", "races clear", "grass ahead", "역습", "공간", "빠른"):
 		return sceneByKind("counter")
-	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "혼전", "튕", "흐른 공"):
+	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "혼전", "튕", "흐른 공", "걷어내지 못한"):
 		return sceneByKind("scramble")
 	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
 		return sceneByKind("dribble")

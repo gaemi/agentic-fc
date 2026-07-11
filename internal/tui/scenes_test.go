@@ -3,11 +3,14 @@ package tui
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/gaemi/agentic-fc/internal/narrative"
 )
 
 func sortedSceneKinds() []string {
@@ -106,6 +109,56 @@ func TestComposeSceneRequiresFrames(t *testing.T) {
 		}
 	}()
 	composeScene("empty", "EMPTY")
+}
+
+// Every goal commentary line in the catalog must land on a glory scene: the
+// generic templates on the goal scene itself, the patterned templates on
+// either their action scene or the goal scene. This ties the narrative
+// catalog and the scene classifier together so new goal prose cannot quietly
+// fall back to the build-up frame.
+func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
+	params := map[string]any{
+		"player": "Kim Min-jae", "club": "Alpha", "home_goals": 2, "away_goals": 1,
+	}
+	patternKinds := map[string]string{
+		"cross": "cross", "cutback": "cutback", "through": "through",
+		"long": "longshot", "setpiece": "setpiece", "scramble": "scramble",
+		"counter": "counter",
+	}
+	generic := regexp.MustCompile(`^comment\.goal\.\d+$`)
+	patterned := regexp.MustCompile(`^comment\.goal\.([a-z]+)\.\d+$`)
+	for _, loc := range narrative.Supported {
+		checked := 0
+		for key := range narrative.Default[loc] {
+			var want []string
+			if generic.MatchString(key) {
+				want = []string{"goal"}
+			} else if m := patterned.FindStringSubmatch(key); m != nil {
+				pattern, ok := patternKinds[m[1]]
+				if !ok {
+					t.Fatalf("goal pattern %q has no expected scene kind", m[1])
+				}
+				want = []string{pattern, "goal"}
+			} else {
+				continue
+			}
+			checked++
+			line := narrative.Default.Render(loc, key, params)
+			got := matchSceneFromLine(line, nil).kind
+			ok := false
+			for _, w := range want {
+				if got == w {
+					ok = true
+				}
+			}
+			if !ok {
+				t.Errorf("%s %s: scene %q not in %v for line %q", loc, key, got, want, line)
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no goal commentary keys found for locale %s", loc)
+		}
+	}
 }
 
 // DUMP_SCENES=1 go test ./internal/tui -run TestDumpScenes -v
