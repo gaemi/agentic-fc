@@ -1430,7 +1430,7 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, preformattedLinePrefix+m.plainGoalBanner(width-2))
 	}
 	if !compact && height-2-len(lines) >= 14 {
-		if frame := sceneFrame(m, sc, width-2, sceneFrameRows); len(frame) > 0 {
+		if frame := sceneFrameDirAt(m, sc, width-2, sceneFrameRows, 0, replayGoalAway(md, start)); len(frame) > 0 {
 			lines = append(lines, "")
 			lines = append(lines, frame...)
 		}

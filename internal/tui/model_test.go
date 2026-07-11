@@ -1937,3 +1937,40 @@ func TestLocalizedFootAndCategoryLabels(t *testing.T) {
 		t.Fatalf("masthead still shows raw category token:\n%s", v)
 	}
 }
+
+// Replay scenes mirror only recorded away goals; home goals and beats
+// without club attribution stay home-directed, as do old daemons w/o beats.
+func TestReplayMirrorsAwayGoalsOnly(t *testing.T) {
+	base := MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 1, AwayGoals: 1,
+		Commentary: []string{
+			"Goal! Rao finds the net for Beta — it's 0–1.",
+			"A quiet spell as the sides feel each other out.",
+		},
+		Beats: []CommentaryBeat{
+			{Minute: 20, Text: "Goal! Rao finds the net for Beta — it's 0–1."},
+			{Minute: 30, Text: "A quiet spell as the sides feel each other out."},
+		},
+		Scorers: []MatchEvent{{Minute: 20, Club: "Beta", Player: "Rao"}},
+	}
+	m := liveModel(140, 36)
+	m.MatchModal = modalReplay
+	m.MatchModalID = 0
+	m.Fixtures = nil
+	m.MatchDetail = base
+	m.ReplayOffset = 0
+	if box := m.replayMatchModal(120, 30); !strings.Contains(box, "|: :") {
+		t.Fatalf("away replay goal should mirror the goal mouth left:\n%s", box)
+	}
+
+	m.MatchDetail.Scorers = []MatchEvent{{Minute: 20, Club: "Alpha", Player: "Rao"}}
+	if box := m.replayMatchModal(120, 30); strings.Contains(box, "|: :") {
+		t.Fatalf("home replay goal must stay home-directed:\n%s", box)
+	}
+
+	m.MatchDetail = base
+	m.MatchDetail.Beats = nil
+	if box := m.replayMatchModal(120, 30); strings.Contains(box, "|: :") {
+		t.Fatalf("beat-less daemon must stay home-directed:\n%s", box)
+	}
+}

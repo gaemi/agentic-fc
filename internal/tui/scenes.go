@@ -844,6 +844,25 @@ func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
 	return matchSceneFromLine("", &mv.Markers[len(mv.Markers)-1])
 }
 
+// replayGoalAway reports whether the selected replay beat is an away goal —
+// the one replay case where the acting side is recorded (scorer club). Other
+// replay beats have no club attribution and stay home-directed.
+func replayGoalAway(md MatchDetail, idx int) bool {
+	if idx < 0 || idx >= len(md.Beats) || len(md.Beats) != len(md.Commentary) {
+		return false
+	}
+	if !goalProse(md.Commentary[idx]) {
+		return false
+	}
+	minute := md.Beats[idx].Minute
+	for _, e := range md.Scorers {
+		if e.Minute == minute {
+			return e.Club == md.Away
+		}
+	}
+	return false
+}
+
 // liveAttackingAway reports whether the current beat belongs to the away
 // side. The latest marker describes the same beat as the latest commentary
 // line the scene is drawn from, so the decision must not expire on a clock

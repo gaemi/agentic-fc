@@ -81,7 +81,9 @@ frame of every scene shares exact dimensions and the art can never render
 ragged. Attack scenes are direction-aware: while the
 latest fresh marker belongs to the away side, the frame plays mirrored so
 away moves attack leftward, with banners re-stamped readable. Ceremonies,
-stoppages, and neutral build-up keep one orientation.
+stoppages, and neutral build-up keep one orientation. Replays mirror only
+recorded away goals (the scorer ledger carries the side); other replay beats
+stay home-directed.
 The 180 ms presentation tick exists only
 while a live match pop-up is open, restarts when the latest commentary beat
 changes (including a new action of the same kind),
