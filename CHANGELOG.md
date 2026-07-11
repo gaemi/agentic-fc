@@ -6,6 +6,13 @@ section below.
 
 ## Unreleased
 
+- The live and replay match pop-ups gained a team-sheet panel on the `l` key:
+  home/away lineups read keeper-to-front with position, name, substitution
+  minutes (`▲`/`▼`), goal/card markers, and the public rating; players who
+  came on follow the starters, and the live view lists the unused bench,
+  dimmed. The Console API now serves the underlying rows as
+  `home_lineup`/`away_lineup` on `/v1/matches/live` and `/v1/matches/{id}`
+  (public facts only — names, positions, ratings, and event minutes).
 - The spectator console now explains itself when it cannot reach the daemon:
   instead of raw `ui.*` tokens and empty panes, a guidance panel shows the
   server URL it tried, asks whether the `agenticfc` daemon is running, points

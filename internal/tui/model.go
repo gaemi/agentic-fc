@@ -87,22 +87,25 @@ const (
 type Model struct {
 	Client *Client
 
-	UI                     map[string]string
-	World                  WorldInfo
-	News                   []NewsArticle
-	NewsIdx                int
-	ArticleOffset          int
-	Table                  Table
-	Clubs                  []ClubSummary
-	Club                   ClubDetail
-	ClubIdx                int
-	PlayerIdx              int
-	Fixtures               []Fixture
-	FixtureIdx             int
-	MatchDetail            MatchDetail
-	ReplayOffset           int
-	MatchModal             matchModalKind
-	MatchModalID           int64
+	UI            map[string]string
+	World         WorldInfo
+	News          []NewsArticle
+	NewsIdx       int
+	ArticleOffset int
+	Table         Table
+	Clubs         []ClubSummary
+	Club          ClubDetail
+	ClubIdx       int
+	PlayerIdx     int
+	Fixtures      []Fixture
+	FixtureIdx    int
+	MatchDetail   MatchDetail
+	ReplayOffset  int
+	MatchModal    matchModalKind
+	MatchModalID  int64
+	// LineupView flips the open match pop-up between the broadcast body and
+	// the team-sheet panel ("l"); it resets when the pop-up closes.
+	LineupView             bool
 	matchAnimationFrame    int
 	matchAnimationRun      uint64
 	matchAnimationSceneSig string
@@ -441,6 +444,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.SettingsIdx++
 				}
 			}
+		case "l":
+			if m.MatchModal == modalLive || m.MatchModal == modalReplay {
+				m.LineupView = !m.LineupView
+			}
 		case "tab":
 			if m.Tab == tabClubs && len(m.Club.Squad) > 0 {
 				m.PlayerIdx = (m.PlayerIdx + 1) % len(m.Club.Squad)
@@ -720,6 +727,7 @@ func (m *Model) closeMatchModal() {
 	m.stopMatchAnimation()
 	m.MatchModal = modalNone
 	m.MatchModalID = 0
+	m.LineupView = false
 }
 
 func (m *Model) startMatchAnimation() {
@@ -1079,6 +1087,10 @@ var uiFallbacks = map[string]string{
 	"ui.match.scene.shootout":         "Penalty shootout",
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
+	"ui.match.modal.lineups":          "L lineups",
+	"ui.match.modal.lineups_back":     "L broadcast",
+	"ui.match.lineups.bench":          "Bench",
+	"ui.match.lineups.empty":          "Lineups are not available for this match.",
 }
 
 var (
@@ -1303,7 +1315,7 @@ func (m Model) liveMatchModal(width, height int) string {
 	}
 	sc := matchSceneFromLive(mv, current)
 	lines := []string{
-		fmt.Sprintf("%d' %s · %s · %d/%d · %s · %s", mv.Minute, m.matchPhaseLabel(mv.Minute), mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
+		fmt.Sprintf("%d' %s · %s · %d/%d · %s · %s · %s", mv.Minute, m.matchPhaseLabel(mv.Minute), mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp(), m.ui("ui.match.modal.lineups")),
 	}
 	flash := m.goalFlashLine(mv, width-2)
 	if flash == "" && goalProse(current) {
@@ -1316,6 +1328,14 @@ func (m Model) liveMatchModal(width, height int) string {
 		// Already exactly content-wide; wrapText would collapse its double
 		// spaces and leave a ragged right edge on the banner.
 		lines = append(lines, preformattedLinePrefix+flash)
+	}
+	if m.LineupView {
+		lines[0] = fmt.Sprintf("%d' %s · %s · %d/%d · %s · %s", mv.Minute, m.matchPhaseLabel(mv.Minute), mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.ui("ui.match.modal.lineups_back"))
+		lines = append(lines, "")
+		for _, row := range m.lineupLines(mv.Home, mv.Away, mv.HomeLineup, mv.AwayLineup, width-4) {
+			lines = append(lines, preformattedLinePrefix+row)
+		}
+		return modalBox(width, height, title, lines)
 	}
 	lines = append(lines,
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), mv.Stats.HomeShots, mv.Stats.AwayShots),
@@ -1412,8 +1432,18 @@ func (m Model) replayMatchModal(width, height int) string {
 	md := m.MatchDetail
 	title := fmt.Sprintf("%s %d-%d %s", md.Home, md.HomeGoals, md.AwayGoals, md.Away)
 	compact := matchModalCompact(width, height)
+	if m.LineupView {
+		lines := []string{
+			fmt.Sprintf("%s · %s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help"), m.ui("ui.match.modal.lineups_back")),
+			"",
+		}
+		for _, row := range m.lineupLines(md.Home, md.Away, md.HomeLineup, md.AwayLineup, width-4) {
+			lines = append(lines, preformattedLinePrefix+row)
+		}
+		return modalBox(width, height, title, lines)
+	}
 	lines := []string{
-		fmt.Sprintf("%s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help")),
+		fmt.Sprintf("%s · %s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help"), m.ui("ui.match.modal.lineups")),
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), md.HomeShots, md.AwayShots),
 	}
 	patternLimit := 2
@@ -1526,6 +1556,122 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, m.ui("ui.match.replay.archived"))
 	}
 	return modalBox(width, height, title, lines)
+}
+
+// lineupLines renders the pop-up's team-sheet panel from the already-public
+// lineup rows the daemon serves. Wide boxes show home and away side by side;
+// narrow ones stack home above away. Overflow is clipped by modalBox — the
+// panel is a summary, not a scroller.
+func (m Model) lineupLines(homeName, awayName string, home, away []LineupEntry, width int) []string {
+	if len(home) == 0 && len(away) == 0 {
+		return []string{m.ui("ui.match.lineups.empty")}
+	}
+	if width >= 64 {
+		colW := (width - 3) / 2
+		left := m.lineupColumn(homeName, home, colW)
+		right := m.lineupColumn(awayName, away, colW)
+		rows := maxInt(len(left), len(right))
+		lines := make([]string, 0, rows)
+		for i := 0; i < rows; i++ {
+			l, r := "", ""
+			if i < len(left) {
+				l = left[i]
+			}
+			if i < len(right) {
+				r = right[i]
+			}
+			lines = append(lines, fitLine(l, colW, alignLeft)+" │ "+r)
+		}
+		return lines
+	}
+	lines := append(m.lineupColumn(homeName, home, width), "")
+	return append(lines, m.lineupColumn(awayName, away, width)...)
+}
+
+// lineupPositionOrder ranks positions the way a team sheet reads: keeper,
+// back line, midfield, then the front — inside a band, right before left.
+var lineupPositionOrder = map[string]int{
+	"GK": 0, "DR": 1, "DC": 2, "DL": 3, "DM": 4,
+	"MC": 5, "MR": 6, "ML": 7, "AM": 8, "WR": 9, "WL": 10, "ST": 11,
+}
+
+// sortLineup orders the starter prefix by position band (stable, so the
+// served order breaks ties); entrants and bench rows keep their story order
+// after the starters. Current daemons already serve team-sheet order, so
+// this is an idempotent guard for older daemons that served raw XI order.
+func sortLineup(entries []LineupEntry) []LineupEntry {
+	starters := 0
+	for _, e := range entries {
+		if e.OnMinute > 0 || e.Bench {
+			break
+		}
+		starters++
+	}
+	out := make([]LineupEntry, len(entries))
+	copy(out, entries)
+	sort.SliceStable(out[:starters], func(i, j int) bool {
+		oi, iOK := lineupPositionOrder[out[i].Position]
+		oj, jOK := lineupPositionOrder[out[j].Position]
+		if iOK != jOK {
+			return iOK // unknown positions sink to the end of the sheet
+		}
+		return oi < oj
+	})
+	return out
+}
+
+// lineupColumn renders one side: bold club name, then starters and entrants,
+// with any unused live bench under a dim bench label.
+func (m Model) lineupColumn(club string, entries []LineupEntry, width int) []string {
+	rows := []string{styleHeader.Render(truncate(club, width))}
+	benchShown := false
+	for _, e := range sortLineup(entries) {
+		if e.Bench && !benchShown {
+			rows = append(rows, styleDim.Render(truncate(m.ui("ui.match.lineups.bench"), width)))
+			benchShown = true
+		}
+		row := truncate(lineupRow(e), width)
+		if e.Bench {
+			row = styleDim.Render(row)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// lineupRow formats one team-sheet row: position, name, then the public
+// story markers — ▲on' ▼off' goals G/G2, cards Y/Y2/R — and the rating.
+func lineupRow(e LineupEntry) string {
+	pos := e.Position
+	if pos == "" {
+		pos = "--"
+	}
+	s := fmt.Sprintf("%-2s  %s", pos, e.Name)
+	if e.OnMinute > 0 {
+		s += fmt.Sprintf(" ▲%d'", e.OnMinute)
+	}
+	if e.OffMinute > 0 {
+		s += fmt.Sprintf(" ▼%d'", e.OffMinute)
+	}
+	switch {
+	case e.Goals == 1:
+		s += " G"
+	case e.Goals > 1:
+		s += fmt.Sprintf(" G%d", e.Goals)
+	}
+	switch {
+	case e.Yellows == 1:
+		s += " Y"
+	case e.Yellows > 1:
+		s += fmt.Sprintf(" Y%d", e.Yellows)
+	}
+	if e.Red {
+		s += " R"
+	}
+	if e.RatingX10 > 0 {
+		s += fmt.Sprintf(" · %d.%d", e.RatingX10/10, e.RatingX10%10)
+	}
+	return s
 }
 
 // beatLines returns minute-stamped display strings for commentary, falling
@@ -2572,6 +2718,10 @@ func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
 
 func (m Model) liveModalFinished() (tea.Model, tea.Cmd) {
 	m.stopMatchAnimation()
+	// Full time swaps the modal kind under the viewer; the replay (or
+	// waiting) body should open on its normal broadcast view, not a lineup
+	// panel left over from the live match.
+	m.LineupView = false
 	if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
 		f := m.Fixtures[idx]
 		m.FixtureIdx = idx

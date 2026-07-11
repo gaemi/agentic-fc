@@ -1243,3 +1243,124 @@ func commentaryWithScrolledGoal(scorer, homeName, awayPlayer, awayName string) [
 	}
 	return lines
 }
+
+// TestMatchLineupsServeTeamSheets locks the pop-up lineup panel's wire shape
+// (docs/07 §4.1): starters serialized in team-sheet order (keeper first, not
+// the stored selection order) with their story markers, players who came on
+// appended with the entry minute, and — live only — the unused bench flagged
+// Bench. Only public facts travel: name, position, rating, events.
+func TestMatchLineupsServeTeamSheets(t *testing.T) {
+	s, host := newTestServer(t)
+	w := host.world
+	f := w.Fixtures[0]
+	var homePlayers, awayPlayers []*worldgen.Player
+	for i := range w.Players {
+		p := &w.Players[i]
+		if p.Youth {
+			continue
+		}
+		switch p.ClubID {
+		case f.HomeID:
+			homePlayers = append(homePlayers, p)
+		case f.AwayID:
+			awayPlayers = append(awayPlayers, p)
+		}
+	}
+	if len(homePlayers) < 3 || len(awayPlayers) < 2 {
+		t.Fatal("test world lacks players for the lineup fixture")
+	}
+	h1, h2, h3 := homePlayers[0], homePlayers[1], homePlayers[2]
+	// The wire promises team-sheet order, so serve the away XI scrambled:
+	// an outfielder listed before the keeper must come back keeper-first.
+	var aGK, aOut *worldgen.Player
+	for _, p := range awayPlayers {
+		switch {
+		case p.Position == "GK" && aGK == nil:
+			aGK = p
+		case p.Position != "GK" && aOut == nil:
+			aOut = p
+		}
+	}
+	if aGK == nil || aOut == nil {
+		t.Fatal("test world lacks an away keeper/outfielder pair")
+	}
+
+	w.Results = append(w.Results, worldgen.MatchResult{
+		FixtureID: f.ID, Competition: f.Competition, DivisionTier: f.DivisionTier,
+		HomeID: f.HomeID, AwayID: f.AwayID, HomeGoals: 1, AwayGoals: 0,
+		Kickoff: f.Kickoff,
+		HomeXI:  []int64{h1.ID}, AwayXI: []int64{aOut.ID, aGK.ID},
+		Subs:    []worldgen.SubEvent{{Minute: 60, ClubID: f.HomeID, Off: h1.ID, On: h2.ID, Reason: "TACTICAL"}},
+		Scorers: []worldgen.MatchEvent{{Minute: 20, PlayerID: h1.ID, ClubID: f.HomeID}},
+		Cards: []worldgen.MatchEvent{
+			{Minute: 30, PlayerID: aOut.ID, ClubID: f.AwayID, Detail: "YELLOW"},
+			{Minute: 75, PlayerID: aOut.ID, ClubID: f.AwayID, Detail: "RED"},
+		},
+		RatingsX10: map[int64]int{h1.ID: 81, h2.ID: 66, aOut.ID: 40},
+	})
+
+	code, body := get(t, s, fmt.Sprintf("/v1/matches/%d", f.ID))
+	if code != http.StatusOK {
+		t.Fatalf("match detail status %d: %s", code, body)
+	}
+	var detail matchDetailDTO
+	if err := json.Unmarshal([]byte(body), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.HomeLineup) != 2 || len(detail.AwayLineup) != 2 {
+		t.Fatalf("lineup sizes wrong: %+v / %+v", detail.HomeLineup, detail.AwayLineup)
+	}
+	starter := detail.HomeLineup[0]
+	if starter.Name != h1.Name || starter.Position != h1.Position ||
+		starter.Goals != 1 || starter.OffMinute != 60 || starter.OnMinute != 0 ||
+		starter.RatingX10 != 81 || starter.Bench {
+		t.Fatalf("starter row wrong: %+v", starter)
+	}
+	entrant := detail.HomeLineup[1]
+	if entrant.Name != h2.Name || entrant.OnMinute != 60 || entrant.RatingX10 != 66 || entrant.Bench {
+		t.Fatalf("entrant row wrong: %+v", entrant)
+	}
+	if detail.AwayLineup[0].Name != aGK.Name || detail.AwayLineup[0].Position != "GK" {
+		t.Fatalf("scrambled XI should serialize keeper-first: %+v", detail.AwayLineup)
+	}
+	booked := detail.AwayLineup[1]
+	if booked.Name != aOut.Name || booked.Yellows != 1 || !booked.Red || booked.OffMinute != 0 {
+		t.Fatalf("second-yellow row should read Y+R without a sub-off: %+v", booked)
+	}
+
+	w.LiveMatches = map[int64]*worldgen.LiveMatch{
+		f.ID + 1: {
+			FixtureID: f.ID + 1, Competition: "LEAGUE",
+			HomeID: f.HomeID, AwayID: f.AwayID, Clock: 70,
+			HomeXI: []int64{h1.ID}, HomeBench: []int64{h2.ID, h3.ID},
+			AwayXI: []int64{aOut.ID},
+			Subs:   []worldgen.SubEvent{{Minute: 50, ClubID: f.HomeID, Off: h1.ID, On: h2.ID, Reason: "FATIGUE"}},
+		},
+	}
+	code, body = get(t, s, "/v1/matches/live")
+	if code != http.StatusOK {
+		t.Fatalf("live status %d", code)
+	}
+	var out struct {
+		Matches []liveMatchDTO `json:"matches"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Matches) != 1 {
+		t.Fatalf("live matches = %d, want 1", len(out.Matches))
+	}
+	lineup := out.Matches[0].HomeLineup
+	if len(lineup) != 3 {
+		t.Fatalf("live home lineup = %+v, want starter+entrant+bench", lineup)
+	}
+	if lineup[0].Name != h1.Name || lineup[0].OffMinute != 50 || lineup[0].Bench {
+		t.Fatalf("live starter row wrong: %+v", lineup[0])
+	}
+	if lineup[1].Name != h2.Name || lineup[1].OnMinute != 50 || lineup[1].Bench {
+		t.Fatalf("live entrant row wrong: %+v", lineup[1])
+	}
+	if lineup[2].Name != h3.Name || !lineup[2].Bench || lineup[2].RatingX10 != 0 {
+		t.Fatalf("unused bench row wrong: %+v", lineup[2])
+	}
+}

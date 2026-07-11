@@ -104,6 +104,21 @@ within four elapsed match minutes, so a quiet or unrelated current scene never
 sits beneath a stale goal banner. This does not pretend the model is a
 continuous spatial simulation.
 
+Both pop-up variants also carry a **team-sheet panel** behind the `l` toggle:
+the broadcast body swaps for the home/away lineups, side by side when the box
+is wide enough and stacked otherwise. Rows read like a printed team sheet —
+keeper first, back line to front — each with position, name, substitution
+minutes (`▲on'` / `▼off'`), goal (`G`) and card (`Y`/`R`) markers, and the
+public rating; players who came on follow the starters, and the live variant
+closes with the unused bench, dimmed. The panel is assembled from the
+already-public lineup rows the Console API serves (`home_lineup` /
+`away_lineup` on both the live and match-detail payloads — names, positions,
+ratings, and event minutes only, with starters already serialized in
+team-sheet order), so it respects the same visibility
+boundaries as the rest of the pop-up; older daemons without those fields get
+an honest empty-panel notice instead. The toggle resets when the pop-up
+closes.
+
 ### 4.2 Media Desk
 
 | Element | S | M | L | XL |
@@ -151,7 +166,8 @@ matchday, then the remaining forward schedule and older results. This
 keeps both anticipation and replay access in the initial viewport even when a
 full season of future fixtures is already generated. Finished current-season
 matches open a replay pop-up with score, shots, scorers, cards,
-substitutions, club-labelled top ratings, and the preserved commentary log; archived
+substitutions, club-labelled top ratings, the `l` team-sheet panel, and the
+preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.
 

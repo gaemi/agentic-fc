@@ -2042,3 +2042,104 @@ func TestReplayMirrorsAwayGoalsOnly(t *testing.T) {
 		t.Fatalf("beat-less daemon must stay home-directed:\n%s", box)
 	}
 }
+
+func TestLiveMatchModalLineupPanelTogglesAndRenders(t *testing.T) {
+	m := liveModel(140, 36)
+	m.UI["ui.match.modal.lineups"] = "L lineups"
+	m.UI["ui.match.modal.lineups_back"] = "L broadcast"
+	m.UI["ui.match.lineups.bench"] = "BENCH"
+	m.Matches[0].HomeLineup = []LineupEntry{
+		{Name: "Hero", Position: "ST", RatingX10: 76, Goals: 2},
+		{Name: "Solid", Position: "MC", OffMinute: 58, Yellows: 1, RatingX10: 61},
+		{Name: "Fresh", Position: "WR", OnMinute: 58, RatingX10: 66},
+		{Name: "Sleeper", Position: "GK", Bench: true},
+	}
+	m.Matches[0].AwayLineup = []LineupEntry{
+		{Name: "Villain", Position: "DC", Red: true, RatingX10: 44},
+	}
+
+	v := m.View()
+	if !strings.Contains(v, "L lineups") {
+		t.Fatalf("broadcast view should hint the lineup toggle:\n%s", v)
+	}
+	if strings.Contains(v, "Sleeper") {
+		t.Fatalf("broadcast view should not list bench players:\n%s", v)
+	}
+
+	m = update(m, key("l"))
+	if !m.LineupView {
+		t.Fatal("l should open the lineup panel")
+	}
+	v = m.View()
+	for _, want := range []string{
+		"ST  Hero G2 · 7.6",
+		"MC  Solid ▼58' Y · 6.1",
+		"WR  Fresh ▲58' · 6.6",
+		"BENCH",
+		"GK  Sleeper",
+		"DC  Villain R · 4.4",
+		"L broadcast",
+	} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("lineup panel missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "Earlier flow") || strings.Contains(v, "Build-up") {
+		t.Fatalf("lineup panel should replace the broadcast body:\n%s", v)
+	}
+
+	m = update(m, key("l"))
+	if m.LineupView {
+		t.Fatal("l should toggle the panel back off")
+	}
+	if v = m.View(); !strings.Contains(v, "Earlier flow") {
+		t.Fatalf("broadcast body should return after toggling back:\n%s", v)
+	}
+
+	m.LineupView = true
+	m.closeMatchModal()
+	if m.LineupView {
+		t.Fatal("closing the modal should reset the lineup panel")
+	}
+
+	m.LineupView = true
+	um, _ := m.liveModalFinished()
+	if um.(Model).LineupView {
+		t.Fatal("the full-time transition should reset the lineup panel")
+	}
+}
+
+func TestReplayModalLineupPanelAndNarrowStack(t *testing.T) {
+	m := liveModel(140, 36)
+	m.MatchModal = modalReplay
+	m.Fixtures[0].Status = "RESULT"
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1,
+		KickoffText: "Aug 16", Competition: "LEAGUE",
+		HomeLineup: []LineupEntry{{Name: "Hero", Position: "ST", Goals: 1, RatingX10: 80}},
+		AwayLineup: []LineupEntry{{Name: "Villain", Position: "DC", Yellows: 2, RatingX10: 52}},
+	}
+	m.LineupView = true
+
+	wide := m.replayMatchModal(120, 30)
+	for _, want := range []string{"ST  Hero G · 8.0", "DC  Villain Y2 · 5.2", "│"} {
+		if !strings.Contains(wide, want) {
+			t.Fatalf("wide replay lineup missing %q:\n%s", want, wide)
+		}
+	}
+
+	narrow := m.replayMatchModal(60, 30)
+	if !strings.Contains(narrow, "Hero") || !strings.Contains(narrow, "Villain") {
+		t.Fatalf("narrow replay lineup should stack both sides:\n%s", narrow)
+	}
+	if strings.Contains(narrow, "│") {
+		t.Fatalf("narrow replay lineup should not draw the column rule:\n%s", narrow)
+	}
+
+	m.MatchDetail.HomeLineup = nil
+	m.MatchDetail.AwayLineup = nil
+	m.UI["ui.match.lineups.empty"] = "No lineups recorded."
+	if v := m.replayMatchModal(120, 30); !strings.Contains(v, "No lineups recorded.") {
+		t.Fatalf("older daemons without lineups should explain the empty panel:\n%s", v)
+	}
+}

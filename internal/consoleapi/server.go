@@ -892,8 +892,124 @@ type matchDetailDTO struct {
 	Cards             []matchEventDTO           `json:"cards,omitempty"`
 	Subs              []matchSubDTO             `json:"subs,omitempty"`
 	Ratings           []liveRatingDTO           `json:"ratings,omitempty"`
+	HomeLineup        []lineupEntryDTO          `json:"home_lineup,omitempty"`
+	AwayLineup        []lineupEntryDTO          `json:"away_lineup,omitempty"`
 	Commentary        []string                  `json:"commentary,omitempty"`
 	Beats             []beatDTO                 `json:"beats,omitempty"`
+}
+
+// lineupEntryDTO is one team-sheet row for the match pop-up (docs/07 §4.1):
+// public identity plus the match-story markers, so consoles can render a
+// lineup panel without re-joining the event lists by name. Starters come
+// first in stored XI order, players who came on follow in entry order, and
+// (live only) unused bench players close the list flagged Bench.
+type lineupEntryDTO struct {
+	Name      string `json:"name"`
+	Position  string `json:"position"`
+	RatingX10 int    `json:"rating_x10,omitempty"`
+	Goals     int    `json:"goals,omitempty"`
+	Yellows   int    `json:"yellows,omitempty"`
+	Red       bool   `json:"red,omitempty"`
+	// OffMinute/OnMinute are substitution minutes; zero means "not subbed"
+	// (a football substitution never happens before the clock starts).
+	OffMinute int  `json:"off_minute,omitempty"`
+	OnMinute  int  `json:"on_minute,omitempty"`
+	Bench     bool `json:"bench,omitempty"`
+}
+
+// teamSheetOrder ranks positions the way a printed team sheet reads: keeper,
+// back line, midfield, then the front — inside a band, right before left.
+// Unknown positions sink to the end.
+var teamSheetOrder = map[string]int{
+	"GK": 0, "DR": 1, "DC": 2, "DL": 3, "DM": 4,
+	"MC": 5, "MR": 6, "ML": 7, "AM": 8, "WR": 9, "WL": 10, "ST": 11,
+}
+
+// lineupEntries assembles one side's team sheet from the persisted match
+// story. Everything here is already-public spectacle: names, positions, and
+// the goal/card/sub events the pop-up lists elsewhere. Starters are served
+// in team-sheet order (the stored XI order is a selection artifact, not a
+// presentation promise); entrants and bench keep their story order. Ids
+// without a resolvable player (defensive) are skipped.
+func lineupEntries(clubID int64, xi, bench []int64, subs []worldgen.SubEvent,
+	scorers, cards []worldgen.MatchEvent, ratings map[int64]int,
+	playerOf func(int64) *worldgen.Player) []lineupEntryDTO {
+	rows := []lineupEntryDTO{}
+	index := map[int64]int{}
+	add := func(id int64, onMinute int, benchRow bool) {
+		if _, dup := index[id]; dup {
+			return
+		}
+		p := playerOf(id)
+		if p == nil {
+			return
+		}
+		row := lineupEntryDTO{Name: p.Name, Position: p.Position, OnMinute: onMinute, Bench: benchRow}
+		if !benchRow {
+			row.RatingX10 = ratings[id]
+		}
+		index[id] = len(rows)
+		rows = append(rows, row)
+	}
+	starters := make([]int64, len(xi))
+	copy(starters, xi)
+	sort.SliceStable(starters, func(i, j int) bool {
+		pi, pj := playerOf(starters[i]), playerOf(starters[j])
+		if (pi == nil) != (pj == nil) {
+			return pj == nil
+		}
+		if pi == nil {
+			return false
+		}
+		oi, iOK := teamSheetOrder[pi.Position]
+		oj, jOK := teamSheetOrder[pj.Position]
+		if iOK != jOK {
+			return iOK
+		}
+		return oi < oj
+	})
+	for _, id := range starters {
+		add(id, 0, false)
+	}
+	for _, sub := range subs {
+		if sub.ClubID != clubID {
+			continue
+		}
+		if i, ok := index[sub.Off]; ok {
+			rows[i].OffMinute = sub.Minute
+		}
+		if sub.On != 0 && sub.On != sub.Off {
+			add(sub.On, sub.Minute, false)
+		}
+	}
+	for _, e := range scorers {
+		if e.ClubID != clubID {
+			continue
+		}
+		if i, ok := index[e.PlayerID]; ok {
+			rows[i].Goals++
+		}
+	}
+	for _, e := range cards {
+		if e.ClubID != clubID {
+			continue
+		}
+		i, ok := index[e.PlayerID]
+		if !ok {
+			continue
+		}
+		// A second yellow is recorded as one RED event after the first
+		// YELLOW, so the row naturally reads Y + R.
+		if e.Detail == "RED" {
+			rows[i].Red = true
+		} else {
+			rows[i].Yellows++
+		}
+	}
+	for _, id := range bench {
+		add(id, 0, true)
+	}
+	return rows
 }
 
 // beatDTO is one minute-stamped commentary beat. Commentary keeps the plain
@@ -919,10 +1035,11 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 		for i := range wd.Clubs {
 			names[wd.Clubs[i].ID] = wd.Clubs[i].Name
 		}
-		players := map[int64]string{}
+		playerIdx := map[int64]*worldgen.Player{}
 		for i := range wd.Players {
-			players[wd.Players[i].ID] = wd.Players[i].Name
+			playerIdx[wd.Players[i].ID] = &wd.Players[i]
 		}
+		playerOf := func(id int64) *worldgen.Player { return playerIdx[id] }
 		round := 0
 		for i := range wd.Fixtures {
 			if wd.Fixtures[i].ID == id {
@@ -931,12 +1048,12 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if res := wd.ResultFor(id); res != nil {
-			dto = s.matchDetailDTO(loc, names, players, res, round, false)
+			dto = s.matchDetailDTO(loc, names, playerOf, res, round, false)
 			found = true
 			return
 		}
 		if res := wd.ArchivedResultFor(id); res != nil {
-			dto = s.matchDetailDTO(loc, names, players, res, 0, true)
+			dto = s.matchDetailDTO(loc, names, playerOf, res, 0, true)
 			found = true
 		}
 	})
@@ -947,7 +1064,13 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, dto)
 }
 
-func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]string, r *worldgen.MatchResult, round int, archived bool) matchDetailDTO {
+func (s *Server) matchDetailDTO(loc narrative.Locale, names map[int64]string, playerOf func(int64) *worldgen.Player, r *worldgen.MatchResult, round int, archived bool) matchDetailDTO {
+	playerName := func(id int64) string {
+		if p := playerOf(id); p != nil {
+			return p.Name
+		}
+		return ""
+	}
 	dto := matchDetailDTO{
 		Fixture: r.FixtureID, Status: "RESULT", Archived: archived,
 		Season: worldgen.DateOf(r.Kickoff).Season, Competition: r.Competition, Round: round,
@@ -963,7 +1086,7 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 		dto.Winner = names[r.Winner]
 	}
 	event := func(e worldgen.MatchEvent) matchEventDTO {
-		return matchEventDTO{Minute: e.Minute, Club: names[e.ClubID], Player: players[e.PlayerID], Detail: e.Detail}
+		return matchEventDTO{Minute: e.Minute, Club: names[e.ClubID], Player: playerName(e.PlayerID), Detail: e.Detail}
 	}
 	for _, e := range r.Scorers {
 		dto.Scorers = append(dto.Scorers, event(e))
@@ -974,9 +1097,11 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 	for _, sub := range r.Subs {
 		dto.Subs = append(dto.Subs, matchSubDTO{
 			Minute: sub.Minute, Club: names[sub.ClubID],
-			Off: players[sub.Off], On: players[sub.On], Reason: sub.Reason,
+			Off: playerName(sub.Off), On: playerName(sub.On), Reason: sub.Reason,
 		})
 	}
+	dto.HomeLineup = lineupEntries(r.HomeID, r.HomeXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
+	dto.AwayLineup = lineupEntries(r.AwayID, r.AwayXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
 	sides := make(map[int64]string, len(r.HomeXI)+len(r.AwayXI)+2*len(r.Subs))
 	for _, id := range r.HomeXI {
 		sides[id] = matchSideHome
@@ -997,7 +1122,7 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 		}
 	}
 	for id, rx := range r.RatingsX10 {
-		if name := players[id]; name != "" {
+		if name := playerName(id); name != "" {
 			dto.Ratings = append(dto.Ratings, liveRatingDTO{Side: sides[id], Name: name, RatingX10: rx})
 		}
 	}
@@ -1056,18 +1181,20 @@ const (
 )
 
 type liveMatchDTO struct {
-	Fixture     int64           `json:"fixture"`
-	Competition string          `json:"competition"`
-	Home        string          `json:"home"`
-	Away        string          `json:"away"`
-	HomeGoals   int             `json:"home_goals"`
-	AwayGoals   int             `json:"away_goals"`
-	Minute      int             `json:"minute"`
-	Commentary  []string        `json:"commentary"`
-	Beats       []beatDTO       `json:"beats,omitempty"`
-	Markers     []liveMarkerDTO `json:"markers"`
-	Stats       liveStatsDTO    `json:"stats"`
-	Ratings     []liveRatingDTO `json:"ratings"`
+	Fixture     int64            `json:"fixture"`
+	Competition string           `json:"competition"`
+	Home        string           `json:"home"`
+	Away        string           `json:"away"`
+	HomeGoals   int              `json:"home_goals"`
+	AwayGoals   int              `json:"away_goals"`
+	Minute      int              `json:"minute"`
+	Commentary  []string         `json:"commentary"`
+	Beats       []beatDTO        `json:"beats,omitempty"`
+	Markers     []liveMarkerDTO  `json:"markers"`
+	Stats       liveStatsDTO     `json:"stats"`
+	Ratings     []liveRatingDTO  `json:"ratings"`
+	HomeLineup  []lineupEntryDTO `json:"home_lineup,omitempty"`
+	AwayLineup  []lineupEntryDTO `json:"away_lineup,omitempty"`
 	// Momentum is one signed value per 10-minute bucket (home positive,
 	// goals ×3 + chances ×1). Both it and the markers field carry the full
 	// match story.
@@ -1123,7 +1250,10 @@ func (s *Server) handleLiveMatches(w http.ResponseWriter, r *http.Request) {
 			all := liveMarkers(lm, clubName)
 			dto.Momentum = momentumFrom(all)
 			dto.Markers = all
-			dto.Ratings = liveRatings(lm, playerOf)
+			ratings := worldgen.LiveRatingsX10(lm, playerOf)
+			dto.Ratings = liveRatings(lm, ratings, playerOf)
+			dto.HomeLineup = lineupEntries(lm.HomeID, lm.HomeXI, lm.HomeBench, lm.Subs, lm.Scorers, lm.Cards, ratings, playerOf)
+			dto.AwayLineup = lineupEntries(lm.AwayID, lm.AwayXI, lm.AwayBench, lm.Subs, lm.Scorers, lm.Cards, ratings, playerOf)
 			out.Matches = append(out.Matches, dto)
 		}
 	})
@@ -1187,8 +1317,7 @@ func momentumFrom(markers []liveMarkerDTO) []int {
 // liveRatings renders both sides' live ratings rows, each side sorted rating
 // desc then name (a stable presentation order). Ids without a resolvable
 // player (defensive) are skipped — no row is better than a nameless one.
-func liveRatings(lm *worldgen.LiveMatch, playerOf func(int64) *worldgen.Player) []liveRatingDTO {
-	ratings := worldgen.LiveRatingsX10(lm, playerOf)
+func liveRatings(lm *worldgen.LiveMatch, ratings map[int64]int, playerOf func(int64) *worldgen.Player) []liveRatingDTO {
 	rows := []liveRatingDTO{}
 	appendSide := func(side string, clubID int64) {
 		var part []liveRatingDTO
