@@ -731,7 +731,7 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 	case containsAny(lower,
 		"fine stop", "strong hand", "gets down sharply", "clawed out", "palm it away",
 		"tip it away", "makes the stop", "strong save", "somehow blocks", "keeper stays big",
-		"throws up a strong hand", "goalkeeper reacts", "goalkeeper gets down", "keeper claws through bodies to save",
+		"throws up a strong hand", "goalkeeper reacts", "goalkeeper gets down", "keeper claws",
 		"선방", "강한 손", "쳐냅니다", "쳐냅", "낮게 몸을 던져", "빠르게 반응해", "걷어 올려집니다",
 		"골키퍼가 크게 버티며", "손끝으로 밀어냅니다", "몸들 사이로 걷어냅니다",
 		"골키퍼가 어떻게든", "골키퍼가 읽고 나와"):
@@ -756,17 +756,17 @@ func actionSceneKind(lower string) string {
 	// play the set-piece frame even though the prose mentions the header.
 	case containsAny(lower, "set piece", "set-piece", "dead ball", "dead-ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
 		return "setpiece"
-	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
+	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스를", "크로스가", "크로스 ", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
 		return "cross"
 	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
 		return "cutback"
-	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투 각도", "단숨에 찢"):
+	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투 각도", "단숨에 찢", "수비를 가르", "라인을 깨고"):
 		return "through"
 	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
 		return "longshot"
 	case containsAny(lower, "counter", "on the break", "the break is", "burst forward", "races clear", "grass ahead", "역습", "넓은 공간"):
 		return "counter"
-	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "keep the chance alive", "혼전", "튕", "흐른 공", "걷어내지 못한", "기회를 살려"):
+	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "keep the chance alive", "keep the ball alive", "혼전", "튕", "흐른 공", "걷어내지 못한", "기회를 살려"):
 		return "scramble"
 	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
 		return "dribble"

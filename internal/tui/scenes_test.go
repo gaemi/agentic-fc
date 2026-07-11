@@ -124,9 +124,12 @@ func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 		"cross": "cross", "cutback": "cutback", "through": "through",
 		"long": "longshot", "setpiece": "setpiece", "scramble": "scramble",
 		"counter": "counter",
+		// Score-context calls have no action shape of their own; they play
+		// the goal celebration.
+		"opener": "goal", "equalizer": "goal", "late": "goal", "late_level": "goal",
 	}
 	generic := regexp.MustCompile(`^comment\.goal\.\d+$`)
-	patterned := regexp.MustCompile(`^comment\.goal\.([a-z]+)\.\d+$`)
+	patterned := regexp.MustCompile(`^comment\.goal\.([a-z_]+)\.\d+$`)
 	for _, loc := range narrative.Supported {
 		checked := 0
 		for key := range narrative.Default[loc] {
@@ -157,6 +160,44 @@ func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 		}
 		if checked == 0 {
 			t.Fatalf("no goal commentary keys found for locale %s", loc)
+		}
+	}
+}
+
+// Chance and save templates must land on an action scene (their own pattern,
+// the generic chance, or the keeper's save) — never the quiet build-up frame.
+// Saves specifically must show the keeper.
+func TestChanceAndSaveCommentaryLandOnActionScenes(t *testing.T) {
+	params := map[string]any{
+		"player": "Kim Min-jae", "club": "Alpha", "home_goals": 2, "away_goals": 1,
+	}
+	patternKinds := map[string]string{
+		"cross": "cross", "cutback": "cutback", "through": "through",
+		"long": "longshot", "setpiece": "setpiece", "scramble": "scramble",
+		"counter": "counter",
+	}
+	chanceKey := regexp.MustCompile(`^comment\.chance\.([a-z]+)\.\d+$`)
+	saveKey := regexp.MustCompile(`^comment\.save\.([a-z]+)\.\d+$`)
+	for _, loc := range narrative.Supported {
+		checked := 0
+		for key := range narrative.Default[loc] {
+			line := narrative.Default.Render(loc, key, params)
+			got := matchSceneFromLine(line, nil).kind
+			if m := saveKey.FindStringSubmatch(key); m != nil {
+				checked++
+				if got != "save" {
+					t.Errorf("%s %s: scene %q, want save for line %q", loc, key, got, line)
+				}
+			} else if m := chanceKey.FindStringSubmatch(key); m != nil {
+				checked++
+				want := patternKinds[m[1]]
+				if got != want && got != "chance" && got != "save" {
+					t.Errorf("%s %s: scene %q, want %q/chance/save for line %q", loc, key, got, want, line)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no chance/save commentary keys found for locale %s", loc)
 		}
 	}
 }

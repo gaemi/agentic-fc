@@ -27,6 +27,7 @@ import (
 const (
 	matchFullTimeMinutes = 90
 	matchMoments         = 18 // key moments sampled across a match
+	lateDramaMinute      = 85 // goals from here narrate as late drama
 
 	chanceBaseRate         = 0.55  // per-moment P(a clear chance falls to a side)
 	conversionBase         = 0.20  // P(a chance converts), before skill skew
@@ -139,7 +140,7 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 		e.world.LiveMatches = make(map[int64]*worldgen.LiveMatch)
 	}
 	e.world.LiveMatches[f.ID] = lm
-	e.comment(lm, ev.Due, "comment.kickoff", map[string]any{
+	e.comment(lm, ev.Due, kickoffCommentaryKey(f.ID), map[string]any{
 		"home": e.clubName(f.HomeID), "away": e.clubName(f.AwayID),
 	})
 
@@ -336,7 +337,7 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	}
 	if r.Float64() >= pGoal {
 		// A chance that came to nothing — saved or off target.
-		e.comment(lm, at, pickKeyFrom(r, missCommentKeys(chanceType)),
+		e.comment(lm, at, pickWidenedKey(r, lm, legacyMissPoolSize, missCommentKeys(chanceType)),
 			map[string]any{"player": name, "club": e.clubName(atkClub)})
 		return
 	}
@@ -348,11 +349,79 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	lm.Scorers = append(lm.Scorers, worldgen.MatchEvent{
 		Minute: lm.Clock, PlayerID: scorer, ClubID: atkClub,
 	})
-	e.comment(lm, at, pickKeyFrom(r, goalCommentKeys(chanceType)),
+	// The pattern draw always happens and always uses the legacy pool bound,
+	// so commentary variety never changes how much RNG the moment consumes
+	// (docs/12: presentation must not perturb play).
+	goalKey := pickWidenedKey(r, lm, legacyGoalPoolSize, goalCommentKeys(chanceType))
+	if contextKey := goalContextCommentaryKey(lm, home); contextKey != "" {
+		goalKey = contextKey
+	}
+	e.comment(lm, at, goalKey,
 		map[string]any{
 			"player": name, "club": e.clubName(atkClub),
 			"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
 		})
+}
+
+// Commentary pools were widened after launch, but the per-moment RNG
+// argument sequence is part of the determinism contract: rand/v2's IntN can
+// consume different amounts of the stream for different bounds. The draw
+// therefore stays on the legacy pool size, and public match state rotates
+// which slice of the widened pool that draw lands on.
+const (
+	legacyMissPoolSize = 4 // three chance lines + one save line per pattern
+	legacyGoalPoolSize = 3 // three goal lines per pattern
+)
+
+func pickWidenedKey(r *rand.Rand, lm *worldgen.LiveMatch, legacyCount int, keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	if legacyCount > len(keys) {
+		legacyCount = len(keys)
+	}
+	drawn := r.IntN(legacyCount)
+	offset := (lm.Clock + lm.HomeGoals*3 + lm.AwayGoals) % len(keys)
+	return keys[(drawn+offset)%len(keys)]
+}
+
+// kickoffCommentaryKey rotates the opening whistle line per fixture without
+// touching the match RNG stream.
+func kickoffCommentaryKey(fixtureID int64) string {
+	keys := []string{"comment.kickoff", "comment.kickoff.2", "comment.kickoff.3"}
+	idx := int(fixtureID % int64(len(keys)))
+	if idx < 0 {
+		idx += len(keys)
+	}
+	return keys[idx]
+}
+
+// goalContextCommentaryKey swaps a patterned goal call for one that speaks to
+// the match situation: the opener, an equalizer, or late drama. It returns ""
+// when the pattern call should stand (goals that pad an existing lead). The
+// variant rotates on public match state so no RNG is consumed — existing
+// seeds replay the same football.
+func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool) string {
+	atk, def := lm.HomeGoals, lm.AwayGoals
+	if !home {
+		atk, def = def, atk
+	}
+	pick := func(keys ...string) string {
+		return keys[(lm.Clock+lm.HomeGoals*3+lm.AwayGoals)%len(keys)]
+	}
+	late := lm.Clock >= lateDramaMinute
+	switch {
+	case late && atk == def:
+		return pick("comment.goal.late_level.1", "comment.goal.late_level.2")
+	case late && atk == def+1:
+		return pick("comment.goal.late.1", "comment.goal.late.2")
+	case lm.HomeGoals+lm.AwayGoals == 1:
+		return pick("comment.goal.opener.1", "comment.goal.opener.2")
+	case atk == def:
+		return pick("comment.goal.equalizer.1", "comment.goal.equalizer.2")
+	default:
+		return ""
+	}
 }
 
 func (e *Engine) bookOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand) {
@@ -511,42 +580,42 @@ func injuryNewsKey(band string) string {
 func missCommentKeys(chanceType string) []string {
 	switch chanceType {
 	case chanceCrossHeader:
-		return []string{"comment.chance.cross.1", "comment.chance.cross.2", "comment.chance.cross.3", "comment.save.cross.1"}
+		return []string{"comment.chance.cross.1", "comment.chance.cross.2", "comment.chance.cross.3", "comment.chance.cross.4", "comment.save.cross.1", "comment.save.cross.2"}
 	case chanceCutback:
-		return []string{"comment.chance.cutback.1", "comment.chance.cutback.2", "comment.chance.cutback.3", "comment.save.cutback.1"}
+		return []string{"comment.chance.cutback.1", "comment.chance.cutback.2", "comment.chance.cutback.3", "comment.chance.cutback.4", "comment.save.cutback.1", "comment.save.cutback.2"}
 	case chanceThroughBall:
-		return []string{"comment.chance.through.1", "comment.chance.through.2", "comment.chance.through.3", "comment.save.through.1"}
+		return []string{"comment.chance.through.1", "comment.chance.through.2", "comment.chance.through.3", "comment.chance.through.4", "comment.save.through.1", "comment.save.through.2"}
 	case chanceLongShot:
-		return []string{"comment.chance.long.1", "comment.chance.long.2", "comment.chance.long.3", "comment.save.long.1"}
+		return []string{"comment.chance.long.1", "comment.chance.long.2", "comment.chance.long.3", "comment.chance.long.4", "comment.save.long.1", "comment.save.long.2"}
 	case chanceSetPieceHeader:
-		return []string{"comment.chance.setpiece.1", "comment.chance.setpiece.2", "comment.chance.setpiece.3", "comment.save.setpiece.1"}
+		return []string{"comment.chance.setpiece.1", "comment.chance.setpiece.2", "comment.chance.setpiece.3", "comment.chance.setpiece.4", "comment.save.setpiece.1", "comment.save.setpiece.2"}
 	case chanceCounter:
-		return []string{"comment.chance.counter.1", "comment.chance.counter.2", "comment.chance.counter.3", "comment.save.counter.1"}
+		return []string{"comment.chance.counter.1", "comment.chance.counter.2", "comment.chance.counter.3", "comment.chance.counter.4", "comment.save.counter.1", "comment.save.counter.2"}
 	case chanceScramble:
-		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.save.scramble.1"}
+		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.chance.scramble.4", "comment.save.scramble.1", "comment.save.scramble.2"}
 	default:
-		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.save.scramble.1"}
+		return []string{"comment.chance.scramble.1", "comment.chance.scramble.2", "comment.chance.scramble.3", "comment.chance.scramble.4", "comment.save.scramble.1", "comment.save.scramble.2"}
 	}
 }
 
 func goalCommentKeys(chanceType string) []string {
 	switch chanceType {
 	case chanceCrossHeader:
-		return []string{"comment.goal.cross.1", "comment.goal.cross.2", "comment.goal.cross.3"}
+		return []string{"comment.goal.cross.1", "comment.goal.cross.2", "comment.goal.cross.3", "comment.goal.cross.4"}
 	case chanceCutback:
-		return []string{"comment.goal.cutback.1", "comment.goal.cutback.2", "comment.goal.cutback.3"}
+		return []string{"comment.goal.cutback.1", "comment.goal.cutback.2", "comment.goal.cutback.3", "comment.goal.cutback.4"}
 	case chanceThroughBall:
-		return []string{"comment.goal.through.1", "comment.goal.through.2", "comment.goal.through.3"}
+		return []string{"comment.goal.through.1", "comment.goal.through.2", "comment.goal.through.3", "comment.goal.through.4"}
 	case chanceLongShot:
-		return []string{"comment.goal.long.1", "comment.goal.long.2", "comment.goal.long.3"}
+		return []string{"comment.goal.long.1", "comment.goal.long.2", "comment.goal.long.3", "comment.goal.long.4"}
 	case chanceSetPieceHeader:
-		return []string{"comment.goal.setpiece.1", "comment.goal.setpiece.2", "comment.goal.setpiece.3"}
+		return []string{"comment.goal.setpiece.1", "comment.goal.setpiece.2", "comment.goal.setpiece.3", "comment.goal.setpiece.4"}
 	case chanceCounter:
-		return []string{"comment.goal.counter.1", "comment.goal.counter.2", "comment.goal.counter.3"}
+		return []string{"comment.goal.counter.1", "comment.goal.counter.2", "comment.goal.counter.3", "comment.goal.counter.4"}
 	case chanceScramble:
-		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3"}
+		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3", "comment.goal.scramble.4"}
 	default:
-		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3"}
+		return []string{"comment.goal.scramble.1", "comment.goal.scramble.2", "comment.goal.scramble.3", "comment.goal.scramble.4"}
 	}
 }
 
