@@ -104,7 +104,7 @@ matchday, then the remaining forward schedule and older results. This
 keeps both anticipation and replay access in the initial viewport even when a
 full season of future fixtures is already generated. Finished current-season
 matches open a replay pop-up with score, shots, scorers, cards,
-substitutions, top ratings, and the preserved commentary log; archived
+substitutions, club-labelled top ratings, and the preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.
 

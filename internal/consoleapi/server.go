@@ -960,9 +960,28 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 			Off: players[sub.Off], On: players[sub.On], Reason: sub.Reason,
 		})
 	}
+	sides := make(map[int64]string, len(r.HomeXI)+len(r.AwayXI)+2*len(r.Subs))
+	for _, id := range r.HomeXI {
+		sides[id] = matchSideHome
+	}
+	for _, id := range r.AwayXI {
+		sides[id] = matchSideAway
+	}
+	for _, sub := range r.Subs {
+		side := ""
+		if sub.ClubID == r.HomeID {
+			side = matchSideHome
+		} else if sub.ClubID == r.AwayID {
+			side = matchSideAway
+		}
+		if side != "" {
+			sides[sub.Off] = side
+			sides[sub.On] = side
+		}
+	}
 	for id, rx := range r.RatingsX10 {
 		if name := players[id]; name != "" {
-			dto.Ratings = append(dto.Ratings, liveRatingDTO{Name: name, RatingX10: rx})
+			dto.Ratings = append(dto.Ratings, liveRatingDTO{Side: sides[id], Name: name, RatingX10: rx})
 		}
 	}
 	sort.Slice(dto.Ratings, func(i, j int) bool {
@@ -1013,6 +1032,11 @@ type liveRatingDTO struct {
 	Name      string `json:"name"`
 	RatingX10 int    `json:"rating_x10"`
 }
+
+const (
+	matchSideHome = "HOME"
+	matchSideAway = "AWAY"
+)
 
 type liveMatchDTO struct {
 	Fixture     int64           `json:"fixture"`
@@ -1130,9 +1154,9 @@ func momentumFrom(markers []liveMarkerDTO) []int {
 			b = momentumBuckets - 1
 		}
 		switch mk.Side {
-		case "HOME":
+		case matchSideHome:
 			buckets[b] += w
-		case "AWAY":
+		case matchSideAway:
 			buckets[b] -= w
 		}
 	}
@@ -1162,8 +1186,8 @@ func liveRatings(lm *worldgen.LiveMatch, playerOf func(int64) *worldgen.Player) 
 		})
 		rows = append(rows, part...)
 	}
-	appendSide("HOME", lm.HomeID)
-	appendSide("AWAY", lm.AwayID)
+	appendSide(matchSideHome, lm.HomeID)
+	appendSide(matchSideAway, lm.AwayID)
 	return rows
 }
 
@@ -1181,9 +1205,9 @@ func liveMarkers(lm *worldgen.LiveMatch, clubName map[int64]string) []liveMarker
 		}
 		switch c {
 		case clubName[lm.HomeID]:
-			return "HOME"
+			return matchSideHome
 		case clubName[lm.AwayID]:
-			return "AWAY"
+			return matchSideAway
 		}
 		return "NONE"
 	}

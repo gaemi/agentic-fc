@@ -75,6 +75,11 @@ const (
 	modalWaiting matchModalKind = "waiting"
 )
 
+const (
+	matchSideHome = "HOME"
+	matchSideAway = "AWAY"
+)
+
 // Model is the viewer's Bubble Tea model. Client may be nil in tests —
 // all data arrives via messages either way.
 type Model struct {
@@ -1265,7 +1270,17 @@ func (m Model) replayMatchModal(width, height int) string {
 			if i >= 5 {
 				break
 			}
-			lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
+			club := ""
+			if r.Side == matchSideHome {
+				club = md.Home
+			} else if r.Side == matchSideAway {
+				club = md.Away
+			}
+			if club == "" {
+				lines = append(lines, fmt.Sprintf("%d.%d %s", r.RatingX10/10, r.RatingX10%10, r.Name))
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("%d.%d %s · %s", r.RatingX10/10, r.RatingX10%10, club, r.Name))
 		}
 	}
 	start := m.ReplayOffset
@@ -1568,7 +1583,7 @@ func liveRatingsSummary(m Model, mv LiveMatchView, width int) string {
 	parts := make([]string, 0, len(ratings))
 	for _, r := range ratings {
 		club := mv.Home
-		if r.Side == "AWAY" {
+		if r.Side == matchSideAway {
 			club = mv.Away
 		}
 		parts = append(parts, fmt.Sprintf("%s %d.%d %s", club, r.RatingX10/10, r.RatingX10%10, r.Name))
@@ -1608,7 +1623,7 @@ func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
 		return ""
 	}
 	side := mv.Home
-	if latest.Side == "AWAY" {
+	if latest.Side == matchSideAway {
 		side = mv.Away
 	}
 	msg := fmt.Sprintf("  %s  %d'  %s  ", strings.ToUpper(m.ui("ui.match.goalflash")), latest.Minute, side)
@@ -2665,15 +2680,15 @@ func (m Model) qualityBandLabel(key string) string {
 }
 
 func (m Model) aerialLabel(duels, wins map[string]int) string {
-	homeDuels, awayDuels := duels["HOME"], duels["AWAY"]
+	homeDuels, awayDuels := duels[matchSideHome], duels[matchSideAway]
 	if homeDuels == 0 && awayDuels == 0 {
 		return ""
 	}
-	return fmt.Sprintf("H %d/%d · A %d/%d", wins["HOME"], homeDuels, wins["AWAY"], awayDuels)
+	return fmt.Sprintf("H %d/%d · A %d/%d", wins[matchSideHome], homeDuels, wins[matchSideAway], awayDuels)
 }
 
 func (m Model) sideLabel(counts map[string]int) string {
-	home, away := counts["HOME"], counts["AWAY"]
+	home, away := counts[matchSideHome], counts[matchSideAway]
 	if home == 0 && away == 0 {
 		return ""
 	}
@@ -2722,7 +2737,7 @@ func balancedRatings(ratings []LiveRating, perSide int) []LiveRating {
 	out := make([]LiveRating, 0, perSide*2)
 	counts := map[string]int{}
 	for _, r := range ratings {
-		if r.Side != "HOME" && r.Side != "AWAY" {
+		if r.Side != matchSideHome && r.Side != matchSideAway {
 			continue
 		}
 		if counts[r.Side] >= perSide {
