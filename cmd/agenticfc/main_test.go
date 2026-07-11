@@ -3,10 +3,39 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/sim"
 )
+
+func TestListenTCP(t *testing.T) {
+	ln, err := listenTCP("console api", "-console-addr", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listenTCP on a free port: %v", err)
+	}
+	defer ln.Close()
+
+	_, err = listenTCP("console api", "-console-addr", ln.Addr().String())
+	if err == nil {
+		t.Fatalf("listenTCP on the busy port %s: want error, got nil", ln.Addr())
+	}
+	for _, want := range []string{"console api", ln.Addr().String(), "-console-addr"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("busy-port error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestListenTCPMalformedAddress(t *testing.T) {
+	_, err := listenTCP("mcp gateway", "-mcp-addr", "not-an-address")
+	if err == nil {
+		t.Fatal("listenTCP on a malformed address: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "-mcp-addr") {
+		t.Errorf("malformed-address error %q missing flag name", err)
+	}
+}
 
 func TestResolveRunProfile(t *testing.T) {
 	tests := []struct {

@@ -6,6 +6,15 @@ section below.
 
 ## Unreleased
 
+- Friendlier first launch of the daemon:
+  - Listen addresses are bound before any world data is touched, so a busy
+    port (for example a second daemon on the defaults) fails fast with a hint
+    naming the flag to change — instead of generating a world first and
+    leaving the corrected relaunch to silently resume it.
+  - The startup banner prints the actually bound addresses, making
+    `-console-addr 127.0.0.1:0` (random free port) usable.
+  - A world created without `-start` now prints how to start it (relaunch
+    with `-start`, or the exact Console API call).
 - Match broadcast overhaul in the spectator console:
   - Live scenes are composed on a fixed cell canvas (no more ragged ASCII),
     animated in two to six frames, and direction-aware — away attacks play

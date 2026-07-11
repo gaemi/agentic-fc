@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -73,6 +74,20 @@ func main() {
 
 	runProfile, err := resolveRunProfile(*profile, sim.Speed(*speed), explicitFlags["speed"],
 		*idleAccel, explicitFlags["idle-accel"], *offseasonAccel, explicitFlags["offseason-accel"])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Bind both listen addresses before anything touches the data directory:
+	// a busy port must fail the launch while the generation flags are still
+	// unconsumed. Binding after generation would persist a fresh world during
+	// the failed launch, and the corrected relaunch would silently resume it
+	// with the creation flags ignored.
+	consoleLn, err := listenTCP("console api", "-console-addr", *consoleAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mcpLn, err := listenTCP("mcp gateway", "-mcp-addr", *mcpAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -201,7 +216,9 @@ func main() {
 		configRunProfile(world.Config), world.Config.GameSpeed,
 		world.Config.IdleAcceleration, world.Config.OffseasonAccel)
 	fmt.Printf("manager tokens: %s (0600)\n", manifestPath)
-	fmt.Printf("Console API: http://%s  ·  MCP: http://%s\n", *consoleAddr, *mcpAddr)
+	// The listeners' addresses, not the flag values: with a ":0" flag this is
+	// where the picked port becomes visible.
+	fmt.Printf("Console API: http://%s  ·  MCP: http://%s\n", consoleLn.Addr(), mcpLn.Addr())
 
 	if willRun {
 		if err := host.Start(); err != nil {
@@ -209,6 +226,12 @@ func main() {
 		}
 	}
 	fmt.Printf("state: %s\n", host.State())
+	if host.State() == "ready" {
+		fmt.Println("the world clock is stopped until the world is started.")
+		fmt.Println("start it by relaunching with -start, or through the Console API:")
+		fmt.Printf("  curl -X POST http://%s/v1/admin/start -H \"Authorization: Bearer <token from %s>\"\n",
+			consoleLn.Addr(), filepath.Join(*dataDir, "admin.token"))
+	}
 
 	api := &consoleapi.Server{
 		AdminToken: adminToken,
@@ -216,9 +239,9 @@ func main() {
 		Feed:       hub,
 		Catalogs:   narrative.Default,
 	}
-	srv := &http.Server{Addr: *consoleAddr, Handler: api.Routes()}
+	srv := &http.Server{Handler: api.Routes()}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(consoleLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("console api: %v", err)
 		}
 	}()
@@ -228,9 +251,9 @@ func main() {
 	mcpSrv := gateway.MCPServer()
 	mcpHandler := auth.RequireBearerToken(gateway.VerifyToken, nil)(
 		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil))
-	mcpHTTP := &http.Server{Addr: *mcpAddr, Handler: mcpHandler}
+	mcpHTTP := &http.Server{Handler: mcpHandler}
 	go func() {
-		if err := mcpHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := mcpHTTP.Serve(mcpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("mcp gateway: %v", err)
 		}
 	}()
@@ -786,6 +809,20 @@ func (h *worldHost) Shutdown() {
 		h.cancel()
 		<-h.done
 	}
+}
+
+// listenTCP binds a daemon listen address, translating the launch failure a
+// new operator actually hits — the port is taken, or the address is
+// malformed — into a message that names the flag to change.
+func listenTCP(name, flagName, addr string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("%s: cannot listen on %s: %w\n"+
+			"another process may already be using this address (another agenticfc daemon?)\n"+
+			"stop that process, or pick a different port with %s (%q picks a free one at random)",
+			name, addr, err, flagName, flagName+" 127.0.0.1:0")
+	}
+	return ln, nil
 }
 
 // ensureAdminToken generates the Admin Token at daemon first launch and
