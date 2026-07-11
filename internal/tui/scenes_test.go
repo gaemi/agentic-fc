@@ -320,6 +320,12 @@ func TestMirroredScenesFlipArtButNotLabels(t *testing.T) {
 	if !strings.Contains(strings.Join(last, "\n"), "G O A L !") {
 		t.Fatalf("mirrored goal frame lost its readable banner:\n%s", strings.Join(last, "\n"))
 	}
+	// Directional strokes are art, not banners: the flight trail must point
+	// leftward once mirrored.
+	flight := strings.Join(goal.mirrored[1], "\n")
+	if !strings.Contains(flight, "*---") || strings.Contains(flight, "---*") {
+		t.Fatalf("mirrored flight trail still points rightward:\n%s", flight)
+	}
 	// The goal furniture must sit on the left in the mirrored frame and on
 	// the right in the original.
 	barCol := func(frame []string) int {

@@ -65,8 +65,17 @@ func (c *sceneCanvas) stamp(x, y int, sprite ...string) {
 	}
 }
 
-// label writes text opaquely: spaces overwrite whatever is beneath them.
+// label writes art text opaquely: spaces overwrite whatever is beneath
+// them. Ball trails and other directional strokes belong here — a mirror
+// pass flips them with the rest of the art.
 func (c *sceneCanvas) label(x, y int, text string) {
+	c.drawText(x, y, text)
+}
+
+// banner writes readable text (GOAL!, SAVE!, OFF/ON). Banners register so a
+// mirror pass re-stamps them readable at their flipped anchors instead of
+// reversing the letters.
+func (c *sceneCanvas) banner(x, y int, text string) {
 	c.labels = append(c.labels, canvasLabel{x: x, y: y, text: text})
 	c.drawText(x, y, text)
 }
@@ -311,7 +320,7 @@ func goalScene() matchScene {
 	inNet.put(45, ballRow, ')')
 
 	cheerA := pitchWithGoal(false)
-	cheerA.label(19, sceneBannerRow, "G O A L !")
+	cheerA.banner(19, sceneBannerRow, "G O A L !")
 	cheerA.stamp(7, figureRow, sprCheerA...)
 	cheerA.stamp(14, figureRow, sprCheerA...)
 	cheerA.stamp(24, figureRow, sprPlayer...)
@@ -319,7 +328,7 @@ func goalScene() matchScene {
 	cheerA.put(44, groundBallRow, '*')
 
 	cheerB := pitchWithGoal(false)
-	cheerB.label(19, sceneBannerRow, "G O A L !")
+	cheerB.banner(19, sceneBannerRow, "G O A L !")
 	cheerB.label(13, 1, ". : .")
 	cheerB.label(29, 1, ". : .")
 	cheerB.stamp(7, figureRow, sprCheerB...)
@@ -350,7 +359,7 @@ func saveScene() matchScene {
 	reach.put(33, 3, '*')
 
 	parry := pitchWithGoal(false)
-	parry.label(20, sceneBannerRow, "SAVE!")
+	parry.banner(20, sceneBannerRow, "SAVE!")
 	parry.stamp(6, figureRow, sprPlayer...)
 	parry.stamp(20, figureRow, sprPlayer...)
 	parry.stamp(32, groundBallRow, "_o/")
@@ -358,7 +367,7 @@ func saveScene() matchScene {
 	parry.put(32, 3, '/')
 
 	clear := pitchWithGoal(false)
-	clear.label(20, sceneBannerRow, "SAVE!")
+	clear.banner(20, sceneBannerRow, "SAVE!")
 	clear.stamp(6, figureRow, sprPlayer...)
 	clear.stamp(20, figureRow, sprRunner...)
 	clear.stamp(32, groundBallRow, "_o~")
@@ -672,8 +681,8 @@ func subScene() matchScene {
 	frame := func(step int) *sceneCanvas {
 		c := newSceneCanvas()
 		c.ground()
-		c.label(8, 1, "OFF")
-		c.label(37, 1, "ON")
+		c.banner(8, 1, "OFF")
+		c.banner(37, 1, "ON")
 		c.stamp(21, 1, " ___ ", "|< >|")
 		c.stamp(8-step*2, figureRow, sprPlayer...)
 		c.label(13-step*2, ballRow, "<-")
