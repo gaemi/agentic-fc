@@ -108,6 +108,9 @@ func TestFatigueSubFires(t *testing.T) {
 	if on := e.players[s.On]; on.Group == attr.GK {
 		t.Fatal("a discretionary change brought a keeper on for an outfield slot")
 	}
+	if got := lm.Commentary[len(lm.Commentary)-1].Key; got != fatigueSubCommentaryKeys[0] {
+		t.Fatalf("first fatigue substitution commentary = %q, want %q", got, fatigueSubCommentaryKeys[0])
+	}
 }
 
 func TestLivePlayerConditionUsesMinutesOnPitch(t *testing.T) {
@@ -128,6 +131,27 @@ func TestLivePlayerConditionUsesMinutesOnPitch(t *testing.T) {
 	lm.Clock = matchFullTimeMinutes
 	if got := LivePlayerCondition(p, lm); got != 0 {
 		t.Fatalf("live condition must clamp at zero, got %d", got)
+	}
+}
+
+func TestFatigueSubCommentaryDoesNotRepeatWithinMatch(t *testing.T) {
+	if len(fatigueSubCommentaryKeys) < subsMax*2 {
+		t.Fatalf("fatigue commentary pool %d is smaller than match substitution capacity %d", len(fatigueSubCommentaryKeys), subsMax*2)
+	}
+	lm := &worldgen.LiveMatch{}
+	seen := map[string]bool{}
+	for i, want := range fatigueSubCommentaryKeys {
+		got := fatigueSubCommentaryKey(lm)
+		if got != want || seen[got] {
+			t.Fatalf("fatigue commentary %d = %q, want new key %q", i, got, want)
+		}
+		seen[got] = true
+		lm.Subs = append(lm.Subs, worldgen.SubEvent{Reason: subReasonFatigue})
+		// Other substitution reasons do not advance the fatigue presentation pool.
+		lm.Subs = append(lm.Subs, worldgen.SubEvent{Reason: subReasonTactical})
+	}
+	if got := fatigueSubCommentaryKey(lm); got != fatigueSubCommentaryKeys[0] {
+		t.Fatalf("fatigue commentary did not wrap after full match capacity: %q", got)
 	}
 }
 

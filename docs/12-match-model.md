@@ -434,6 +434,11 @@ Each key moment should follow this shape:
 7. **Side effects:** fatigue, card risk, injury risk, momentum, ratings, stats,
    commentary, and future substitution decisions.
 
+Presentation variety must not perturb those decisions. Fatigue substitutions
+cycle through six localized commentary voices by counting already-persisted
+fatigue changes across the match; they consume no RNG, and the six-substitution
+match limit prevents a repeated fatigue line in normal play.
+
 Formula policy:
 
 ```
