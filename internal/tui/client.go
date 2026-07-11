@@ -313,8 +313,25 @@ type MatchDetail struct {
 	Cards             []MatchEvent     `json:"cards"`
 	Subs              []MatchSub       `json:"subs"`
 	Ratings           []LiveRating     `json:"ratings"`
+	HomeLineup        []LineupEntry    `json:"home_lineup"`
+	AwayLineup        []LineupEntry    `json:"away_lineup"`
 	Commentary        []string         `json:"commentary"`
 	Beats             []CommentaryBeat `json:"beats"`
+}
+
+// LineupEntry is one team-sheet row of the match pop-up's lineup panel:
+// starters in XI order, then players who came on (OnMinute set), then — live
+// only — unused bench players flagged Bench.
+type LineupEntry struct {
+	Name      string `json:"name"`
+	Position  string `json:"position"`
+	RatingX10 int    `json:"rating_x10"`
+	Goals     int    `json:"goals"`
+	Yellows   int    `json:"yellows"`
+	Red       bool   `json:"red"`
+	OffMinute int    `json:"off_minute"`
+	OnMinute  int    `json:"on_minute"`
+	Bench     bool   `json:"bench"`
 }
 
 func (c *Client) Match(id int64) (MatchDetail, error) {
@@ -369,6 +386,8 @@ type LiveMatchView struct {
 	Markers     []LiveMarker     `json:"markers"`
 	Stats       LiveStats        `json:"stats"`
 	Ratings     []LiveRating     `json:"ratings"`
+	HomeLineup  []LineupEntry    `json:"home_lineup"`
+	AwayLineup  []LineupEntry    `json:"away_lineup"`
 	Momentum    []int            `json:"momentum"`
 }
 

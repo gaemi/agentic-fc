@@ -38,7 +38,8 @@ establishing the core loop.
 
 ## Console Experience
 
-- Lineups and substitution log expansion in the live/replay match pop-up.
+- Formation shapes and richer team-sheet detail in the match pop-up's lineup
+  panel.
 - More flexible layouts for very short and extra-tall terminals.
 - Additional club, manager, and player history screens.
 - More browsing tools for archived seasons.
