@@ -1404,6 +1404,34 @@ func TestFormAndCareerSurfaces(t *testing.T) {
 	t.Fatal("pinned player missing from the squad view")
 }
 
+func TestPublicRatingAverageHasStablePrecision(t *testing.T) {
+	tests := []struct {
+		name    string
+		sumX10  int
+		matches int
+		want    float64
+	}{
+		{name: "repeating fraction", sumX10: 196, matches: 3, want: 6.53},
+		{name: "exact tenth", sumX10: 72, matches: 1, want: 7.2},
+		{name: "rounds half up", sumX10: 65, matches: 4, want: 1.63},
+		{name: "no appearances", sumX10: 0, matches: 0, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := publicRatingAverage(tt.sumX10, tt.matches); got != tt.want {
+				t.Fatalf("publicRatingAverage(%d, %d) = %v, want %v", tt.sumX10, tt.matches, got, tt.want)
+			}
+		})
+	}
+	wire, err := json.Marshal(map[string]any{"rating_avg": publicRatingAverage(196, 3)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(wire); got != `{"rating_avg":6.53}` {
+		t.Fatalf("public rating JSON = %s, want stable two-decimal output", got)
+	}
+}
+
 // TestSubRowsCarryReason locks the public substitution "why": a
 // reason-stamped SubEvent renders its token, an uncovered pre-reason row
 // renders neither on nor reason.

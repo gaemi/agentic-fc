@@ -154,7 +154,7 @@ The wide-shallow dashboard; the intended cheap heartbeat call.
 
 ### `get_squad` — 3 FP own / 4 FP other
 **Params**: `club` (default own), `detail?` (attributes | condition | contracts; default attributes).
-**Returns**: per player: public body profile (height/weight), preferred foot, weak-foot profile (exact/range by knowledge + Descriptor), visible attributes (exact for own; ranges for others by knowledge), positional familiarity Descriptors, condition/sharpness %, season stats (apps, goals, rating avg), contract summary (own club only), form.
+**Returns**: per player: public body profile (height/weight), preferred foot, weak-foot profile (exact/range by knowledge + Descriptor), visible attributes (exact for own; ranges for others by knowledge), positional familiarity Descriptors, condition/sharpness %, season stats (apps, goals, rating avg), contract summary (own club only), form. Public `rating_avg` values in season stats, recent form, and career history are rounded to at most two decimal places so clients receive stable, readable numbers.
 
 When the match model expands further ([12-match-model.md](12-match-model.md)),
 `get_squad` should also expose public tactical-fit summaries derived from
