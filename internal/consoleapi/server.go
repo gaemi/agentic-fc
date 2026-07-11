@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -1288,7 +1289,13 @@ type runtimeSettingsPatch struct {
 
 func (s *Server) handleAdminSettingsPatch(w http.ResponseWriter, r *http.Request) {
 	var patch runtimeSettingsPatch
-	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&patch); err != nil {
+		s.httpError(w, r, http.StatusBadRequest, "error.bad_request")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		s.httpError(w, r, http.StatusBadRequest, "error.bad_request")
 		return
 	}
