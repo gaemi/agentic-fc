@@ -341,3 +341,28 @@ func TestMatchResumeMidWindow(t *testing.T) {
 		t.Fatalf("mid-match resume diverged from the uninterrupted run:\nA %s\nB %s", ha, hb)
 	}
 }
+
+func TestAdjustmentCommentaryCyclesPerClubWithoutRNG(t *testing.T) {
+	lm := &worldgen.LiveMatch{Adjustments: []worldgen.Adjustment{
+		{ClubID: 1, Key: "adj.push"},
+		{ClubID: 2, Key: "adj.push"},
+		{ClubID: 1, Key: "adj.push"},
+		{ClubID: 1, Key: "other"},
+	}}
+	if got := adjustmentCommentaryKey(lm, 1); got != "comment.adj.push.3" {
+		t.Fatalf("club 1 adjustment key = %q, want third variant", got)
+	}
+	if got := adjustmentCommentaryKey(lm, 2); got != "comment.adj.push.2" {
+		t.Fatalf("club 2 adjustment key = %q, want second variant", got)
+	}
+	if got := adjustmentCommentaryKey(lm, 3); got != "comment.adj.push.1" {
+		t.Fatalf("new club adjustment key = %q, want first variant", got)
+	}
+	lm.Adjustments = append(lm.Adjustments,
+		worldgen.Adjustment{ClubID: 1, Key: "adj.push"},
+		worldgen.Adjustment{ClubID: 1, Key: "adj.push"},
+	)
+	if got := adjustmentCommentaryKey(lm, 1); got != "comment.adj.push.1" {
+		t.Fatalf("club 1 wrapped adjustment key = %q, want first variant", got)
+	}
+}

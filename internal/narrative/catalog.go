@@ -120,7 +120,12 @@ var Default = Catalogs{
 		"comment.halftime":          "Half time: {home_goals}–{away_goals}.",
 		"comment.fulltime":          "Full time: {home} {home_goals}–{away_goals} {away}.",
 		"comment.shootout":          "Level after 90 minutes — {winner} advance on penalties ({home} {home_pens}–{away_pens} {away}).",
-		"comment.adj.push":          "{club} throw caution to the wind and push for it.",
+		// Kept for commentary keys persisted by worlds created before the variant pool.
+		"comment.adj.push":   "{club} throw caution to the wind and push for it.",
+		"comment.adj.push.1": "{club} throw caution to the wind and push for it.",
+		"comment.adj.push.2": "{club} send another shirt forward; the pressure is climbing.",
+		"comment.adj.push.3": "The {club} bench waves everyone on, and the defensive line steps up with them.",
+		"comment.adj.push.4": "No retreat from {club} now — every remaining minute is committed to attack.",
 
 		// MCP UI widgets — human-facing agent-action cards. Chrome +
 		// value labels only; numbers/names render as-is. en+ko per FR-35c.
@@ -860,7 +865,12 @@ var Default = Catalogs{
 		"comment.halftime":          "전반 종료: {home_goals}–{away_goals}.",
 		"comment.fulltime":          "경기 종료: {home} {home_goals}–{away_goals} {away}.",
 		"comment.shootout":          "90분 무승부 — 승부차기 끝에 {winner} 진출 ({home} {home_pens}–{away_pens} {away}).",
-		"comment.adj.push":          "{club}, 위험을 무릅쓰고 공격을 강화합니다.",
+		// 변형 풀이 추가되기 전 월드에 저장된 해설 키와의 호환성을 유지합니다.
+		"comment.adj.push":   "{club}, 위험을 무릅쓰고 공격을 강화합니다.",
+		"comment.adj.push.1": "{club} 팀이 위험을 무릅쓰고 공격을 강화합니다.",
+		"comment.adj.push.2": "{club} 팀이 한 명을 더 전진시키며 압박 수위를 높입니다.",
+		"comment.adj.push.3": "{club} 벤치가 계속 앞으로 가라고 지시합니다. 수비 라인도 함께 올라갑니다.",
+		"comment.adj.push.4": "{club} 팀에 물러설 생각은 없습니다. 남은 시간을 모두 공격에 겁니다.",
 
 		// MCP UI 위젯 — 사람이 읽는 에이전트 행동 카드.
 		"widget.badge.observed":                "관찰",
