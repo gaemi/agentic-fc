@@ -594,7 +594,7 @@ func (e *Engine) considerDiscretionarySub(lm *worldgen.LiveMatch, at sim.GameTim
 	// Fatigue first — dice-free, like the injury withdrawal.
 	if off := e.tiredestOutfielder(lm, club); off != 0 {
 		if on := e.bestOutfieldOnBench(lm, club, at); on != 0 {
-			e.recordDiscretionarySub(lm, at, club, off, on, subReasonFatigue, "comment.sub.fatigue")
+			e.recordDiscretionarySub(lm, at, club, off, on, subReasonFatigue, fatigueSubCommentaryKey(lm))
 			return
 		}
 	}
@@ -608,6 +608,30 @@ func (e *Engine) considerDiscretionarySub(lm *worldgen.LiveMatch, at sim.GameTim
 		return
 	}
 	e.recordDiscretionarySub(lm, at, club, off, on, subReasonTactical, "comment.sub.fresh")
+}
+
+var fatigueSubCommentaryKeys = []string{
+	"comment.sub.fatigue.1",
+	"comment.sub.fatigue.2",
+	"comment.sub.fatigue.3",
+	"comment.sub.fatigue.4",
+	"comment.sub.fatigue.5",
+	"comment.sub.fatigue.6",
+}
+
+// fatigueSubCommentaryKey advances the whole match through the presentation
+// pool. With subsMax per side, the six-key pool covers today's subsMax*2 match
+// capacity, so normal play never repeats a fatigue line. The choice reads
+// persisted substitution facts and consumes no RNG, keeping richer prose
+// separate from match results.
+func fatigueSubCommentaryKey(lm *worldgen.LiveMatch) string {
+	used := 0
+	for _, sub := range lm.Subs {
+		if sub.Reason == subReasonFatigue {
+			used++
+		}
+	}
+	return fatigueSubCommentaryKeys[used%len(fatigueSubCommentaryKeys)]
 }
 
 func (e *Engine) recordDiscretionarySub(lm *worldgen.LiveMatch, at sim.GameTime, club, off, on int64, reason, key string) {
