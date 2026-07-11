@@ -164,12 +164,13 @@ func testModel() Model {
 	m.MatchDetail = MatchDetail{
 		Fixture: 7, Status: "RESULT", Competition: "LEAGUE", KickoffText: "Aug 16, 15:00",
 		Home: "A", Away: "B", HomeGoals: 2, AwayGoals: 1, HomeShots: 8, AwayShots: 3,
-		ChanceTypes: map[string]int{"COUNTER": 2, "CUTBACK": 1},
-		Scorers:     []MatchEvent{{Minute: 12, Club: "A", Player: "Rae Quinn"}},
-		Cards:       []MatchEvent{{Minute: 70, Club: "B", Player: "Lee Ward", Detail: "YELLOW"}},
-		Subs:        []MatchSub{{Minute: 65, Club: "A", Off: "Old Legs", On: "Fresh Legs", Reason: "TACTICAL"}},
-		Ratings:     []LiveRating{{Side: "HOME", Name: "Rae Quinn", RatingX10: 78}},
-		Commentary:  []string{"A work the ball through midfield.", "Rae Quinn lashes it home."},
+		ChanceTypes:       map[string]int{"COUNTER": 2, "CUTBACK": 1},
+		ChanceTypesBySide: map[string]int{"HOME_COUNTER": 2, "AWAY_CUTBACK": 1},
+		Scorers:           []MatchEvent{{Minute: 12, Club: "A", Player: "Rae Quinn"}},
+		Cards:             []MatchEvent{{Minute: 70, Club: "B", Player: "Lee Ward", Detail: "YELLOW"}},
+		Subs:              []MatchSub{{Minute: 65, Club: "A", Off: "Old Legs", On: "Fresh Legs", Reason: "TACTICAL"}},
+		Ratings:           []LiveRating{{Side: "HOME", Name: "Rae Quinn", RatingX10: 78}},
+		Commentary:        []string{"A work the ball through midfield.", "Rae Quinn lashes it home."},
 	}
 	return m
 }
@@ -778,7 +779,7 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 			t.Fatalf("fixtures/results view missing %q:\n%s", want, v)
 		}
 	}
-	if strings.Contains(v, "Chance mix Counters 2") || strings.Contains(v, "Scorers") {
+	if strings.Contains(v, "Chance mix H Counters 2") || strings.Contains(v, "Scorers") {
 		t.Fatalf("fixture list should not render the old side detail pane:\n%s", v)
 	}
 
@@ -787,7 +788,7 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 		t.Fatalf("enter did not open replay modal: %q", m.MatchModal)
 	}
 	v = m.View()
-	for _, want := range []string{"A 2-1 B", "Chance mix Counters 2", "Scorers", "Rae Quinn", "Cards", "Lee Ward", "Subs", "Fresh Legs", "Ratings", "7.8 A · Rae Quinn", "Replay log", "lashes it home"} {
+	for _, want := range []string{"A 2-1 B", "Chance mix H Counters 2 | A Cutbacks 1", "Scorers", "Rae Quinn", "Cards", "Lee Ward", "Subs", "Fresh Legs", "Ratings", "7.8 A · Rae Quinn", "Replay log", "lashes it home"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("replay modal missing %q:\n%s", want, v)
 		}
@@ -1048,7 +1049,8 @@ func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
 	m := liveModel(64, 18)
 	m.Matches[0].Stats = LiveStats{
 		HomeShots: 7, AwayShots: 3, HomeCards: 1, AwayCards: 2, HomeSubs: 2, AwaySubs: 0,
-		ChanceTypes: map[string]int{"CUTBACK": 2},
+		ChanceTypes:       map[string]int{"CUTBACK": 2},
+		ChanceTypesBySide: map[string]int{"HOME_CUTBACK": 2},
 		Diagnostics: MatchDiagnostics{
 			ShotQuality: map[string]int{"HIGH": 1},
 		},
@@ -1060,7 +1062,7 @@ func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
 		t.Fatal("modal overlay missing")
 	}
 	got := strings.Join(overlay.Lines, "\n")
-	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "line two"} {
+	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "line two"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("small modal missing essential %q:\n%s", want, got)
 		}
@@ -1128,6 +1130,33 @@ func TestQualityLabelSideAwarePaths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := m.qualityLabel(tt.total, tt.sides, 3); got != tt.want {
 				t.Fatalf("qualityLabel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChanceMixLabelSideAwarePaths(t *testing.T) {
+	m := testModel()
+	tests := []struct {
+		name  string
+		total map[string]int
+		sides map[string]int
+		limit int
+		want  string
+	}{
+		{name: "legacy", total: map[string]int{"COUNTER": 2}, limit: 2, want: "? Counters 2"},
+		{name: "complete", total: map[string]int{"COUNTER": 2, "CUTBACK": 2}, sides: map[string]int{"HOME_COUNTER": 2, "AWAY_CUTBACK": 2}, limit: 2, want: "H Counters 2 | A Cutbacks 2"},
+		{name: "one side", total: map[string]int{"COUNTER": 2}, sides: map[string]int{"HOME_COUNTER": 2}, limit: 2, want: "H Counters 2"},
+		{name: "side only", sides: map[string]int{"AWAY_COUNTER": 2}, limit: 2, want: "A Counters 2"},
+		{name: "mixed remainder", total: map[string]int{"COUNTER": 3, "CUTBACK": 2}, sides: map[string]int{"HOME_COUNTER": 1, "AWAY_CUTBACK": 2}, limit: 2, want: "H Counters 1 | A Cutbacks 2 | ? Counters 2"},
+		{name: "side exceeds aggregate", total: map[string]int{"COUNTER": 1}, sides: map[string]int{"HOME_COUNTER": 2}, limit: 2, want: "H Counters 2"},
+		{name: "unknown prefix", total: map[string]int{"COUNTER": 2}, sides: map[string]int{"NEUTRAL_COUNTER": 2}, limit: 2, want: "? Counters 2"},
+		{name: "per-side limit", total: map[string]int{"COUNTER": 3, "CUTBACK": 2, "LONG_SHOT": 1}, sides: map[string]int{"HOME_COUNTER": 3, "HOME_CUTBACK": 2, "HOME_LONG_SHOT": 1}, limit: 2, want: "H Counters 3 · Cutbacks 2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := m.chanceMixLabel(tt.total, tt.sides, tt.limit); got != tt.want {
+				t.Fatalf("chanceMixLabel() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -1238,7 +1267,8 @@ func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
 	m := liveModel(140, 36)
 	m.Matches[0].Stats = LiveStats{
 		HomeShots: 7, AwayShots: 3, HomeCards: 1, AwayCards: 2, HomeSubs: 2, AwaySubs: 0,
-		ChanceTypes: map[string]int{"CUTBACK": 2},
+		ChanceTypes:       map[string]int{"CUTBACK": 2},
+		ChanceTypesBySide: map[string]int{"HOME_CUTBACK": 2},
 		Diagnostics: MatchDiagnostics{
 			ShotQuality:    map[string]int{"HIGH": 1, "MEDIUM": 2},
 			AerialDuels:    map[string]int{"HOME": 3, "AWAY": 1},
@@ -1252,7 +1282,7 @@ func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
 		{Side: "AWAY", Name: "Villain", RatingX10: 61},
 	}
 	v := m.View()
-	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "Build-up", "Current scene", "Earlier flow", "line two"} {
+	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "Build-up", "Current scene", "Earlier flow", "line two"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("live modal missing %q:\n%s", want, v)
 		}
