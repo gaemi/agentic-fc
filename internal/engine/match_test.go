@@ -3,6 +3,7 @@ package engine
 import (
 	"math/rand/v2"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
@@ -167,6 +168,24 @@ func TestMatchProducesResults(t *testing.T) {
 		}
 		if chanceTypes != r.HomeShots+r.AwayShots {
 			t.Fatalf("chance type counts %d != shots %d", chanceTypes, r.HomeShots+r.AwayShots)
+		}
+		chanceTypesBySide, homeChanceTypes, awayChanceTypes := 0, 0, 0
+		for key, n := range r.ChanceTypesBySide {
+			chanceTypesBySide += n
+			switch {
+			case strings.HasPrefix(key, "HOME_"):
+				homeChanceTypes += n
+			case strings.HasPrefix(key, "AWAY_"):
+				awayChanceTypes += n
+			default:
+				t.Fatalf("side-aware chance type has invalid key %q", key)
+			}
+		}
+		if chanceTypesBySide != r.HomeShots+r.AwayShots {
+			t.Fatalf("side-aware chance type counts %d != shots %d", chanceTypesBySide, r.HomeShots+r.AwayShots)
+		}
+		if homeChanceTypes != r.HomeShots || awayChanceTypes != r.AwayShots {
+			t.Fatalf("side-aware chance types HOME %d/%d AWAY %d/%d", homeChanceTypes, r.HomeShots, awayChanceTypes, r.AwayShots)
 		}
 		shotQuality := 0
 		for _, n := range r.Diagnostics.ShotQuality {

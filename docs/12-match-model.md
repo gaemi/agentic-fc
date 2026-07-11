@@ -487,8 +487,10 @@ diagnostic surfaces.
 
 MCP/Console expose, at appropriate fidelity:
 
-- chance type counts: crosses, cutbacks, through balls, counters, set pieces,
-  long shots (`match_patterns` on MCP; localized chance mix on Console/TUI);
+- side-attributed chance type counts: crosses, cutbacks, through balls,
+  counters, set pieces, long shots (`match_patterns` on MCP; localized chance
+  mix on Console/TUI). Legacy and upgrade-straddled aggregate counts remain
+  explicitly `UNKNOWN` rather than being assigned to a team;
 - aerial duels attempted/won;
 - press turnovers created;
 - set-piece threat counts;

@@ -63,13 +63,14 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 	src := MatchResult{
 		FixtureID: 7, HomeGoals: 2, AwayGoals: 1,
 		HomeXI: []int64{1, 2}, AwayXI: []int64{3, 4},
-		Subs:        []SubEvent{{Minute: 60, ClubID: 1, Off: 2, On: 5, Reason: "TACTICAL"}},
-		Scorers:     []MatchEvent{{Minute: 30, PlayerID: 1, ClubID: 1}},
-		Cards:       []MatchEvent{{Minute: 70, PlayerID: 3, ClubID: 2, Detail: "RED"}},
-		RatingsX10:  map[int64]int{1: 74, 3: 60},
-		Adjustments: []Adjustment{{Minute: 65, ClubID: 2, Key: "adj.push"}},
-		Commentary:  []CommentaryLine{{Minute: 1, Key: "comment.kickoff"}},
-		ChanceTypes: map[string]int{"CUTBACK": 2},
+		Subs:              []SubEvent{{Minute: 60, ClubID: 1, Off: 2, On: 5, Reason: "TACTICAL"}},
+		Scorers:           []MatchEvent{{Minute: 30, PlayerID: 1, ClubID: 1}},
+		Cards:             []MatchEvent{{Minute: 70, PlayerID: 3, ClubID: 2, Detail: "RED"}},
+		RatingsX10:        map[int64]int{1: 74, 3: 60},
+		Adjustments:       []Adjustment{{Minute: 65, ClubID: 2, Key: "adj.push"}},
+		Commentary:        []CommentaryLine{{Minute: 1, Key: "comment.kickoff"}},
+		ChanceTypes:       map[string]int{"CUTBACK": 2},
+		ChanceTypesBySide: map[string]int{"HOME_CUTBACK": 2},
 		Diagnostics: MatchDiagnostics{
 			ShotQuality:       map[string]int{"HIGH": 1},
 			ShotQualityBySide: map[string]int{"HOME_HIGH": 1},
@@ -83,7 +84,7 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 	}
 	if arch.FixtureID != 7 || arch.HomeGoals != 2 || len(arch.Subs) != 1 ||
 		arch.Subs[0].Reason != "TACTICAL" || len(arch.Cards) != 1 || arch.RatingsX10[1] != 74 ||
-		arch.ChanceTypes["CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
+		arch.ChanceTypes["CUTBACK"] != 2 || arch.ChanceTypesBySide["HOME_CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
 		arch.Diagnostics.ShotQualityBySide["HOME_HIGH"] != 1 ||
 		arch.Diagnostics.AerialDuels["HOME"] != 2 || arch.Diagnostics.AerialWins["HOME"] != 1 {
 		t.Fatalf("archive lost facts: %+v", arch)
@@ -91,12 +92,13 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 	src.HomeXI[0], src.Subs[0].On, src.Scorers[0].PlayerID = 99, 99, 99
 	src.Cards[0].Detail, src.RatingsX10[1], src.Adjustments[0].Key = "YELLOW", 0, "x"
 	src.ChanceTypes["CUTBACK"] = 0
+	src.ChanceTypesBySide["HOME_CUTBACK"] = 0
 	src.Diagnostics.ShotQuality["HIGH"] = 0
 	src.Diagnostics.ShotQualityBySide["HOME_HIGH"] = 0
 	src.Diagnostics.AerialDuels["HOME"] = 0
 	if arch.HomeXI[0] == 99 || arch.Subs[0].On == 99 || arch.Scorers[0].PlayerID == 99 ||
 		arch.Cards[0].Detail == "YELLOW" || arch.RatingsX10[1] != 74 || arch.Adjustments[0].Key == "x" ||
-		arch.ChanceTypes["CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
+		arch.ChanceTypes["CUTBACK"] != 2 || arch.ChanceTypesBySide["HOME_CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
 		arch.Diagnostics.ShotQualityBySide["HOME_HIGH"] != 1 ||
 		arch.Diagnostics.AerialDuels["HOME"] != 2 {
 		t.Fatal("archive aliases the source — deep copy required")

@@ -866,27 +866,28 @@ type matchSubDTO struct {
 }
 
 type matchDetailDTO struct {
-	Fixture     int64                     `json:"fixture"`
-	Status      string                    `json:"status"`
-	Archived    bool                      `json:"archived,omitempty"`
-	Season      int                       `json:"season,omitempty"`
-	Competition string                    `json:"competition"`
-	Round       int                       `json:"round,omitempty"`
-	KickoffText string                    `json:"kickoff_text"`
-	Home        string                    `json:"home"`
-	Away        string                    `json:"away"`
-	HomeGoals   int                       `json:"home_goals"`
-	AwayGoals   int                       `json:"away_goals"`
-	Winner      string                    `json:"winner,omitempty"`
-	HomeShots   int                       `json:"home_shots"`
-	AwayShots   int                       `json:"away_shots"`
-	ChanceTypes map[string]int            `json:"chance_types,omitempty"`
-	Diagnostics worldgen.MatchDiagnostics `json:"diagnostics,omitempty"`
-	Scorers     []matchEventDTO           `json:"scorers,omitempty"`
-	Cards       []matchEventDTO           `json:"cards,omitempty"`
-	Subs        []matchSubDTO             `json:"subs,omitempty"`
-	Ratings     []liveRatingDTO           `json:"ratings,omitempty"`
-	Commentary  []string                  `json:"commentary,omitempty"`
+	Fixture           int64                     `json:"fixture"`
+	Status            string                    `json:"status"`
+	Archived          bool                      `json:"archived,omitempty"`
+	Season            int                       `json:"season,omitempty"`
+	Competition       string                    `json:"competition"`
+	Round             int                       `json:"round,omitempty"`
+	KickoffText       string                    `json:"kickoff_text"`
+	Home              string                    `json:"home"`
+	Away              string                    `json:"away"`
+	HomeGoals         int                       `json:"home_goals"`
+	AwayGoals         int                       `json:"away_goals"`
+	Winner            string                    `json:"winner,omitempty"`
+	HomeShots         int                       `json:"home_shots"`
+	AwayShots         int                       `json:"away_shots"`
+	ChanceTypes       map[string]int            `json:"chance_types,omitempty"`
+	ChanceTypesBySide map[string]int            `json:"chance_types_by_side,omitempty"`
+	Diagnostics       worldgen.MatchDiagnostics `json:"diagnostics,omitempty"`
+	Scorers           []matchEventDTO           `json:"scorers,omitempty"`
+	Cards             []matchEventDTO           `json:"cards,omitempty"`
+	Subs              []matchSubDTO             `json:"subs,omitempty"`
+	Ratings           []liveRatingDTO           `json:"ratings,omitempty"`
+	Commentary        []string                  `json:"commentary,omitempty"`
 }
 
 func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
@@ -940,8 +941,9 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 		Home:        names[r.HomeID], Away: names[r.AwayID],
 		HomeGoals: r.HomeGoals, AwayGoals: r.AwayGoals,
 		HomeShots: r.HomeShots, AwayShots: r.AwayShots,
-		ChanceTypes: cloneIntMap(r.ChanceTypes),
-		Diagnostics: r.Diagnostics.Clone(),
+		ChanceTypes:       cloneIntMap(r.ChanceTypes),
+		ChanceTypesBySide: cloneIntMap(r.ChanceTypesBySide),
+		Diagnostics:       r.Diagnostics.Clone(),
 	}
 	if r.Winner != 0 {
 		dto.Winner = names[r.Winner]
@@ -1016,14 +1018,15 @@ type liveMarkerDTO struct {
 // substitutions used per side — already-public spectacle, counted from the
 // persisted tally.
 type liveStatsDTO struct {
-	HomeShots   int                       `json:"home_shots"`
-	AwayShots   int                       `json:"away_shots"`
-	HomeCards   int                       `json:"home_cards"`
-	AwayCards   int                       `json:"away_cards"`
-	HomeSubs    int                       `json:"home_subs"`
-	AwaySubs    int                       `json:"away_subs"`
-	ChanceTypes map[string]int            `json:"chance_types,omitempty"`
-	Diagnostics worldgen.MatchDiagnostics `json:"diagnostics,omitempty"`
+	HomeShots         int                       `json:"home_shots"`
+	AwayShots         int                       `json:"away_shots"`
+	HomeCards         int                       `json:"home_cards"`
+	AwayCards         int                       `json:"away_cards"`
+	HomeSubs          int                       `json:"home_subs"`
+	AwaySubs          int                       `json:"away_subs"`
+	ChanceTypes       map[string]int            `json:"chance_types,omitempty"`
+	ChanceTypesBySide map[string]int            `json:"chance_types_by_side,omitempty"`
+	Diagnostics       worldgen.MatchDiagnostics `json:"diagnostics,omitempty"`
 }
 
 // liveRatingDTO is one live-ratings row: the shared band formula
@@ -1116,8 +1119,9 @@ func liveStats(lm *worldgen.LiveMatch) liveStatsDTO {
 	st := liveStatsDTO{
 		HomeShots: lm.HomeShots, AwayShots: lm.AwayShots,
 		HomeSubs: lm.SubsUsed(lm.HomeID), AwaySubs: lm.SubsUsed(lm.AwayID),
-		ChanceTypes: cloneIntMap(lm.ChanceTypes),
-		Diagnostics: lm.Diagnostics.Clone(),
+		ChanceTypes:       cloneIntMap(lm.ChanceTypes),
+		ChanceTypesBySide: cloneIntMap(lm.ChanceTypesBySide),
+		Diagnostics:       lm.Diagnostics.Clone(),
 	}
 	for _, c := range lm.Cards {
 		if c.ClubID == lm.HomeID {

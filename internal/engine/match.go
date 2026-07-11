@@ -274,6 +274,14 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 		lm.ChanceTypes = map[string]int{}
 	}
 	lm.ChanceTypes[chanceType]++
+	if lm.ChanceTypesBySide == nil {
+		lm.ChanceTypesBySide = map[string]int{}
+	}
+	side := "AWAY"
+	if home {
+		side = "HOME"
+	}
+	lm.ChanceTypesBySide[side+"_"+chanceType]++
 
 	p := e.players[scorer]
 	attackScore := e.chanceAttackScore(p, atkXI, chanceType)
@@ -759,13 +767,14 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 		HomeGoals: lm.HomeGoals, AwayGoals: lm.AwayGoals, Winner: winner,
 		Kickoff: lm.Kickoff, HomeXI: lm.HomeXI, AwayXI: lm.AwayXI, Subs: lm.Subs,
 		Scorers: lm.Scorers, Cards: lm.Cards,
-		RatingsX10:  e.ratings(lm),
-		Commentary:  lm.Commentary,
-		Adjustments: lm.Adjustments,
-		HomeShots:   lm.HomeShots,
-		AwayShots:   lm.AwayShots,
-		ChanceTypes: cloneChanceTypes(lm.ChanceTypes),
-		Diagnostics: lm.Diagnostics,
+		RatingsX10:        e.ratings(lm),
+		Commentary:        lm.Commentary,
+		Adjustments:       lm.Adjustments,
+		HomeShots:         lm.HomeShots,
+		AwayShots:         lm.AwayShots,
+		ChanceTypes:       cloneChanceTypes(lm.ChanceTypes),
+		ChanceTypesBySide: cloneChanceTypes(lm.ChanceTypesBySide),
+		Diagnostics:       lm.Diagnostics,
 	}
 	e.world.Results = append(e.world.Results, res)
 

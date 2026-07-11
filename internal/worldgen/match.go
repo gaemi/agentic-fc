@@ -102,20 +102,21 @@ type MatchResult struct {
 	// Winner is the advancing club in a cup tie: the higher scorer, or
 	// the shootout victor when the 90 minutes finished level. Zero for a league
 	// result, where the score alone settles the points.
-	Winner      int64            `json:"winner,omitempty"`
-	Kickoff     sim.GameTime     `json:"kickoff"`
-	HomeXI      []int64          `json:"home_xi"`
-	AwayXI      []int64          `json:"away_xi"`
-	Subs        []SubEvent       `json:"subs,omitempty"`
-	Scorers     []MatchEvent     `json:"scorers,omitempty"`
-	Cards       []MatchEvent     `json:"cards,omitempty"`
-	RatingsX10  map[int64]int    `json:"ratings_x10,omitempty"`
-	Commentary  []CommentaryLine `json:"commentary,omitempty"`
-	Adjustments []Adjustment     `json:"adjustments,omitempty"`
-	HomeShots   int              `json:"home_shots,omitempty"`
-	AwayShots   int              `json:"away_shots,omitempty"`
-	ChanceTypes map[string]int   `json:"chance_types,omitempty"`
-	Diagnostics MatchDiagnostics `json:"diagnostics,omitempty"`
+	Winner            int64            `json:"winner,omitempty"`
+	Kickoff           sim.GameTime     `json:"kickoff"`
+	HomeXI            []int64          `json:"home_xi"`
+	AwayXI            []int64          `json:"away_xi"`
+	Subs              []SubEvent       `json:"subs,omitempty"`
+	Scorers           []MatchEvent     `json:"scorers,omitempty"`
+	Cards             []MatchEvent     `json:"cards,omitempty"`
+	RatingsX10        map[int64]int    `json:"ratings_x10,omitempty"`
+	Commentary        []CommentaryLine `json:"commentary,omitempty"`
+	Adjustments       []Adjustment     `json:"adjustments,omitempty"`
+	HomeShots         int              `json:"home_shots,omitempty"`
+	AwayShots         int              `json:"away_shots,omitempty"`
+	ChanceTypes       map[string]int   `json:"chance_types,omitempty"`
+	ChanceTypesBySide map[string]int   `json:"chance_types_by_side,omitempty"`
+	Diagnostics       MatchDiagnostics `json:"diagnostics,omitempty"`
 }
 
 // LiveMatch is the running tally of an in-progress fixture, persisted so a
@@ -158,6 +159,7 @@ type LiveMatch struct {
 	HomeShots          int              `json:"home_shots,omitempty"`
 	AwayShots          int              `json:"away_shots,omitempty"`
 	ChanceTypes        map[string]int   `json:"chance_types,omitempty"`
+	ChanceTypesBySide  map[string]int   `json:"chance_types_by_side,omitempty"`
 	Diagnostics        MatchDiagnostics `json:"diagnostics,omitempty"`
 }
 
@@ -379,6 +381,12 @@ func (r *MatchResult) archiveCopy() MatchResult {
 		out.ChanceTypes = make(map[string]int, len(r.ChanceTypes))
 		for k, v := range r.ChanceTypes {
 			out.ChanceTypes[k] = v
+		}
+	}
+	if r.ChanceTypesBySide != nil {
+		out.ChanceTypesBySide = make(map[string]int, len(r.ChanceTypesBySide))
+		for k, v := range r.ChanceTypesBySide {
+			out.ChanceTypesBySide[k] = v
 		}
 	}
 	out.Diagnostics = r.Diagnostics.Clone()
