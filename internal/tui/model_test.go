@@ -1570,6 +1570,7 @@ func TestMatchModalResponsiveWidthsStayFixed(t *testing.T) {
 
 func TestLiveMatchModalGoalFlashAndClose(t *testing.T) {
 	m := liveModel(140, 36)
+	m.Matches[0].Minute = 62
 	m.Matches[0].Markers = append(m.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
 	v := m.View()
 	if !strings.Contains(v, "GOAL") || !strings.Contains(v, "62'") || !strings.Contains(v, "Beta") || !strings.Contains(v, "█") {
@@ -1578,6 +1579,26 @@ func TestLiveMatchModalGoalFlashAndClose(t *testing.T) {
 	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
 	if m.MatchModal != modalNone {
 		t.Fatalf("Esc did not close live modal: %q", m.MatchModal)
+	}
+}
+
+func TestGoalFlashExpiresBeforeTheNextMoment(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches[0].Markers = []LiveMarker{{Minute: 67, Kind: "GOAL", Side: "HOME"}}
+	for _, tc := range []struct {
+		minute int
+		want   bool
+	}{
+		{minute: 67, want: true},
+		{minute: 71, want: true},
+		{minute: 72, want: false},
+		{minute: 66, want: false},
+	} {
+		m.Matches[0].Minute = tc.minute
+		got := m.goalFlashLine(m.Matches[0], 120)
+		if (got != "") != tc.want {
+			t.Fatalf("goal flash at %d' = %q, want visible %t", tc.minute, got, tc.want)
+		}
 	}
 }
 

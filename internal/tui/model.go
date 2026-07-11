@@ -34,6 +34,7 @@ const (
 	runtimeSettingCount    = 3
 	minMatchModalHeight    = 6
 	sceneFrameRows         = 9
+	goalFlashWindowMinutes = 4
 )
 
 // Sentinel for modalBox lines that are already width-aligned ASCII art.
@@ -1630,7 +1631,8 @@ func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
 		return ""
 	}
 	latest := mv.Markers[len(mv.Markers)-1]
-	if latest.Kind != "GOAL" {
+	age := mv.Minute - latest.Minute
+	if latest.Kind != "GOAL" || age < 0 || age > goalFlashWindowMinutes {
 		return ""
 	}
 	side := mv.Home

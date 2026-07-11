@@ -60,8 +60,10 @@ shot-quality data exists, both live and replay views separate home (`H`) and
 away (`A`) bands, with `?` preserving any legacy unattributed remainder;
 compact layouts continue to prioritize score, events, and prose.
 It deliberately drops the ASCII pitch: the useful surface is the score/state
-board plus commentary. Goal events produce a visible text flash in the pop-up
-without pretending the model is a continuous spatial simulation.
+board plus commentary. Goal events produce a visible text flash that expires
+within four elapsed match minutes, so a quiet or unrelated current scene never
+sits beneath a stale goal banner. This does not pretend the model is a
+continuous spatial simulation.
 
 ### 4.2 Media Desk
 
