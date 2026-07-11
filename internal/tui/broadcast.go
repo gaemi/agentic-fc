@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -152,6 +153,53 @@ func labeledPairRows(label string, rows []string, width int) []string {
 		preformattedLinePrefix + fitLine(pad+" A "+rows[1], width, alignLeft),
 	}
 	return out
+}
+
+// elsewhereGoalWindowMinutes keeps a just-scored marker highlighted on the
+// elsewhere ticker. It mirrors the main goal flash window: at the fastest
+// game speed the 2s poll can skip ~2 football minutes, so a shorter window
+// could age a goal out before the first refresh that shows it.
+const elsewhereGoalWindowMinutes = goalFlashWindowMinutes
+
+// elsewhereTicker summarizes the other live matches on one line so a
+// spectator never loses the rest of the matchday. Entries whose latest
+// marker is a fresh goal get a G! prefix.
+func (m Model) elsewhereTicker(current int64, width int) string {
+	if width <= 0 || len(m.Matches) < 2 {
+		return ""
+	}
+	parts := make([]string, 0, len(m.Matches)-1)
+	for _, mv := range m.Matches {
+		if mv.Fixture == current {
+			continue
+		}
+		entry := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
+		if hasFreshGoal(mv) {
+			entry = "G! " + entry
+		}
+		parts = append(parts, entry)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return truncate(m.ui("ui.match.latest")+"  "+strings.Join(parts, " · "), width)
+}
+
+// hasFreshGoal reports whether any goal in the marker stream is still inside
+// the freshness window — a chance or card right after the goal must not age
+// the highlight out early.
+func hasFreshGoal(mv LiveMatchView) bool {
+	for i := len(mv.Markers) - 1; i >= 0; i-- {
+		mk := mv.Markers[i]
+		age := mv.Minute - mk.Minute
+		if age > elsewhereGoalWindowMinutes {
+			return false
+		}
+		if mk.Kind == "GOAL" && age >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // matchPhaseLabel tags the running minute as first or second half.

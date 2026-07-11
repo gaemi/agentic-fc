@@ -59,7 +59,11 @@ public data only: a **marker timeline** (home events above, away below, on a
 minute ruler with 15-minute ticks and a play head, using the marker legend
 glyphs) and a **momentum strip** (the signed ten-minute momentum buckets as
 mirrored home/away bars). Replay pop-ups list exact events instead and do not
-repeat these strips.
+repeat these strips. Tall live layouts also close the pop-up with a one-line **elsewhere
+ticker** — the other live scores, with a `G!`
+prefix while a goal there is fresh — and the fixtures list shows the running
+minute on live rows, so the screen reads as a whole matchday rather than a
+single game.
 On wide layouts, every recognized football scene (goal, save, cross, cut-back,
 through ball, long-range shot, set piece, counter, scramble, dribble, card,
 stoppage, substitution, generic chance, and quiet build-up) plays as a terminal
