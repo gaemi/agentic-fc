@@ -751,8 +751,44 @@ func (s *Server) handleFixtures(w http.ResponseWriter, r *http.Request) {
 		if len(out) > limit {
 			out = trimFixtureList(out, limit)
 		}
+		out = prioritizeFixtureWindows(out)
 	})
 	writeJSON(w, out)
+}
+
+// prioritizeFixtureWindows keeps the two immediately useful matchday windows
+// together at the top: the next kick-off group, then the latest completed
+// group. The remaining forward schedule and archive retain their existing
+// chronological order.
+func prioritizeFixtureWindows(fixtures []fixtureDTO) []fixtureDTO {
+	var nextScheduled, latestResult int64
+	hasScheduled, hasResult := false, false
+	for _, f := range fixtures {
+		switch f.Status {
+		case "SCHEDULED":
+			if !hasScheduled || f.Kickoff < nextScheduled {
+				nextScheduled, hasScheduled = f.Kickoff, true
+			}
+		case "RESULT":
+			if !hasResult || f.Kickoff > latestResult {
+				latestResult, hasResult = f.Kickoff, true
+			}
+		}
+	}
+	out := make([]fixtureDTO, 0, len(fixtures))
+	appendMatching := func(match func(fixtureDTO) bool) {
+		for _, f := range fixtures {
+			if match(f) {
+				out = append(out, f)
+			}
+		}
+	}
+	appendMatching(func(f fixtureDTO) bool { return f.Status == "LIVE" })
+	appendMatching(func(f fixtureDTO) bool { return f.Status == "SCHEDULED" && f.Kickoff == nextScheduled })
+	appendMatching(func(f fixtureDTO) bool { return f.Status == "RESULT" && f.Kickoff == latestResult })
+	appendMatching(func(f fixtureDTO) bool { return f.Status == "SCHEDULED" && f.Kickoff != nextScheduled })
+	appendMatching(func(f fixtureDTO) bool { return f.Status == "RESULT" && f.Kickoff != latestResult })
+	return out
 }
 
 func fixtureListRank(f fixtureDTO) int {

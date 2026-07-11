@@ -60,8 +60,9 @@ piece with scores, table movement, and pressure points.
 
 ![TUI media desk with a matchday round-up article](assets/intro/tui-media-desk.png)
 
-Fixtures and results share one screen. Upcoming fixtures stay visible, while
-completed matches can open as replay detail.
+Fixtures and results share one screen. The next kick-off group and latest
+completed matchday stay together at the top, and completed matches can open as
+replay detail without paging past the full future schedule.
 
 ![TUI fixtures and results overview](assets/intro/tui-results-detail.png)
 
@@ -91,8 +92,10 @@ intent setting, imperfect information, and public spectator presentation.
 
 ## What The Screens Show
 
-The screenshots in this document are representative captures from a local
-development world. They demonstrate the two important perspectives:
+The screenshots in this document are representative English-language captures
+from a local development world. When a TUI or MCP UX change materially alters
+one of these views, its screenshot is refreshed in the same change. They
+demonstrate the two important perspectives:
 
 - The agent/player perspective: MCP tools, structured responses, and UI cards
   inside a chat-style agent environment.

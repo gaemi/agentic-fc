@@ -98,8 +98,12 @@ The Fixtures/Results tab is a spectator archive as well as a forward schedule:
 it mixes finished results, live fixtures, archived results, and upcoming
 fixtures in one selectable list. The Console API accepts a bounded history
 `limit` (the TUI asks for a large spectator cap, currently 1000 rows) so a
-viewer can move through prior seasons instead of only the latest page. Finished
-current-season matches open a replay pop-up with score, shots, scorers, cards,
+viewer can move through prior seasons instead of only the latest page. The
+first rows lead with the next kick-off group followed by the latest completed
+matchday, then the remaining forward schedule and older results. This
+keeps both anticipation and replay access in the initial viewport even when a
+full season of future fixtures is already generated. Finished current-season
+matches open a replay pop-up with score, shots, scorers, cards,
 substitutions, top ratings, and the preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.
