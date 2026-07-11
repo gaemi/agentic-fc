@@ -492,7 +492,7 @@ MCP/Console expose, at appropriate fidelity:
 - aerial duels attempted/won;
 - press turnovers created;
 - set-piece threat counts;
-- shot quality bands, not a real-world xG claim;
+- shot quality bands attributed to home/away, not a real-world xG claim;
 - tactical tilt: wide/central/distance/set-piece/transition/scramble profile;
 - player role fit and body profile hints where public;
 - current own-team condition during a live match, derived from each player's
