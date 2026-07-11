@@ -365,6 +365,15 @@ func TestLiveModalMirrorsAwayAttacks(t *testing.T) {
 		t.Fatalf("home goal beat lost the goal mouth:\n%s", v)
 	}
 
+	// The mirror decision follows the beat, not the clock: an away action
+	// that stays the latest line through a quiet stretch keeps its direction.
+	m.Matches[0].Minute = 80
+	m.Matches[0].Markers = []LiveMarker{{Minute: 30, Kind: "GOAL", Side: "AWAY"}}
+	m.Matches[0].Commentary = []string{"Goal! Rao finds the net for Beta — it's 0–1."}
+	if v := m.View(); !strings.Contains(v, "|: :") {
+		t.Fatalf("away scene flipped home-facing after a quiet stretch:\n%s", v)
+	}
+
 	// Ceremony and neutral scenes never mirror.
 	if mirrorableScenes["kickoff"] || mirrorableScenes["build"] || mirrorableScenes["sub"] {
 		t.Fatal("ceremony/neutral scenes must not be mirrorable")

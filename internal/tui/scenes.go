@@ -845,17 +845,15 @@ func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
 }
 
 // liveAttackingAway reports whether the current beat belongs to the away
-// side: the latest marker carries the acting side while it is fresh enough
-// to still describe the visible line.
+// side. The latest marker describes the same beat as the latest commentary
+// line the scene is drawn from, so the decision must not expire on a clock
+// window: a quiet stretch would otherwise flip an away scene home-facing
+// mid-beat. When a newer beat arrives the scene changes with it.
 func liveAttackingAway(mv LiveMatchView) bool {
 	if len(mv.Markers) == 0 {
 		return false
 	}
-	latest := mv.Markers[len(mv.Markers)-1]
-	if mv.Minute-latest.Minute > elsewhereGoalWindowMinutes {
-		return false
-	}
-	return latest.Side == matchSideAway
+	return mv.Markers[len(mv.Markers)-1].Side == matchSideAway
 }
 
 // Every goal template quotes the new score with an en-dash; the only other
