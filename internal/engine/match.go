@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
+	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
 	"github.com/gaemi/agentic-fc/internal/mindset"
@@ -142,10 +143,33 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 		"home": e.clubName(f.HomeID), "away": e.clubName(f.AwayID),
 	})
 
+	e.scheduleHalftime(f.ID, ev.Due)
 	e.scheduleMoment(f.ID, ev.Due, 0)
 	return e.log(ev, "match", map[string]any{
 		"home": f.HomeID, "away": f.AwayID,
 	}, "kickoff", 0, 0)
+}
+
+func (e *Engine) scheduleHalftime(fixtureID int64, kickoff sim.GameTime) {
+	e.queue.Schedule(&sim.Event{
+		Due:      kickoff + sim.GameTime(matchFullTimeMinutes/2),
+		Priority: sim.PriorityMatch,
+		Kind:     sim.KindMatch,
+		EntityID: fixtureID,
+		Payload:  worldgen.PayloadMatchHalftime,
+	})
+}
+
+func (e *Engine) handleMatchHalftime(ev *sim.Event) error {
+	lm := e.world.LiveMatches[ev.EntityID]
+	if lm == nil {
+		return e.log(ev, "match", nil, "no_live_match", 0, 0)
+	}
+	lm.Clock = matchFullTimeMinutes / 2
+	e.recordHalftimeCommentary(lm, ev.Due)
+	return e.log(ev, "match", map[string]any{
+		"score": []int{lm.HomeGoals, lm.AwayGoals}, "minute": lm.Clock,
+	}, "halftime", 0, 0)
 }
 
 // momentClock returns the game-minute of the i-th moment: the midpoint of its
@@ -175,11 +199,11 @@ func (e *Engine) handleMatchMoment(ev *sim.Event) error {
 	r := e.rollStream(ev)
 	i := lm.MomentIndex
 	lm.Clock = momentClock(i)
-	if i == matchMoments/2 {
-		e.comment(lm, ev.Due, halftimeCommentaryKey(lm.HomeGoals, lm.AwayGoals), map[string]any{
-			"home": e.clubName(lm.HomeID), "away": e.clubName(lm.AwayID),
-			"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
-		})
+	if i == matchMoments/2 && !hasHalftimeCommentary(lm) {
+		// Upgrade fallback: a match loaded from an older snapshot has no queued
+		// 45' event. Record the whistle once with its football minute, then let
+		// this 47' moment continue normally.
+		e.recordHalftimeCommentary(lm, ev.Due)
 	}
 	e.maybeAdjust(lm, ev.Due, r)
 	e.rollMomentOutcome(lm, ev.Due, r)
@@ -193,6 +217,22 @@ func (e *Engine) handleMatchMoment(ev *sim.Event) error {
 		}, "moment", 0, 0)
 	}
 	return e.finalizeMatch(ev, lm)
+}
+
+func (e *Engine) recordHalftimeCommentary(lm *worldgen.LiveMatch, at sim.GameTime) {
+	e.commentAtMinute(lm, at, matchFullTimeMinutes/2, halftimeCommentaryKey(lm.HomeGoals, lm.AwayGoals), map[string]any{
+		"home": e.clubName(lm.HomeID), "away": e.clubName(lm.AwayID),
+		"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
+	})
+}
+
+func hasHalftimeCommentary(lm *worldgen.LiveMatch) bool {
+	for _, line := range lm.Commentary {
+		if strings.HasPrefix(line.Key, "comment.halftime") {
+			return true
+		}
+	}
+	return false
 }
 
 // rollMomentOutcome applies one moment's chance, card, and injury rolls to the
@@ -1609,8 +1649,12 @@ func clampFloat(v, lo, hi float64) float64 {
 // the Console feed (the match-day broadcast). Params must be ints/strings only
 // — a float here would reach the world hash via LiveMatch.Commentary (NFR-2).
 func (e *Engine) comment(lm *worldgen.LiveMatch, at sim.GameTime, key string, params map[string]any) {
+	e.commentAtMinute(lm, at, lm.Clock, key, params)
+}
+
+func (e *Engine) commentAtMinute(lm *worldgen.LiveMatch, at sim.GameTime, minute int, key string, params map[string]any) {
 	lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{
-		Minute: lm.Clock, Key: key, Params: params,
+		Minute: minute, Key: key, Params: params,
 	})
 	e.emit(at, key, params)
 }

@@ -180,6 +180,8 @@ func (e *Engine) handle(ev *sim.Event) error {
 		return e.handleDecisionRoll(ev)
 	case worldgen.PayloadKickoff:
 		return e.startMatch(ev)
+	case worldgen.PayloadMatchHalftime:
+		return e.handleMatchHalftime(ev)
 	case worldgen.PayloadMatchMoment:
 		return e.handleMatchMoment(ev)
 	case worldgen.PayloadSeasonEnd:

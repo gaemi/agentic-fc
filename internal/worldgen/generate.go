@@ -131,7 +131,8 @@ func MintManagerToken(entropy io.Reader) (string, error) {
 // The executor contract is the string tag.
 const (
 	PayloadKickoff       = "kickoff"
-	PayloadMatchMoment   = "match_moment" // one sampled key moment
+	PayloadMatchHalftime = "match_halftime" // exact 45-minute whistle
+	PayloadMatchMoment   = "match_moment"   // one sampled key moment
 	PayloadFinanceTick   = "finance_tick"
 	PayloadDecisionRoll  = "decision_roll"
 	PayloadConditionTick = "condition_recovery"

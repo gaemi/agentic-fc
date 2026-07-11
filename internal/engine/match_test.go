@@ -217,6 +217,9 @@ func TestMatchProducesResults(t *testing.T) {
 			!halfHomeOK || halfHome == "" || !halfAwayOK || halfAway == "" {
 			t.Fatalf("fixture %d missing contextual half-time commentary: %+v", r.FixtureID, halftime)
 		}
+		if halftime.Minute != matchFullTimeMinutes/2 {
+			t.Fatalf("fixture %d half-time minute = %d, want 45", r.FixtureID, halftime.Minute)
+		}
 		if fulltime == nil || fulltime.Key != fulltimeCommentaryKey(r.HomeGoals, r.AwayGoals) {
 			t.Fatalf("fixture %d full-time commentary = %+v, want %q", r.FixtureID, fulltime, fulltimeCommentaryKey(r.HomeGoals, r.AwayGoals))
 		}
@@ -443,6 +446,42 @@ func TestWhistleCommentaryKeysReflectScore(t *testing.T) {
 	for _, tc := range fulltime {
 		if got := fulltimeCommentaryKey(tc.home, tc.away); got != tc.want {
 			t.Fatalf("fulltime %d-%d key = %q, want %q", tc.home, tc.away, got, tc.want)
+		}
+	}
+}
+
+func TestLegacyInProgressMatchBackfillsExactHalftimeOnce(t *testing.T) {
+	e, _ := newEngine(t, 42)
+	kickoff := firstKickoff(e)
+	if _, err := e.RunUntil(kickoff + 42); err != nil {
+		t.Fatal(err)
+	}
+	events, nextSeq := e.queue.Snapshot()
+	filtered := events[:0]
+	for _, ev := range events {
+		if ev.Payload != worldgen.PayloadMatchHalftime {
+			filtered = append(filtered, ev)
+		}
+	}
+	e.queue = sim.RestoreQueue(filtered, nextSeq)
+	if _, err := e.RunUntil(kickoff + 47); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.world.LiveMatches) == 0 {
+		t.Fatal("test horizon has no live matches")
+	}
+	for fixture, lm := range e.world.LiveMatches {
+		count := 0
+		for _, line := range lm.Commentary {
+			if strings.HasPrefix(line.Key, "comment.halftime") {
+				count++
+				if line.Minute != matchFullTimeMinutes/2 {
+					t.Fatalf("fixture %d fallback half-time minute = %d, want 45", fixture, line.Minute)
+				}
+			}
+		}
+		if count != 1 {
+			t.Fatalf("fixture %d fallback half-time lines = %d, want 1", fixture, count)
 		}
 	}
 }
