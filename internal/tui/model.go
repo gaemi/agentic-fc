@@ -2658,25 +2658,60 @@ func (m Model) diagnosticLines(d MatchDiagnostics, width, limit int) []string {
 		}
 		lines = append(lines, truncate(fmt.Sprintf("%s %s", label, value), width))
 	}
-	add(m.ui("ui.match.stat.quality"), m.qualityLabel(d.ShotQuality, 3))
+	add(m.ui("ui.match.stat.quality"), m.qualityLabel(d.ShotQuality, d.ShotQualityBySide, 3))
 	add(m.ui("ui.match.stat.aerial"), m.aerialLabel(d.AerialDuels, d.AerialWins))
 	add(m.ui("ui.match.stat.press"), m.sideLabel(d.PressTurnovers))
 	add(m.ui("ui.match.stat.setpieces"), m.sideLabel(d.SetPieceThreat))
 	return lines
 }
 
-func (m Model) qualityLabel(counts map[string]int, limit int) string {
+func (m Model) qualityLabel(counts, bySide map[string]int, limit int) string {
 	order := []string{"HIGH", "MEDIUM", "LOW"}
-	parts := make([]string, 0, len(order))
-	for _, band := range order {
-		if n := counts[band]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%s %d", m.qualityBandLabel(band), n))
+	bandLabel := func(values map[string]int) string {
+		parts := make([]string, 0, len(order))
+		for _, band := range order {
+			if n := values[band]; n > 0 {
+				parts = append(parts, fmt.Sprintf("%s %d", m.qualityBandLabel(band), n))
+			}
+		}
+		if len(parts) > limit {
+			parts = parts[:limit]
+		}
+		return strings.Join(parts, " · ")
+	}
+	if len(bySide) == 0 {
+		return bandLabel(counts)
+	}
+	var sections []string
+	known := map[string]int{}
+	for _, side := range []string{"HOME", "AWAY"} {
+		values := map[string]int{}
+		for _, band := range order {
+			values[band] = bySide[side+"_"+band]
+			known[band] += values[band]
+		}
+		if label := bandLabel(values); label != "" {
+			sections = append(sections, side[:1]+" "+label)
 		}
 	}
-	if len(parts) > limit {
-		parts = parts[:limit]
+	// Side counts are authoritative for attribution. The aggregate only fills
+	// a positive legacy remainder; never invent a negative unknown bucket when
+	// inconsistent input attributes more shots than the aggregate recorded.
+	unknown := map[string]int{}
+	for _, band := range order {
+		if n := counts[band] - known[band]; n > 0 {
+			unknown[band] = n
+		}
 	}
-	return strings.Join(parts, " · ")
+	if label := bandLabel(unknown); label != "" {
+		sections = append(sections, "? "+label)
+	}
+	if len(sections) == 0 {
+		// Empty/zero side data keeps the aggregate useful instead of returning
+		// an empty label. Unknown non-zero sides surface through the ? remainder.
+		return bandLabel(counts)
+	}
+	return strings.Join(sections, " | ")
 }
 
 func (m Model) qualityBandLabel(key string) string {

@@ -1081,13 +1081,19 @@ func TestReplayModalKeepsPostMatchDiagnostics(t *testing.T) {
 	m.UI["term.quality.MEDIUM"] = "Medium"
 	m.UI["term.quality.LOW"] = "Low"
 	m.MatchDetail.Diagnostics = MatchDiagnostics{
-		ShotQuality:    map[string]int{"HIGH": 1, "MEDIUM": 2, "LOW": 1},
+		ShotQuality: map[string]int{"HIGH": 2, "MEDIUM": 3, "LOW": 1},
+		ShotQualityBySide: map[string]int{
+			"HOME_HIGH": 1, "HOME_MEDIUM": 1, "AWAY_HIGH": 1, "AWAY_MEDIUM": 1,
+		},
 		AerialDuels:    map[string]int{"HOME": 3, "AWAY": 1},
 		AerialWins:     map[string]int{"HOME": 2},
 		PressTurnovers: map[string]int{"AWAY": 2},
 	}
 	wide := m.replayMatchModal(120, 32)
-	for _, want := range []string{"Quality High 1 · Medium 2", "Aerial H 2/3 · A 0/1", "Press H 0 · A 2"} {
+	for _, want := range []string{
+		"Quality H High 1 · Medium 1 | A High 1 · Medium 1 | ? Medium 1 · Low 1",
+		"Aerial H 2/3 · A 0/1", "Press H 0 · A 2",
+	} {
 		if !strings.Contains(wide, want) {
 			t.Fatalf("wide replay modal missing diagnostic %q:\n%s", want, wide)
 		}
@@ -1097,6 +1103,33 @@ func TestReplayModalKeepsPostMatchDiagnostics(t *testing.T) {
 		if strings.Contains(compact, hidden) {
 			t.Fatalf("compact replay modal rendered secondary diagnostic %q:\n%s", hidden, compact)
 		}
+	}
+}
+
+func TestQualityLabelSideAwarePaths(t *testing.T) {
+	m := testModel()
+	m.UI["term.quality.HIGH"] = "High"
+	m.UI["term.quality.MEDIUM"] = "Medium"
+	m.UI["term.quality.LOW"] = "Low"
+	tests := []struct {
+		name  string
+		total map[string]int
+		sides map[string]int
+		want  string
+	}{
+		{name: "legacy", total: map[string]int{"HIGH": 1, "MEDIUM": 2}, want: "High 1 · Medium 2"},
+		{name: "complete", total: map[string]int{"HIGH": 1, "MEDIUM": 2}, sides: map[string]int{"HOME_HIGH": 1, "AWAY_MEDIUM": 2}, want: "H High 1 | A Medium 2"},
+		{name: "one side", total: map[string]int{"LOW": 2}, sides: map[string]int{"AWAY_LOW": 2}, want: "A Low 2"},
+		{name: "legacy remainder", total: map[string]int{"HIGH": 2}, sides: map[string]int{"HOME_HIGH": 1}, want: "H High 1 | ? High 1"},
+		{name: "side exceeds aggregate", total: map[string]int{"HIGH": 1}, sides: map[string]int{"HOME_HIGH": 2}, want: "H High 2"},
+		{name: "unknown side remainder", total: map[string]int{"MEDIUM": 1}, sides: map[string]int{"NEUTRAL_MEDIUM": 1}, want: "? Medium 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := m.qualityLabel(tt.total, tt.sides, 3); got != tt.want {
+				t.Fatalf("qualityLabel() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -280,12 +280,13 @@ type MatchSub struct {
 }
 
 type MatchDiagnostics struct {
-	ShotQuality    map[string]int `json:"shot_quality"`
-	AerialDuels    map[string]int `json:"aerial_duels"`
-	AerialWins     map[string]int `json:"aerial_wins"`
-	PressTurnovers map[string]int `json:"press_turnovers"`
-	SetPieceThreat map[string]int `json:"set_piece_threat"`
-	TacticalTilt   map[string]int `json:"tactical_tilt"`
+	ShotQuality       map[string]int `json:"shot_quality"`
+	ShotQualityBySide map[string]int `json:"shot_quality_by_side"`
+	AerialDuels       map[string]int `json:"aerial_duels"`
+	AerialWins        map[string]int `json:"aerial_wins"`
+	PressTurnovers    map[string]int `json:"press_turnovers"`
+	SetPieceThreat    map[string]int `json:"set_piece_threat"`
+	TacticalTilt      map[string]int `json:"tactical_tilt"`
 }
 
 type MatchDetail struct {
