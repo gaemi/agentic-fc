@@ -1072,6 +1072,34 @@ func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
 	}
 }
 
+func TestReplayModalKeepsPostMatchDiagnostics(t *testing.T) {
+	m := testModel()
+	m.UI["ui.match.stat.quality"] = "Quality"
+	m.UI["ui.match.stat.aerial"] = "Aerial"
+	m.UI["ui.match.stat.press"] = "Press"
+	m.UI["term.quality.HIGH"] = "High"
+	m.UI["term.quality.MEDIUM"] = "Medium"
+	m.UI["term.quality.LOW"] = "Low"
+	m.MatchDetail.Diagnostics = MatchDiagnostics{
+		ShotQuality:    map[string]int{"HIGH": 1, "MEDIUM": 2, "LOW": 1},
+		AerialDuels:    map[string]int{"HOME": 3, "AWAY": 1},
+		AerialWins:     map[string]int{"HOME": 2},
+		PressTurnovers: map[string]int{"AWAY": 2},
+	}
+	wide := m.replayMatchModal(120, 32)
+	for _, want := range []string{"Quality High 1 · Medium 2", "Aerial H 2/3 · A 0/1", "Press H 0 · A 2"} {
+		if !strings.Contains(wide, want) {
+			t.Fatalf("wide replay modal missing diagnostic %q:\n%s", want, wide)
+		}
+	}
+	compact := m.replayMatchModal(64, 18)
+	for _, hidden := range []string{"Quality ", "Aerial H", "Press H"} {
+		if strings.Contains(compact, hidden) {
+			t.Fatalf("compact replay modal rendered secondary diagnostic %q:\n%s", hidden, compact)
+		}
+	}
+}
+
 func TestReplayModalTracksFixtureIDAcrossFixtureRefresh(t *testing.T) {
 	m := testModel()
 	m.Width, m.Height = 100, 28

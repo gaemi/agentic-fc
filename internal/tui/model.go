@@ -1225,6 +1225,9 @@ func (m Model) replayMatchModal(width, height int) string {
 	if mix := m.chanceMixLabel(md.ChanceTypes, 3); mix != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
 	}
+	if !compact {
+		lines = append(lines, m.diagnosticLines(md.Diagnostics, width-4, 3)...)
+	}
 	if md.Winner != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
 	}
