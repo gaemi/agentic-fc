@@ -105,7 +105,7 @@ func sceneFrameAt(m Model, scene matchScene, width, height, frame int) []string 
 		height = artHeight
 	}
 	title := sceneLabel(m, scene)
-	out := []string{preformattedLinePrefix + "╭" + fitLine(" "+title+" ", content, alignCenter) + "╮"}
+	out := []string{preformattedLinePrefix + "╭" + centerWithRule(" "+title+" ", content) + "╮"}
 	for i := 0; i < height-2; i++ {
 		line := ""
 		if i < len(art) {
@@ -117,6 +117,17 @@ func sceneFrameAt(m Model, scene matchScene, width, height, frame int) []string 
 	}
 	out = append(out, preformattedLinePrefix+"╰"+strings.Repeat("─", content)+"╯")
 	return out
+}
+
+// centerWithRule centers s between horizontal rule fills so box headers read
+// as a single ruled line instead of floating text.
+func centerWithRule(s string, width int) string {
+	if lipgloss.Width(s) > width {
+		s = truncate(s, width)
+	}
+	pad := width - lipgloss.Width(s)
+	left := pad / 2
+	return strings.Repeat("─", left) + s + strings.Repeat("─", pad-left)
 }
 
 func sceneArt(scene matchScene, frame int) []string {

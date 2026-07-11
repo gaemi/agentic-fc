@@ -1064,7 +1064,7 @@ func TestSmallMatchModalKeepsEssentialsAndOmitsSecondarySections(t *testing.T) {
 		t.Fatal("modal overlay missing")
 	}
 	got := strings.Join(overlay.Lines, "\n")
-	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "line two"} {
+	for _, want := range []string{"Alpha 2-1 Beta", "61' 2H · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "line two"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("small modal missing essential %q:\n%s", want, got)
 		}
@@ -1286,7 +1286,7 @@ func TestLiveMatchModalShowsBoardAndNoPitch(t *testing.T) {
 		{Side: "AWAY", Name: "Villain", RatingX10: 61},
 	}
 	v := m.View()
-	for _, want := range []string{"Alpha 2-1 Beta", "61' · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "Build-up", "Current scene", "Earlier flow", "line two"} {
+	for _, want := range []string{"Alpha 2-1 Beta", "61' 2H · LEAGUE", "Shots H 7 · A 3", "Chance mix H Cutbacks 2", "Quality High 1", "Aerial H 2/3", "Press H 1", "Build-up", "Current scene", "Earlier flow", "line two"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("live modal missing %q:\n%s", want, v)
 		}
