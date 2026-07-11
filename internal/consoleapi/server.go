@@ -153,15 +153,16 @@ func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 // ---- Viewer: media/news ----
 
 type newsArticleDTO struct {
-	ID       int64   `json:"id"`
-	GameTime int64   `json:"game_time"`
-	TimeText string  `json:"time_text"`
-	Category string  `json:"category"`
-	Source   string  `json:"source"`
-	Title    string  `json:"title"`
-	Deck     string  `json:"deck"`
-	Body     string  `json:"body"`
-	Refs     []int64 `json:"refs,omitempty"`
+	ID            int64   `json:"id"`
+	GameTime      int64   `json:"game_time"`
+	TimeText      string  `json:"time_text"`
+	Category      string  `json:"category"`
+	CategoryLabel string  `json:"category_label"`
+	Source        string  `json:"source"`
+	Title         string  `json:"title"`
+	Deck          string  `json:"deck"`
+	Body          string  `json:"body"`
+	Refs          []int64 `json:"refs,omitempty"`
 }
 
 func (s *Server) handleNews(w http.ResponseWriter, r *http.Request) {
@@ -207,15 +208,16 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 		articleParams = s.matchdayResultsArticleParams(loc, params, title)
 	}
 	return newsArticleDTO{
-		ID:       n.ID,
-		GameTime: int64(n.GameTime),
-		TimeText: renderClock(s.Catalogs, loc, n.GameTime),
-		Category: n.Category,
-		Source:   s.Catalogs.Render(loc, "news.article.source."+sourceClass, nil),
-		Title:    title,
-		Deck:     s.Catalogs.Render(loc, narrative.ArticleTemplateKey("deck", class, n.ID), articleParams),
-		Body:     s.Catalogs.Render(loc, narrative.ArticleTemplateKey("body", class, n.ID), articleParams),
-		Refs:     n.ClubIDs,
+		ID:            n.ID,
+		GameTime:      int64(n.GameTime),
+		TimeText:      renderClock(s.Catalogs, loc, n.GameTime),
+		Category:      n.Category,
+		CategoryLabel: s.Catalogs.Render(loc, "news.category."+class, nil),
+		Source:        s.Catalogs.Render(loc, "news.article.source."+sourceClass, nil),
+		Title:         title,
+		Deck:          s.Catalogs.Render(loc, narrative.ArticleTemplateKey("deck", class, n.ID), articleParams),
+		Body:          s.Catalogs.Render(loc, narrative.ArticleTemplateKey("body", class, n.ID), articleParams),
+		Refs:          n.ClubIDs,
 	}
 }
 
@@ -495,6 +497,7 @@ type playerDTO struct {
 	// (FR-35c — descriptors are user-facing text).
 	Familiarity          string         `json:"familiarity"`
 	FamiliarityLabel     string         `json:"familiarity_label"`
+	FootLabel            string         `json:"foot_label"`
 	WeakFootDescriptor   string         `json:"weak_foot_descriptor"`
 	WeakFootLabel        string         `json:"weak_foot_label"`
 	Attributes           map[string]int `json:"attributes"`
@@ -513,7 +516,9 @@ func (s *Server) playerToDTO(loc narrative.Locale, p *worldgen.Player) playerDTO
 	dto := playerDTO{
 		ID: p.ID, Name: p.Name, Age: p.Age, Position: p.Position,
 		HeightCm: p.HeightCm, WeightKg: p.WeightKg,
-		Group: string(p.Group), Foot: string(p.Foot), WeakFoot: p.WeakFoot, Youth: p.Youth,
+		Group: string(p.Group), Foot: string(p.Foot),
+		FootLabel: s.Catalogs.Render(loc, "desc.foot."+string(p.Foot), nil),
+		WeakFoot:  p.WeakFoot, Youth: p.Youth,
 		Familiarity:        key,
 		FamiliarityLabel:   s.Catalogs.Render(loc, "desc.familiarity."+key, nil),
 		WeakFootDescriptor: wfKey,

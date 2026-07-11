@@ -1915,3 +1915,25 @@ func TestMinuteStampedBeatsInReplayAndHistory(t *testing.T) {
 		t.Fatalf("live history missing minute stamp:\n%s", v)
 	}
 }
+
+// Localized labels from newer daemons win over raw enum tokens, and older
+// daemons keep working through the raw fallbacks.
+func TestLocalizedFootAndCategoryLabels(t *testing.T) {
+	if got := footLabel(Player{Foot: "RIGHT", FootLabel: "오른발"}); got != "오른발" {
+		t.Fatalf("foot label = %q, want localized", got)
+	}
+	if got := footLabel(Player{Foot: "RIGHT"}); got != "RIGHT" {
+		t.Fatalf("foot fallback = %q, want raw token", got)
+	}
+	m := testModel()
+	m.Width, m.Height = 140, 40
+	m.News[0].Category = "match"
+	m.News[0].CategoryLabel = "경기"
+	v := m.View()
+	if !strings.Contains(v, "[경기]") {
+		t.Fatalf("masthead missing localized category:\n%s", v)
+	}
+	if strings.Contains(v, "[MATCH]") {
+		t.Fatalf("masthead still shows raw category token:\n%s", v)
+	}
+}
