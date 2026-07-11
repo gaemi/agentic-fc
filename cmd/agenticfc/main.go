@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +46,7 @@ import (
 )
 
 func main() {
-	dataDir := flag.String("data", "./data", "world data directory")
+	dataFlag := flag.String("data", "", "world data directory (default: ./data if it already exists, otherwise the OS user data directory)")
 	consoleAddr := flag.String("console-addr", "127.0.0.1:7420", "Console API listen address")
 	mcpAddr := flag.String("mcp-addr", "127.0.0.1:7421", "MCP listen address (HTTP transport)")
 	preset := flag.String("preset", "classic", "world preset: compact|classic|deep|sprawling (new worlds only)")
@@ -74,6 +75,11 @@ func main() {
 
 	runProfile, err := resolveRunProfile(*profile, sim.Speed(*speed), explicitFlags["speed"],
 		*idleAccel, explicitFlags["idle-accel"], *offseasonAccel, explicitFlags["offseason-accel"])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dataDir, err := resolveDataDir(*dataFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,7 +115,7 @@ func main() {
 		}
 	}()
 
-	adminToken, firstLaunch, err := ensureAdminToken(*dataDir)
+	adminToken, firstLaunch, err := ensureAdminToken(dataDir)
 	if err != nil {
 		log.Fatalf("admin token: %v", err)
 	}
@@ -121,8 +127,8 @@ func main() {
 		fmt.Println("Admin token loaded.")
 	}
 
-	fstore := &store.FileStore{Dir: *dataDir}
-	manifestPath := filepath.Join(*dataDir, "manifest.json")
+	fstore := &store.FileStore{Dir: dataDir}
+	manifestPath := filepath.Join(dataDir, "manifest.json")
 
 	loaded, err := loadOrGenerate(fstore, manifestPath, *preset, *seed, *worldName,
 		*clubNames, *clubNamesFile, *managerNames, *managerNamesFile, runProfile, *start)
@@ -132,10 +138,10 @@ func main() {
 	world := loaded.world
 
 	hub := consoleapi.NewHub(narrative.Default)
-	eng := engine.New(world, loaded.queue, store.NewFileAuditLog(*dataDir))
+	eng := engine.New(world, loaded.queue, store.NewFileAuditLog(dataDir))
 	eng.SetSink(hub)
 	eng.ResumeAt(loaded.now)
-	inputLog, err := store.NewFileInputLog(*dataDir)
+	inputLog, err := store.NewFileInputLog(dataDir)
 	if err != nil {
 		log.Fatalf("input log: %v", err)
 	}
@@ -232,6 +238,7 @@ func main() {
 	fmt.Printf("pacing: profile %s · match %dx · idle %dx · offseason %dx\n",
 		configRunProfile(world.Config), world.Config.GameSpeed,
 		world.Config.IdleAcceleration, world.Config.OffseasonAccel)
+	fmt.Printf("data: %s\n", dataDir)
 	fmt.Printf("manager tokens: %s (0600)\n", manifestPath)
 	// The listeners' addresses, not the flag values: with a ":0" flag this is
 	// where the picked port becomes visible.
@@ -249,7 +256,7 @@ func main() {
 		fmt.Println("the world clock is stopped until the world is started.")
 		fmt.Println("start it by relaunching with -start, or through the Console API:")
 		fmt.Printf("  curl -X POST %s/v1/admin/start -H \"Authorization: Bearer <token from %s>\"\n",
-			consoleURL, filepath.Join(*dataDir, "admin.token"))
+			consoleURL, filepath.Join(dataDir, "admin.token"))
 	}
 
 	api := &consoleapi.Server{
@@ -855,6 +862,48 @@ func dialableAddr(addr string) string {
 		return net.JoinHostPort("::1", port)
 	}
 	return addr
+}
+
+// resolveDataDir picks the world data directory when -data is not given.
+// An existing ./data keeps working (the source-checkout layout used by the
+// docs and Makefile); otherwise the per-user OS data directory is used, so a
+// packaged binary run from any working directory always finds the same world.
+func resolveDataDir(flagValue string) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+		return "./data", nil
+	}
+	return userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+}
+
+// userDataDir is the per-OS conventional location for game saves. The data
+// directory holds world state, logs, and tokens — data, not configuration —
+// hence XDG_DATA_HOME rather than the config directory on Linux.
+func userDataDir(goos string, getenv func(string) string, home func() (string, error)) (string, error) {
+	switch goos {
+	case "darwin":
+		h, err := home()
+		if err != nil {
+			return "", fmt.Errorf("resolving data directory: %w (pass -data)", err)
+		}
+		return filepath.Join(h, "Library", "Application Support", "agenticfc"), nil
+	case "windows":
+		if d := getenv("LocalAppData"); d != "" {
+			return filepath.Join(d, "agenticfc"), nil
+		}
+		return "", errors.New("resolving data directory: LocalAppData is not set (pass -data)")
+	default:
+		if d := getenv("XDG_DATA_HOME"); d != "" {
+			return filepath.Join(d, "agenticfc"), nil
+		}
+		h, err := home()
+		if err != nil {
+			return "", fmt.Errorf("resolving data directory: %w (pass -data)", err)
+		}
+		return filepath.Join(h, ".local", "share", "agenticfc"), nil
+	}
 }
 
 // listenTCP binds a daemon listen address, translating the launch failure a

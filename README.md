@@ -94,6 +94,13 @@ client.
 
 First-run notes:
 
+- When `-data` is omitted, the daemon uses `./data` if that directory already
+  exists (the source-checkout layout above), and otherwise a per-user data
+  directory — `~/Library/Application Support/agenticfc` on macOS,
+  `$XDG_DATA_HOME/agenticfc` (default `~/.local/share/agenticfc`) on Linux,
+  `%LocalAppData%\agenticfc` on Windows. An installed binary run from any
+  working directory therefore always resumes the same world. The startup
+  banner prints the directory in use.
 - Without `-start`, a new world is created **ready but not running**: the game
   clock stays frozen until you start it. The daemon prints the exact command
   to start the world when this happens.

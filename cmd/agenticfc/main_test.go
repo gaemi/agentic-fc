@@ -29,6 +29,68 @@ func TestListenTCP(t *testing.T) {
 	}
 }
 
+func TestResolveDataDir(t *testing.T) {
+	if got, err := resolveDataDir("./custom"); err != nil || got != "./custom" {
+		t.Errorf("explicit flag: got %q, %v; want ./custom", got, err)
+	}
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	got, err := resolveDataDir("")
+	if err != nil {
+		t.Fatalf("no ./data: %v", err)
+	}
+	if got == "./data" {
+		t.Errorf("no ./data present: resolved to ./data; want the user data directory")
+	}
+
+	if err := os.Mkdir(filepath.Join(dir, "data"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveDataDir(""); err != nil || got != "./data" {
+		t.Errorf("existing ./data: got %q, %v; want ./data", got, err)
+	}
+}
+
+func TestUserDataDir(t *testing.T) {
+	env := map[string]string{}
+	getenv := func(k string) string { return env[k] }
+	home := func() (string, error) { return "/home/gaemi", nil }
+
+	tests := []struct {
+		name string
+		goos string
+		env  map[string]string
+		want string
+	}{
+		{"darwin", "darwin", nil, "/home/gaemi/Library/Application Support/agenticfc"},
+		{"windows", "windows", map[string]string{"LocalAppData": `C:\Users\g\AppData\Local`},
+			filepath.Join(`C:\Users\g\AppData\Local`, "agenticfc")},
+		{"linux xdg", "linux", map[string]string{"XDG_DATA_HOME": "/xdg/data"}, "/xdg/data/agenticfc"},
+		{"linux fallback", "linux", nil, "/home/gaemi/.local/share/agenticfc"},
+	}
+	for _, tt := range tests {
+		env = tt.env
+		got, err := userDataDir(tt.goos, getenv, home)
+		if err != nil {
+			t.Errorf("%s: %v", tt.name, err)
+			continue
+		}
+		want := filepath.FromSlash(tt.want)
+		if tt.goos == "windows" {
+			want = tt.want
+		}
+		if got != want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, want)
+		}
+	}
+
+	env = nil
+	if _, err := userDataDir("windows", getenv, home); err == nil {
+		t.Error("windows without LocalAppData: want error, got nil")
+	}
+}
+
 func TestDialableAddr(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"0.0.0.0:7420", "127.0.0.1:7420"},

@@ -40,7 +40,7 @@ Useful daemon flags:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `-data` | `./data` | Data directory for snapshot, manifest, logs, and tokens. |
+| `-data` | auto | Data directory for snapshot, manifest, logs, and tokens. Omitted: `./data` if it already exists, else the OS user data directory (see below). |
 | `-console-addr` | `127.0.0.1:7420` | Console API listen address. |
 | `-mcp-addr` | `127.0.0.1:7421` | MCP Streamable HTTP listen address. |
 | `-preset` | `classic` | New-world preset: `compact`, `classic`, `deep`, `sprawling`. |
@@ -119,6 +119,25 @@ Custom name rules:
   line rather than a literal name.
 
 ## Data Directory
+
+When `-data` is omitted, the daemon resolves the directory in this order:
+
+1. `./data`, if that directory already exists in the current working
+   directory. This keeps source checkouts and pre-existing local worlds
+   working unchanged.
+2. Otherwise, the per-user OS data directory:
+
+   | OS | Default data directory |
+   |----|------------------------|
+   | macOS | `~/Library/Application Support/agenticfc` |
+   | Linux / other | `$XDG_DATA_HOME/agenticfc`, default `~/.local/share/agenticfc` |
+   | Windows | `%LocalAppData%\agenticfc` |
+
+This is the natural layout for a packaged install (for example a future
+Homebrew formula): the binary can be launched from any working directory and
+always resumes the same world. The startup banner prints the resolved
+directory as `data: …`. Pass `-data` explicitly to run several worlds side by
+side or to pin a custom location.
 
 The data directory contains local operational state:
 
