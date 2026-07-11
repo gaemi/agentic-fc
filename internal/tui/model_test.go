@@ -355,6 +355,43 @@ func TestAdminSettingsLoadingDoesNotPatchDefaults(t *testing.T) {
 	}
 }
 
+func TestViewDisconnectedShowsGuidance(t *testing.T) {
+	m := NewModel(NewClient("http://127.0.0.1:7599", "en"))
+	m.Width, m.Height = 80, 24
+	m.Err = "connection refused"
+	v := plain(m.View())
+	for _, want := range []string{"Cannot reach the world server",
+		"http://127.0.0.1:7599", "agenticfc daemon", "-server <url>",
+		"Retrying:", "connection refused",
+		// Chrome falls back to readable English instead of raw keys.
+		"Agentic FC", "Media", "Fixtures/Results"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("disconnected view missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "ui.") {
+		t.Errorf("disconnected view leaks raw ui keys:\n%s", v)
+	}
+	if strings.Contains(v, "· []") {
+		t.Errorf("disconnected view shows the empty world header:\n%s", v)
+	}
+	if len(strings.Split(v, "\n")) != m.Height {
+		t.Fatalf("view lines = %d, want %d", len(strings.Split(v, "\n")), m.Height)
+	}
+}
+
+func TestViewConnectedErrorKeepsTabBody(t *testing.T) {
+	m := testModel()
+	m.Err = "temporary blip"
+	v := plain(m.View())
+	if strings.Contains(v, "Cannot reach the world server") {
+		t.Error("connected console with a transient error must keep the tab body")
+	}
+	if !strings.Contains(v, "temporary blip") {
+		t.Error("transient error missing from the status line")
+	}
+}
+
 func TestViewRendersChrome(t *testing.T) {
 	m := testModel()
 	v := m.View()

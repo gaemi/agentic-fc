@@ -976,6 +976,33 @@ func (m Model) articleDetailWidth() int {
 	return width
 }
 
+// disconnected reports the pre-first-connection failure state: the console
+// has never obtained the server-rendered catalog and the latest request
+// errored. Every string would otherwise render as a raw key, so the view
+// swaps the tab body for guidance built from the English fallbacks.
+func (m Model) disconnected() bool {
+	return len(m.UI) == 0 && m.Err != ""
+}
+
+func (m Model) viewDisconnected(width int) string {
+	server := ""
+	if m.Client != nil {
+		server = m.Client.Base
+	}
+	lines := []string{
+		"",
+		styleHeader.Render(truncate(m.ui("ui.disconnected.title"), width)),
+		"",
+		truncate(strings.ReplaceAll(m.ui("ui.disconnected.server"), "{url}", server), width),
+		"",
+		truncate(m.ui("ui.disconnected.hint_daemon"), width),
+		truncate(m.ui("ui.disconnected.hint_server"), width),
+		"",
+		styleDim.Render(truncate(m.ui("ui.disconnected.retrying")+" "+m.Err, width)),
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ui resolves a server-rendered string with a graceful key fallback.
 func (m Model) ui(key string) string {
 	if s, ok := m.UI[key]; ok {
@@ -988,6 +1015,22 @@ func (m Model) ui(key string) string {
 }
 
 var uiFallbacks = map[string]string{
+	// Chrome shown before the first successful /v1/ui fetch — without these
+	// a console launched ahead of its daemon renders raw keys.
+	"ui.app.title":                    "Agentic FC",
+	"ui.header.division":              "Division {tier}",
+	"ui.tab.media":                    "Media",
+	"ui.tab.table":                    "Table",
+	"ui.tab.clubs":                    "Clubs",
+	"ui.tab.fixtures":                 "Fixtures/Results",
+	"ui.tab.admin_settings":           "Settings",
+	"ui.media.empty":                  "No press items yet — waiting for the first story.",
+	"ui.error.prefix":                 "Problem:",
+	"ui.disconnected.title":           "Cannot reach the world server",
+	"ui.disconnected.server":          "Server: {url}",
+	"ui.disconnected.hint_daemon":     "Is the agenticfc daemon running? This console reconnects once it is up.",
+	"ui.disconnected.hint_server":     "If it listens at another address, relaunch with -server <url>.",
+	"ui.disconnected.retrying":        "Retrying:",
 	"ui.help.media":                   "↑/↓ story · PgUp/PgDn article",
 	"ui.help.table":                   "←/→ division",
 	"ui.help.clubs":                   "↑/↓ club · Tab player",
@@ -1057,23 +1100,30 @@ func (m Model) View() string {
 	}
 
 	var body string
-	switch m.Tab {
-	case tabMedia:
+	switch {
+	case m.disconnected():
+		body = m.viewDisconnected(bodyWidth)
+	case m.Tab == tabMedia:
 		body = m.viewMedia(bodyWidth, bodyHeight)
-	case tabTable:
+	case m.Tab == tabTable:
 		body = m.viewTable(bodyWidth, bodyHeight)
-	case tabClubs:
+	case m.Tab == tabClubs:
 		body = m.viewClubs(bodyWidth, bodyHeight)
-	case tabFixtures:
+	case m.Tab == tabFixtures:
 		body = m.viewFixtures(bodyWidth, bodyHeight)
-	case tabAdminSettings:
+	case m.Tab == tabAdminSettings:
 		body = m.viewAdminSettings(bodyWidth, bodyHeight)
 	default:
 		body = m.viewMedia(bodyWidth, bodyHeight)
 	}
 
-	header := styleHeader.Render(truncate(fmt.Sprintf("%s · %s · [%s]",
-		m.World.Name, m.World.ClockText, m.World.TempoLabel), bodyWidth))
+	headerText := fmt.Sprintf("%s · %s · [%s]",
+		m.World.Name, m.World.ClockText, m.World.TempoLabel)
+	if m.disconnected() {
+		// No world facts yet — an empty "· · []" header reads broken.
+		headerText = ""
+	}
+	header := styleHeader.Render(truncate(headerText, bodyWidth))
 	footer := styleDim.Render(m.footerKeyBar(bodyWidth))
 	status := ""
 	if m.Err != "" {

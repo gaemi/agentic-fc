@@ -6,6 +6,12 @@ section below.
 
 ## Unreleased
 
+- The spectator console now explains itself when it cannot reach the daemon:
+  instead of raw `ui.*` tokens and empty panes, a guidance panel shows the
+  server URL it tried, asks whether the `agenticfc` daemon is running, points
+  at the `-server` override, and displays the retry error. The app chrome
+  falls back to readable English until the first catalog fetch, and the
+  console still reconnects automatically once the daemon answers.
 - The daemon's data directory now defaults to the per-user OS data path
   (`~/Library/Application Support/agenticfc` on macOS,
   `$XDG_DATA_HOME/agenticfc` or `~/.local/share/agenticfc` on Linux,
