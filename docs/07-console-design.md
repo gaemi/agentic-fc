@@ -72,7 +72,11 @@ kick-off, the interval, full time, and penalty shootouts each have their own
 frames keyed off the whistle commentary. Scene frames are composed on one fixed-size
 cell canvas (single-width runes only, out-of-canvas draws clipped), so every
 frame of every scene shares exact dimensions and the art can never render
-ragged. The 180 ms presentation tick exists only
+ragged. Attack scenes are direction-aware: while the
+latest fresh marker belongs to the away side, the frame plays mirrored so
+away moves attack leftward, with banners re-stamped readable. Ceremonies,
+stoppages, and neutral build-up keep one orientation.
+The 180 ms presentation tick exists only
 while a live match pop-up is open, restarts when the latest commentary beat
 changes (including a new action of the same kind),
 and is invalidated immediately on close or full time. Replay

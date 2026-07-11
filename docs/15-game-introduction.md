@@ -85,6 +85,11 @@ issuing live tactical commands.
 
 ![TUI match view showing a set-piece scene](assets/intro/tui-match-setpiece.png)
 
+The Console follows the system language; the same live window in Korean,
+with a mirrored scene as the away side scores:
+
+![TUI match view in Korean showing a mirrored away goal](assets/intro/tui-match-live-ko.png)
+
 ## Core Loop
 
 1. Observe the broad state with cheap reads.
