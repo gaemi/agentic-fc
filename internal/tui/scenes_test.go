@@ -294,3 +294,73 @@ func TestCeremonyCommentaryPlaysCeremonyScenes(t *testing.T) {
 		t.Fatalf("shootout marker scene = %q, want shootout", got)
 	}
 }
+
+// Mirrored frames must share the canvas contract with their originals, keep
+// their labels readable, and actually flip the action.
+func TestMirroredScenesFlipArtButNotLabels(t *testing.T) {
+	for _, kind := range sortedSceneKinds() {
+		scene := matchScenes[kind]
+		if len(scene.mirrored) != len(scene.frames) {
+			t.Fatalf("scene %q mirrored frames = %d, want %d", kind, len(scene.mirrored), len(scene.frames))
+		}
+		for f, frame := range scene.mirrored {
+			if len(frame) != sceneCanvasHeight {
+				t.Fatalf("scene %q mirrored frame %d rows = %d", kind, f, len(frame))
+			}
+			for y, line := range frame {
+				if got := lipgloss.Width(line); got != sceneCanvasWidth {
+					t.Fatalf("scene %q mirrored frame %d row %d width = %d: %q", kind, f, y, got, line)
+				}
+			}
+		}
+	}
+
+	goal := matchScenes["goal"]
+	last := goal.mirrored[len(goal.mirrored)-1]
+	if !strings.Contains(strings.Join(last, "\n"), "G O A L !") {
+		t.Fatalf("mirrored goal frame lost its readable banner:\n%s", strings.Join(last, "\n"))
+	}
+	// The goal furniture must sit on the left in the mirrored frame and on
+	// the right in the original.
+	barCol := func(frame []string) int {
+		for _, line := range frame {
+			if idx := strings.Index(line, "_________"); idx >= 0 {
+				return idx
+			}
+		}
+		return -1
+	}
+	if col := barCol(last); col < 0 || col > sceneCanvasWidth/2 {
+		t.Fatalf("mirrored goal frame keeps the goal on the right (bar col %d):\n%s", col, strings.Join(last, "\n"))
+	}
+	orig := goal.frames[len(goal.frames)-1]
+	if col := barCol(orig); col < sceneCanvasWidth/2 {
+		t.Fatalf("original goal frame moved off the right (bar col %d):\n%s", col, strings.Join(orig, "\n"))
+	}
+}
+
+func TestLiveModalMirrorsAwayAttacks(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches[0].Minute = 30
+	m.Matches[0].Commentary = []string{"Goal! Rao finds the net for Beta — it's 0–1."}
+	m.Matches[0].Markers = []LiveMarker{{Minute: 30, Kind: "GOAL", Side: "AWAY"}}
+	v := m.View()
+	if !strings.Contains(v, "|: :") {
+		t.Fatalf("away goal beat should mirror the goal mouth to the left:\n%s", v)
+	}
+
+	m.Matches[0].Markers = []LiveMarker{{Minute: 30, Kind: "GOAL", Side: "HOME"}}
+	m.Matches[0].Commentary = []string{"Goal! Rao finds the net for Alpha — it's 1–0."}
+	v = m.View()
+	if strings.Contains(v, "|: :") {
+		t.Fatalf("home goal beat should keep the goal on the right:\n%s", v)
+	}
+	if !strings.Contains(v, ": :|") {
+		t.Fatalf("home goal beat lost the goal mouth:\n%s", v)
+	}
+
+	// Ceremony and neutral scenes never mirror.
+	if mirrorableScenes["kickoff"] || mirrorableScenes["build"] || mirrorableScenes["sub"] {
+		t.Fatal("ceremony/neutral scenes must not be mirrorable")
+	}
+}

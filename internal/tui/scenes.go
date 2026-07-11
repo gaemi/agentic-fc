@@ -18,6 +18,14 @@ const (
 
 type sceneCanvas struct {
 	cells [sceneCanvasHeight][sceneCanvasWidth]rune
+	// labels remembers opaque text spans so a mirror pass can re-stamp them
+	// readable at their flipped anchors instead of reversing the letters.
+	labels []canvasLabel
+}
+
+type canvasLabel struct {
+	x, y int
+	text string
 }
 
 func newSceneCanvas() *sceneCanvas {
@@ -59,11 +67,46 @@ func (c *sceneCanvas) stamp(x, y int, sprite ...string) {
 
 // label writes text opaquely: spaces overwrite whatever is beneath them.
 func (c *sceneCanvas) label(x, y int, text string) {
+	c.labels = append(c.labels, canvasLabel{x: x, y: y, text: text})
+	c.drawText(x, y, text)
+}
+
+func (c *sceneCanvas) drawText(x, y int, text string) {
 	dx := 0
 	for _, r := range text {
 		c.put(x+dx, y, r)
 		dx++
 	}
+}
+
+// mirrorGlyphs maps direction-carrying runes onto their reflections.
+var mirrorGlyphs = map[rune]rune{
+	'/': '\\', '\\': '/', '(': ')', ')': '(',
+	'<': '>', '>': '<', '[': ']', ']': '[',
+}
+
+// mirrored returns a horizontally flipped copy of the canvas: art rows are
+// reversed with their glyphs reflected, then labels are re-stamped readable
+// at their mirrored anchors.
+func (c *sceneCanvas) mirrored() *sceneCanvas {
+	m := newSceneCanvas()
+	for y := 0; y < sceneCanvasHeight; y++ {
+		for x := 0; x < sceneCanvasWidth; x++ {
+			r := c.cells[y][x]
+			if g, ok := mirrorGlyphs[r]; ok {
+				r = g
+			}
+			m.cells[y][sceneCanvasWidth-1-x] = r
+		}
+	}
+	for _, l := range c.labels {
+		width := 0
+		for range l.text {
+			width++
+		}
+		m.drawText(sceneCanvasWidth-l.x-width, l.y, l.text)
+	}
+	return m
 }
 
 func (c *sceneCanvas) ground() {
@@ -83,9 +126,10 @@ func (c *sceneCanvas) lines() []string {
 // matchScene is a fully composed, fixed-size animation. Frames are only ever
 // produced by composeScene, so every frame shares the canvas dimensions.
 type matchScene struct {
-	kind   string
-	title  string
-	frames [][]string
+	kind     string
+	title    string
+	frames   [][]string
+	mirrored [][]string
 }
 
 func sceneFrame(m Model, scene matchScene, width, height int) []string {
@@ -93,10 +137,22 @@ func sceneFrame(m Model, scene matchScene, width, height int) []string {
 }
 
 func sceneFrameAt(m Model, scene matchScene, width, height, frame int) []string {
+	return sceneFrameDirAt(m, scene, width, height, frame, false)
+}
+
+// mirrorableScenes are the attack moves that read left-to-right; ceremonies,
+// stoppages, and neutral build-up keep one orientation.
+var mirrorableScenes = map[string]bool{
+	"goal": true, "save": true, "cross": true, "cutback": true,
+	"through": true, "longshot": true, "setpiece": true, "counter": true,
+	"scramble": true, "dribble": true, "chance": true,
+}
+
+func sceneFrameDirAt(m Model, scene matchScene, width, height, frame int, awayAttack bool) []string {
 	if width < 28 || height < 5 {
 		return nil
 	}
-	art := sceneArt(scene, frame)
+	art := sceneArt(scene, frame, awayAttack && mirrorableScenes[scene.kind])
 	content := width - 2
 	if content < sceneCanvasWidth {
 		return nil
@@ -130,14 +186,18 @@ func centerWithRule(s string, width int) string {
 	return strings.Repeat("─", left) + s + strings.Repeat("─", pad-left)
 }
 
-func sceneArt(scene matchScene, frame int) []string {
-	if len(scene.frames) == 0 {
+func sceneArt(scene matchScene, frame int, mirrored bool) []string {
+	frames := scene.frames
+	if mirrored && len(scene.mirrored) == len(scene.frames) {
+		frames = scene.mirrored
+	}
+	if len(frames) == 0 {
 		return nil
 	}
 	if frame < 0 {
 		frame = 0
 	}
-	return scene.frames[frame%len(scene.frames)]
+	return frames[frame%len(frames)]
 }
 
 func sceneLabel(m Model, scene matchScene) string {
@@ -194,10 +254,12 @@ func composeScene(kind, title string, frames ...*sceneCanvas) matchScene {
 		panic("composed match scene requires at least one frame")
 	}
 	rendered := make([][]string, len(frames))
+	mirrored := make([][]string, len(frames))
 	for i, frame := range frames {
 		rendered[i] = frame.lines()
+		mirrored[i] = frame.mirrored().lines()
 	}
-	return matchScene{kind: kind, title: title, frames: rendered}
+	return matchScene{kind: kind, title: title, frames: rendered, mirrored: mirrored}
 }
 
 var matchScenes = buildMatchScenes()
@@ -771,6 +833,20 @@ func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
 		return matchSceneFromLine("", nil)
 	}
 	return matchSceneFromLine("", &mv.Markers[len(mv.Markers)-1])
+}
+
+// liveAttackingAway reports whether the current beat belongs to the away
+// side: the latest marker carries the acting side while it is fresh enough
+// to still describe the visible line.
+func liveAttackingAway(mv LiveMatchView) bool {
+	if len(mv.Markers) == 0 {
+		return false
+	}
+	latest := mv.Markers[len(mv.Markers)-1]
+	if mv.Minute-latest.Minute > elsewhereGoalWindowMinutes {
+		return false
+	}
+	return latest.Side == matchSideAway
 }
 
 // Every goal template quotes the new score with an en-dash; the only other

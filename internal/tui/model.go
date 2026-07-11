@@ -1276,7 +1276,7 @@ func (m Model) liveMatchModal(width, height int) string {
 		}
 	}
 	if !compact && contentRows-len(lines) >= 14 {
-		if frame := sceneFrameAt(m, sc, width-2, sceneFrameRows, m.matchAnimationFrame); len(frame) > 0 {
+		if frame := sceneFrameDirAt(m, sc, width-2, sceneFrameRows, m.matchAnimationFrame, liveAttackingAway(mv)); len(frame) > 0 {
 			lines = append(lines, "")
 			lines = append(lines, frame...)
 		}
