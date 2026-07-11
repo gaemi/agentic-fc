@@ -123,6 +123,7 @@ type Model struct {
 	Width                  int
 	Height                 int
 	Err                    string
+	ConnErr                string // last /v1/ui fetch failure; "" once the catalog arrives
 
 	uiRefreshCountdown int
 }
@@ -152,6 +153,7 @@ type (
 	}
 	SettingsCommitMsg struct{ Rev int }
 	ErrMsg            struct{ Err error }
+	UIErrMsg          struct{ Err error }
 	tickMsg           struct{}
 	matchAnimationMsg struct{ Run uint64 }
 )
@@ -192,7 +194,7 @@ func (m Model) fetchUI() tea.Cmd {
 	return func() tea.Msg {
 		s, err := c.UIStrings()
 		if err != nil {
-			return ErrMsg{err}
+			return UIErrMsg{err}
 		}
 		return UIMsg(s)
 	}
@@ -535,7 +537,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Err = ""
 	case UIMsg:
 		m.UI = msg
+		m.ConnErr = ""
 		m.uiRefreshCountdown = uiRefreshEveryPolls
+	case UIErrMsg:
+		// The catalog endpoint is unauthenticated and always present, so a
+		// failure here — unlike per-pane poll errors — means the server
+		// itself is unreachable or unhealthy.
+		m.ConnErr = msg.Err.Error()
+		m.Err = msg.Err.Error()
 	case NewsMsg:
 		if len(msg) > 0 && msg[0].ID > m.LatestNewsID {
 			if m.LatestNewsID != 0 {
@@ -976,6 +985,36 @@ func (m Model) articleDetailWidth() int {
 	return width
 }
 
+// disconnected reports the pre-first-connection failure state: the console
+// has never obtained the server-rendered catalog and the catalog fetch
+// itself failed. Per-pane poll errors (admin auth, a single bad endpoint)
+// do not qualify — only the unauthenticated /v1/ui probe decides, so a
+// healthy daemon is never reported as unreachable. In this state every
+// string would otherwise render as a raw key, so the view swaps the tab
+// body for guidance built from the English fallbacks.
+func (m Model) disconnected() bool {
+	return len(m.UI) == 0 && m.ConnErr != ""
+}
+
+func (m Model) viewDisconnected(width int) string {
+	server := ""
+	if m.Client != nil {
+		server = m.Client.Base
+	}
+	lines := []string{
+		"",
+		styleHeader.Render(truncate(m.ui("ui.disconnected.title"), width)),
+		"",
+		truncate(strings.ReplaceAll(m.ui("ui.disconnected.server"), "{url}", server), width),
+		"",
+		truncate(m.ui("ui.disconnected.hint_daemon"), width),
+		truncate(m.ui("ui.disconnected.hint_server"), width),
+		"",
+		styleDim.Render(truncate(m.ui("ui.disconnected.retrying")+" "+m.ConnErr, width)),
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ui resolves a server-rendered string with a graceful key fallback.
 func (m Model) ui(key string) string {
 	if s, ok := m.UI[key]; ok {
@@ -988,6 +1027,22 @@ func (m Model) ui(key string) string {
 }
 
 var uiFallbacks = map[string]string{
+	// Chrome shown before the first successful /v1/ui fetch — without these
+	// a console launched ahead of its daemon renders raw keys.
+	"ui.app.title":                    "Agentic FC",
+	"ui.header.division":              "Division {tier}",
+	"ui.tab.media":                    "Media",
+	"ui.tab.table":                    "Table",
+	"ui.tab.clubs":                    "Clubs",
+	"ui.tab.fixtures":                 "Fixtures/Results",
+	"ui.tab.admin_settings":           "Settings",
+	"ui.media.empty":                  "No press items yet — waiting for the first story.",
+	"ui.error.prefix":                 "Problem:",
+	"ui.disconnected.title":           "Cannot reach the world server",
+	"ui.disconnected.server":          "Server: {url}",
+	"ui.disconnected.hint_daemon":     "Is the agenticfc daemon running? This console reconnects once it is up.",
+	"ui.disconnected.hint_server":     "If it listens at another address, relaunch with -server <url>.",
+	"ui.disconnected.retrying":        "Retrying:",
 	"ui.help.media":                   "↑/↓ story · PgUp/PgDn article",
 	"ui.help.table":                   "←/→ division",
 	"ui.help.clubs":                   "↑/↓ club · Tab player",
@@ -1057,23 +1112,30 @@ func (m Model) View() string {
 	}
 
 	var body string
-	switch m.Tab {
-	case tabMedia:
+	switch {
+	case m.disconnected():
+		body = m.viewDisconnected(bodyWidth)
+	case m.Tab == tabMedia:
 		body = m.viewMedia(bodyWidth, bodyHeight)
-	case tabTable:
+	case m.Tab == tabTable:
 		body = m.viewTable(bodyWidth, bodyHeight)
-	case tabClubs:
+	case m.Tab == tabClubs:
 		body = m.viewClubs(bodyWidth, bodyHeight)
-	case tabFixtures:
+	case m.Tab == tabFixtures:
 		body = m.viewFixtures(bodyWidth, bodyHeight)
-	case tabAdminSettings:
+	case m.Tab == tabAdminSettings:
 		body = m.viewAdminSettings(bodyWidth, bodyHeight)
 	default:
 		body = m.viewMedia(bodyWidth, bodyHeight)
 	}
 
-	header := styleHeader.Render(truncate(fmt.Sprintf("%s · %s · [%s]",
-		m.World.Name, m.World.ClockText, m.World.TempoLabel), bodyWidth))
+	headerText := fmt.Sprintf("%s · %s · [%s]",
+		m.World.Name, m.World.ClockText, m.World.TempoLabel)
+	if m.disconnected() {
+		// No world facts yet — an empty "· · []" header reads broken.
+		headerText = ""
+	}
+	header := styleHeader.Render(truncate(headerText, bodyWidth))
 	footer := styleDim.Render(m.footerKeyBar(bodyWidth))
 	status := ""
 	if m.Err != "" {
