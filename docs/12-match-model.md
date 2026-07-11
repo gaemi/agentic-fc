@@ -439,6 +439,12 @@ cycle through six localized commentary voices by counting already-persisted
 fatigue changes across the match; they consume no RNG, and the six-substitution
 match limit prevents a repeated fatigue line in normal play.
 
+Half-time and full-time commentary is likewise deterministic but contextual.
+Half-time distinguishes goalless, scoring-level, ordinary lead, and three-goal
+command for either side. Full-time distinguishes goalless, scoring-level,
+one-goal edge, two-goal win, and three-plus-goal emphatic win. Legacy generic
+keys remain renderable for saved matches.
+
 Formula policy:
 
 ```
