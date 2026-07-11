@@ -51,8 +51,15 @@ broadcast pop-up over the list; selecting a finished fixture opens the replay
 version of the same pop-up, with PgUp/PgDn and left/right rewind/advance
 controls.
 
-The pop-up carries the score/clock header, public match stats and diagnostics,
+The pop-up carries the score/clock header (with a first/second-half tag),
+public match stats and diagnostics,
 live ratings, and the rhythmic commentary stream ([FR-35a](06-requirements.md)).
+On tall layouts the live pop-up also draws two at-a-glance strips built from
+public data only: a **marker timeline** (home events above, away below, on a
+minute ruler with 15-minute ticks and a play head, using the marker legend
+glyphs) and a **momentum strip** (the signed ten-minute momentum buckets as
+mirrored home/away bars). Replay pop-ups list exact events instead and do not
+repeat these strips.
 On wide layouts, every recognized football scene (goal, save, cross, cut-back,
 through ball, long-range shot, set piece, counter, scramble, dribble, card,
 stoppage, substitution, generic chance, and quiet build-up) plays as a terminal

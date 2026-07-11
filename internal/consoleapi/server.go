@@ -1001,9 +1001,6 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 
 // ---- Viewer: live matches (the TUI Live Match screen, docs/07 §4.1) ----
 
-// liveMarkerWindow caps how many recent event markers the pitch band shows.
-const liveMarkerWindow = 8
-
 // liveCommentaryLines is how many trailing rendered lines a live-match poll
 // returns — the TUI shows the tail, cadence-paced upstream.
 const liveCommentaryLines = 24
@@ -1101,11 +1098,11 @@ func (s *Server) handleLiveMatches(w http.ResponseWriter, r *http.Request) {
 			for _, cl := range lm.Commentary[from:] {
 				dto.Commentary = append(dto.Commentary, s.Catalogs.Render(loc, cl.Key, cl.Params))
 			}
+			// The full stream feeds both the momentum sparkline and the
+			// modal timeline; windowing it would silently drop early goals
+			// from the match story.
 			all := liveMarkers(lm, clubName)
 			dto.Momentum = momentumFrom(all)
-			if len(all) > liveMarkerWindow {
-				all = all[len(all)-liveMarkerWindow:]
-			}
 			dto.Markers = all
 			dto.Ratings = liveRatings(lm, playerOf)
 			out.Matches = append(out.Matches, dto)
@@ -1237,8 +1234,8 @@ func liveMarkers(lm *worldgen.LiveMatch, clubName map[int64]string) []liveMarker
 		}
 		out = append(out, liveMarkerDTO{Minute: cl.Minute, Kind: kind, Side: side(cl.Params, cl.Key)})
 	}
-	// Uncapped — the caller windows the pitch markers (liveMarkerWindow) but
-	// feeds the FULL stream to the momentum sparkline first.
+	// Uncapped: the momentum sparkline and the modal timeline both need the
+	// full match story.
 	return out
 }
 

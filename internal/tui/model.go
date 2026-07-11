@@ -997,6 +997,10 @@ var uiFallbacks = map[string]string{
 	"ui.match.current_scene":          "Current scene",
 	"ui.match.history":                "Earlier flow",
 	"ui.match.goalflash":              "GOAL",
+	"ui.match.timeline":               "Timeline",
+	"ui.match.momentum":               "Momentum",
+	"ui.match.phase.first":            "1H",
+	"ui.match.phase.second":           "2H",
 	"ui.match.scene.goal":             "Goal scene",
 	"ui.match.scene.chance":           "Chance building",
 	"ui.match.scene.save":             "Keeper's save",
@@ -1231,7 +1235,7 @@ func (m Model) liveMatchModal(width, height int) string {
 	}
 	sc := matchSceneFromLive(mv, current)
 	lines := []string{
-		fmt.Sprintf("%d' · %s · %d/%d · %s · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
+		fmt.Sprintf("%d' %s · %s · %d/%d · %s · %s", mv.Minute, m.matchPhaseLabel(mv.Minute), mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
 	}
 	flash := m.goalFlashLine(mv, width-2)
 	if flash == "" && goalProse(current) {
@@ -1260,6 +1264,11 @@ func (m Model) liveMatchModal(width, height int) string {
 	}
 	if !compact {
 		lines = append(lines, m.diagnosticLines(mv.Stats.Diagnostics, width-4, 3)...)
+	}
+	if !compact && contentRows >= 24 {
+		if rows := m.broadcastRows(mv, width-4); len(rows) > 0 {
+			lines = append(lines, rows...)
+		}
 	}
 	if !compact && contentRows-len(lines) >= 14 {
 		if frame := sceneFrameAt(m, sc, width-2, sceneFrameRows, m.matchAnimationFrame); len(frame) > 0 {
