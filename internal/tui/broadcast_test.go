@@ -184,3 +184,19 @@ func TestFixtureListShowsLiveMinute(t *testing.T) {
 		t.Fatalf("fixture list missing live minute:\n%s", v)
 	}
 }
+
+func TestTimelineLegendOnlyOnExtraTallLayouts(t *testing.T) {
+	m := liveModel(140, 44)
+	m.UI["ui.match.legend"] = "G goal · o chance"
+	m.Matches[0].Markers = []LiveMarker{{Minute: 10, Kind: "GOAL", Side: "HOME"}}
+	m.Matches[0].Momentum = []int{1, 0, 0, 0, 0, 0, 0, 0, 0}
+	if v := m.View(); !strings.Contains(v, "G goal · o chance") {
+		t.Fatalf("extra-tall live modal missing timeline legend:\n%s", v)
+	}
+	shorter := liveModel(140, 36)
+	shorter.UI["ui.match.legend"] = "G goal · o chance"
+	shorter.Matches[0].Markers = []LiveMarker{{Minute: 10, Kind: "GOAL", Side: "HOME"}}
+	if v := shorter.View(); strings.Contains(v, "G goal · o chance") {
+		t.Fatalf("standard-height modal should not spend a row on the legend:\n%s", v)
+	}
+}

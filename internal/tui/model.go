@@ -998,6 +998,7 @@ var uiFallbacks = map[string]string{
 	"ui.match.history":                "Earlier flow",
 	"ui.match.goalflash":              "GOAL",
 	"ui.match.latest":                 "Latest scores",
+	"ui.match.legend":                 "G goal · o chance · x card · + injury · s sub · ! shootout",
 	"ui.match.timeline":               "Timeline",
 	"ui.match.momentum":               "Momentum",
 	"ui.match.phase.first":            "1H",
@@ -1273,6 +1274,11 @@ func (m Model) liveMatchModal(width, height int) string {
 	if !compact && contentRows >= 24 {
 		if rows := m.broadcastRows(mv, width-4); len(rows) > 0 {
 			lines = append(lines, rows...)
+			// Extra-tall layouts (docs/07 §2) can afford to explain the
+			// timeline glyphs right where they appear.
+			if contentRows >= 36 {
+				lines = append(lines, styleDim.Render(truncate(m.ui("ui.match.legend"), width-4)))
+			}
 		}
 	}
 	if !compact && contentRows-len(lines) >= 14 {

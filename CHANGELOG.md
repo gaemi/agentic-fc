@@ -28,6 +28,9 @@ section below.
     the game, on the same stream-stable draw.
   - Preferred foot and news categories now render localized labels instead
     of raw enum tokens in the Korean console.
+  - Replays mirror recorded away goals so a scrubbed goal beat celebrates
+    under the correct end, and extra-tall live layouts show the timeline
+    glyph legend inline.
 
 ## 0.1.0 - 2026-07-09
 
