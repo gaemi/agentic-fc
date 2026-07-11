@@ -1918,8 +1918,12 @@ func (m Model) mediaDetail(width, height int, n NewsArticle) string {
 }
 
 func (m Model) articleMasthead(width int, n NewsArticle) []string {
+	category := n.CategoryLabel
+	if category == "" {
+		category = n.Category
+	}
 	if width < 24 {
-		return []string{styleDim.Render(truncate(n.Source+" · "+n.TimeText+" · "+n.Category, width))}
+		return []string{styleDim.Render(truncate(n.Source+" · "+n.TimeText+" · "+category, width))}
 	}
 	inner := width
 	if inner > 86 {
@@ -1928,7 +1932,7 @@ func (m Model) articleMasthead(width int, n NewsArticle) []string {
 	top := fitLine("╔"+strings.Repeat("═", inner-2)+"╗", width, alignCenter)
 	title := strings.ToUpper(m.ui("ui.app.title") + " " + m.ui("ui.tab.media"))
 	source := n.Source + " · " + n.TimeText
-	section := "[" + strings.ToUpper(n.Category) + "]"
+	section := "[" + strings.ToUpper(category) + "]"
 	return []string{
 		top,
 		fitLine("║"+fitLine(title, inner-2, alignCenter)+"║", width, alignCenter),
@@ -2200,6 +2204,9 @@ func bodyLabel(p Player) string {
 }
 
 func footLabel(p Player) string {
+	if p.FootLabel != "" {
+		return p.FootLabel
+	}
 	if p.Foot == "" {
 		return "-"
 	}

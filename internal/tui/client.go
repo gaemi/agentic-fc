@@ -145,15 +145,16 @@ func (c *Client) UpdateAdminSettings(runtime RuntimeSettings) (AdminSettings, er
 
 // NewsArticle mirrors GET /v1/news.
 type NewsArticle struct {
-	ID       int64   `json:"id"`
-	GameTime int64   `json:"game_time"`
-	TimeText string  `json:"time_text"`
-	Category string  `json:"category"`
-	Source   string  `json:"source"`
-	Title    string  `json:"title"`
-	Deck     string  `json:"deck"`
-	Body     string  `json:"body"`
-	Refs     []int64 `json:"refs"`
+	ID            int64   `json:"id"`
+	GameTime      int64   `json:"game_time"`
+	TimeText      string  `json:"time_text"`
+	Category      string  `json:"category"`
+	CategoryLabel string  `json:"category_label"`
+	Source        string  `json:"source"`
+	Title         string  `json:"title"`
+	Deck          string  `json:"deck"`
+	Body          string  `json:"body"`
+	Refs          []int64 `json:"refs"`
 }
 
 func (c *Client) News(limit int) ([]NewsArticle, error) {
@@ -213,6 +214,7 @@ type Player struct {
 	Position             string         `json:"position"`
 	Group                string         `json:"group"`
 	Foot                 string         `json:"foot"`
+	FootLabel            string         `json:"foot_label"`
 	WeakFoot             int            `json:"weak_foot"`
 	WeakFootLabel        string         `json:"weak_foot_label"`
 	Youth                bool           `json:"youth"`

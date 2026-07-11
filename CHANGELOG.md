@@ -21,6 +21,13 @@ section below.
     selected without consuming match RNG, so seeds replay identically.
   - The live markers payload is no longer windowed, so the timeline carries
     the full match story.
+  - Commentary beats carry their football minute: the live backlog and the
+    replay log read as a match report, and the replay's selected beat shows
+    where you are while scrubbing.
+  - Six crowd-flavor quiet lines per locale widen the most-repeated pool in
+    the game, on the same stream-stable draw.
+  - Preferred foot and news categories now render localized labels instead
+    of raw enum tokens in the Korean console.
 
 ## 0.1.0 - 2026-07-09
 
