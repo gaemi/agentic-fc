@@ -111,11 +111,11 @@ func TestComposeSceneRequiresFrames(t *testing.T) {
 	composeScene("empty", "EMPTY")
 }
 
-// Every goal commentary line in the catalog must land on a glory scene: the
+// Every goal commentary line in the catalog must land on its glory scene: the
 // generic templates on the goal scene itself, the patterned templates on
-// either their action scene or the goal scene. This ties the narrative
-// catalog and the scene classifier together so new goal prose cannot quietly
-// fall back to the build-up frame.
+// their specific action scene. This ties the narrative catalog and the scene
+// classifier together so new goal prose cannot quietly fall back to the
+// build-up frame or lose its action animation.
 func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 	params := map[string]any{
 		"player": "Kim Min-jae", "club": "Alpha", "home_goals": 2, "away_goals": 1,
@@ -138,7 +138,7 @@ func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 				if !ok {
 					t.Fatalf("goal pattern %q has no expected scene kind", m[1])
 				}
-				want = []string{pattern, "goal"}
+				want = []string{pattern}
 			} else {
 				continue
 			}

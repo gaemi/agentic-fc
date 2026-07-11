@@ -718,19 +718,19 @@ func actionSceneKind(lower string) string {
 	switch {
 	// Set pieces outrank crosses: a dead-ball delivery headed home should
 	// play the set-piece frame even though the prose mentions the header.
-	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
+	case containsAny(lower, "set piece", "set-piece", "dead ball", "dead-ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
 		return "setpiece"
 	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
 		return "cross"
 	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
 		return "cutback"
-	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투 각도"):
+	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투 각도", "단숨에 찢"):
 		return "through"
 	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
 		return "longshot"
 	case containsAny(lower, "counter", "on the break", "the break is", "burst forward", "races clear", "grass ahead", "역습", "넓은 공간"):
 		return "counter"
-	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "혼전", "튕", "흐른 공", "걷어내지 못한"):
+	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "keep the chance alive", "혼전", "튕", "흐른 공", "걷어내지 못한", "기회를 살려"):
 		return "scramble"
 	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
 		return "dribble"
