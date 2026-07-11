@@ -349,9 +349,11 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	lm.Scorers = append(lm.Scorers, worldgen.MatchEvent{
 		Minute: lm.Clock, PlayerID: scorer, ClubID: atkClub,
 	})
-	goalKey := goalContextCommentaryKey(lm, home)
-	if goalKey == "" {
-		goalKey = pickKeyFrom(r, goalCommentKeys(chanceType))
+	// Always draw the pattern key so commentary choice never changes how much
+	// RNG the moment consumes (docs/12: presentation must not perturb play).
+	goalKey := pickKeyFrom(r, goalCommentKeys(chanceType))
+	if contextKey := goalContextCommentaryKey(lm, home); contextKey != "" {
+		goalKey = contextKey
 	}
 	e.comment(lm, at, goalKey,
 		map[string]any{
@@ -386,7 +388,9 @@ func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool) string {
 	}
 	late := lm.Clock >= lateDramaMinute
 	switch {
-	case late && (atk == def || atk == def+1):
+	case late && atk == def:
+		return pick("comment.goal.late_level.1", "comment.goal.late_level.2")
+	case late && atk == def+1:
 		return pick("comment.goal.late.1", "comment.goal.late.2")
 	case lm.HomeGoals+lm.AwayGoals == 1:
 		return pick("comment.goal.opener.1", "comment.goal.opener.2")

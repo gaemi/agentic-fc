@@ -533,7 +533,7 @@ func TestGoalContextCommentaryKey(t *testing.T) {
 	}{
 		{"opener", 10, 1, 0, true, "comment.goal.opener."},
 		{"away equalizer", 30, 1, 1, false, "comment.goal.equalizer."},
-		{"late equalizer", 88, 2, 2, true, "comment.goal.late."},
+		{"late equalizer", 88, 2, 2, true, "comment.goal.late_level."},
 		{"late winner", 87, 1, 0, true, "comment.goal.late."},
 		{"late go-ahead", 86, 2, 1, true, "comment.goal.late."},
 		{"padding the lead", 50, 2, 0, true, ""},

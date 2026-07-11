@@ -126,10 +126,10 @@ func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 		"counter": "counter",
 		// Score-context calls have no action shape of their own; they play
 		// the goal celebration.
-		"opener": "goal", "equalizer": "goal", "late": "goal",
+		"opener": "goal", "equalizer": "goal", "late": "goal", "late_level": "goal",
 	}
 	generic := regexp.MustCompile(`^comment\.goal\.\d+$`)
-	patterned := regexp.MustCompile(`^comment\.goal\.([a-z]+)\.\d+$`)
+	patterned := regexp.MustCompile(`^comment\.goal\.([a-z_]+)\.\d+$`)
 	for _, loc := range narrative.Supported {
 		checked := 0
 		for key := range narrative.Default[loc] {
