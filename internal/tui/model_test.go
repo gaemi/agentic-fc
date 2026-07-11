@@ -62,6 +62,8 @@ func testModel() Model {
 		"ui.match.ended":                           "Match ended",
 		"ui.match.waiting_result":                  "Waiting result",
 		"ui.match.modal.close":                     "Esc close",
+		"ui.match.modal.animation_pause":           "Space pause",
+		"ui.match.modal.animation_resume":          "Space animate",
 		"ui.match.modal.replay_help":               "PgUp/PgDn",
 		"ui.match.away":                            "Away",
 		"ui.match.winner":                          "Winner",
@@ -1202,52 +1204,54 @@ func liveModel(width, height int) Model {
 	m.MatchModal = modalLive
 	m.MatchModalID = 9
 	m.UI = map[string]string{
-		"ui.app.title":               "Agentic FC",
-		"ui.header.division":         "Division {tier}",
-		"ui.tab.media":               "Media",
-		"ui.tab.table":               "Table",
-		"ui.tab.clubs":               "Clubs",
-		"ui.tab.fixtures":            "Fixtures",
-		"ui.fixtures.empty":          "No fixtures",
-		"ui.fixture.live":            "Live",
-		"ui.match.none":              "quiet",
-		"ui.match.live":              "Live match",
-		"ui.match.ended":             "Match ended",
-		"ui.match.waiting_result":    "Waiting result",
-		"ui.match.goalflash":         "GOAL",
-		"ui.match.current_scene":     "Current scene",
-		"ui.match.history":           "Earlier flow",
-		"ui.match.scene.goal":        "Goal scene",
-		"ui.match.scene.chance":      "Chance building",
-		"ui.match.scene.save":        "Keeper's save",
-		"ui.match.scene.cross":       "Wide delivery",
-		"ui.match.scene.cutback":     "Cut-back",
-		"ui.match.scene.through":     "Through ball",
-		"ui.match.scene.longshot":    "From range",
-		"ui.match.scene.setpiece":    "Set piece",
-		"ui.match.scene.counter":     "Counter attack",
-		"ui.match.scene.scramble":    "Six-yard scramble",
-		"ui.match.scene.dribble":     "Dribble",
-		"ui.match.scene.card":        "Referee's book",
-		"ui.match.scene.injury":      "Stoppage",
-		"ui.match.scene.sub":         "Technical area",
-		"ui.match.scene.build":       "Build-up",
-		"ui.match.modal.close":       "Esc close",
-		"ui.match.modal.replay_help": "PgUp/PgDn",
-		"ui.match.replay":            "COMMENTARY",
-		"ui.match.ratings":           "RATINGS",
-		"ui.match.stat.shots":        "Shots",
-		"ui.match.stat.cards":        "Cards",
-		"ui.match.stat.subs":         "Subs",
-		"ui.match.stat.chance_mix":   "Chance mix",
-		"ui.match.stat.quality":      "Quality",
-		"ui.match.stat.aerial":       "Aerial",
-		"ui.match.stat.press":        "Press",
-		"ui.match.stat.setpieces":    "Set pieces",
-		"ui.help.keys":               "help",
-		"term.chance_type.CUTBACK":   "Cutbacks",
-		"term.quality.HIGH":          "High",
-		"term.quality.MEDIUM":        "Medium",
+		"ui.app.title":                    "Agentic FC",
+		"ui.header.division":              "Division {tier}",
+		"ui.tab.media":                    "Media",
+		"ui.tab.table":                    "Table",
+		"ui.tab.clubs":                    "Clubs",
+		"ui.tab.fixtures":                 "Fixtures",
+		"ui.fixtures.empty":               "No fixtures",
+		"ui.fixture.live":                 "Live",
+		"ui.match.none":                   "quiet",
+		"ui.match.live":                   "Live match",
+		"ui.match.ended":                  "Match ended",
+		"ui.match.waiting_result":         "Waiting result",
+		"ui.match.goalflash":              "GOAL",
+		"ui.match.current_scene":          "Current scene",
+		"ui.match.history":                "Earlier flow",
+		"ui.match.scene.goal":             "Goal scene",
+		"ui.match.scene.chance":           "Chance building",
+		"ui.match.scene.save":             "Keeper's save",
+		"ui.match.scene.cross":            "Wide delivery",
+		"ui.match.scene.cutback":          "Cut-back",
+		"ui.match.scene.through":          "Through ball",
+		"ui.match.scene.longshot":         "From range",
+		"ui.match.scene.setpiece":         "Set piece",
+		"ui.match.scene.counter":          "Counter attack",
+		"ui.match.scene.scramble":         "Six-yard scramble",
+		"ui.match.scene.dribble":          "Dribble",
+		"ui.match.scene.card":             "Referee's book",
+		"ui.match.scene.injury":           "Stoppage",
+		"ui.match.scene.sub":              "Technical area",
+		"ui.match.scene.build":            "Build-up",
+		"ui.match.modal.close":            "Esc close",
+		"ui.match.modal.animation_pause":  "Space pause",
+		"ui.match.modal.animation_resume": "Space animate",
+		"ui.match.modal.replay_help":      "PgUp/PgDn",
+		"ui.match.replay":                 "COMMENTARY",
+		"ui.match.ratings":                "RATINGS",
+		"ui.match.stat.shots":             "Shots",
+		"ui.match.stat.cards":             "Cards",
+		"ui.match.stat.subs":              "Subs",
+		"ui.match.stat.chance_mix":        "Chance mix",
+		"ui.match.stat.quality":           "Quality",
+		"ui.match.stat.aerial":            "Aerial",
+		"ui.match.stat.press":             "Press",
+		"ui.match.stat.setpieces":         "Set pieces",
+		"ui.help.keys":                    "help",
+		"term.chance_type.CUTBACK":        "Cutbacks",
+		"term.quality.HIGH":               "High",
+		"term.quality.MEDIUM":             "Medium",
 	}
 	m.Fixtures = []Fixture{{ID: 9, Status: "SCHEDULED", Round: 2, KickoffText: "Now", Home: "Alpha", Away: "Beta"}}
 	m.Matches = []LiveMatchView{{
@@ -1417,6 +1421,115 @@ func TestSceneFramePreservesArtBlockCoordinates(t *testing.T) {
 		if lipgloss.Width(raw) != 90 {
 			t.Fatalf("scene frame line width = %d, want 90: %q", lipgloss.Width(raw), raw)
 		}
+	}
+}
+
+func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
+	m := liveModel(120, 32)
+	cases := []string{
+		"Goal! Rao finds the net for Alpha.",
+		"The goalkeeper reacts fast to palm it away.",
+		"A high delivery hangs perfectly at the far post.",
+		"A threaded pass splits the defence.",
+		"No one closes him down and he lets fly from distance.",
+		"A free kick bends toward the crowded area.",
+		"Alpha burst forward on the break.",
+		"A clean shot opens up on the edge of the area.",
+	}
+	for _, line := range cases {
+		scene := matchSceneFromLine(line, nil)
+		if len(scene.frames) != 3 {
+			t.Fatalf("scene %q frames = %d, want 3", scene.kind, len(scene.frames))
+		}
+		seen := map[string]bool{}
+		for frame := range scene.frames {
+			if len(scene.frames[frame]) != 7 {
+				t.Fatalf("scene %q frame %d rows = %d, want 7", scene.kind, frame, len(scene.frames[frame]))
+			}
+			rendered := sceneFrameAt(m, scene, 100, 9, frame)
+			if len(rendered) != 9 {
+				t.Fatalf("scene %q frame %d rendered rows = %d", scene.kind, frame, len(rendered))
+			}
+			joined := strings.Join(rendered, "\n")
+			if seen[joined] {
+				t.Fatalf("scene %q repeats rendered frame %d", scene.kind, frame)
+			}
+			seen[joined] = true
+			for _, row := range rendered {
+				raw := strings.TrimPrefix(row, preformattedLinePrefix)
+				if got := lipgloss.Width(raw); got != 100 {
+					t.Fatalf("scene %q frame %d width = %d, want 100: %q", scene.kind, frame, got, raw)
+				}
+			}
+		}
+		anchorRows := map[string][]int{
+			"goal": {0, 1, 2, 3, 4, 5},
+			"save": {2},
+		}
+		for _, row := range anchorRows[scene.kind] {
+			want := lipgloss.Width(strings.TrimRight(scene.frames[0][row], " "))
+			for frame := 1; frame < len(scene.frames); frame++ {
+				got := lipgloss.Width(strings.TrimRight(scene.frames[frame][row], " "))
+				if got != want {
+					t.Fatalf("scene %q anchor row %d frame %d ends at column %d, want %d", scene.kind, row, frame, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestLiveMatchAnimationLifecycleAndSceneReset(t *testing.T) {
+	m := testModel()
+	m.Tab = tabFixtures
+	m.FixtureIdx = 1
+	m.Matches = []LiveMatchView{{
+		Fixture: 8, Home: "C", Away: "D", Minute: 25,
+		Commentary: []string{"A threaded pass splits the defence."},
+	}}
+
+	next, cmd := m.openSelectedFixture()
+	m = next.(Model)
+	if cmd == nil || m.MatchModal != modalLive || m.matchAnimationRun == 0 {
+		t.Fatalf("opening live match did not start animation: modal=%q run=%d cmd=%v", m.MatchModal, m.matchAnimationRun, cmd)
+	}
+	run := m.matchAnimationRun
+	next, cmd = m.Update(matchAnimationMsg{Run: run})
+	m = next.(Model)
+	if m.matchAnimationFrame != 1 || cmd == nil {
+		t.Fatalf("animation tick frame=%d cmd=%v, want frame 1 and continuation", m.matchAnimationFrame, cmd)
+	}
+	activeRun := m.matchAnimationRun
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(Model)
+	if !m.matchAnimationPaused || cmd != nil || m.matchAnimationRun == activeRun {
+		t.Fatalf("Space did not pause/invalidate animation: paused=%t run=%d cmd=%v", m.matchAnimationPaused, m.matchAnimationRun, cmd)
+	}
+	next, cmd = m.Update(matchAnimationMsg{Run: activeRun})
+	m = next.(Model)
+	if m.matchAnimationFrame != 1 || cmd != nil {
+		t.Fatalf("paused animation accepted stale tick: frame=%d cmd=%v", m.matchAnimationFrame, cmd)
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(Model)
+	if m.matchAnimationPaused || cmd == nil {
+		t.Fatalf("Space did not resume animation: paused=%t cmd=%v", m.matchAnimationPaused, cmd)
+	}
+
+	m = update(m, MatchesMsg{{
+		Fixture: 8, Home: "C", Away: "D", Minute: 27,
+		Commentary: []string{"A threaded pass splits the defence.", "Goal! C score."},
+	}})
+	if m.matchAnimationFrame != 0 {
+		t.Fatalf("new scene did not reset animation frame: %d", m.matchAnimationFrame)
+	}
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.MatchModal != modalNone || m.matchAnimationRun == run {
+		t.Fatalf("closing live modal did not invalidate animation run: modal=%q run=%d", m.MatchModal, m.matchAnimationRun)
+	}
+	next, cmd = m.Update(matchAnimationMsg{Run: run})
+	m = next.(Model)
+	if cmd != nil || m.matchAnimationFrame != 0 {
+		t.Fatalf("stale animation tick survived close: frame=%d cmd=%v", m.matchAnimationFrame, cmd)
 	}
 }
 
