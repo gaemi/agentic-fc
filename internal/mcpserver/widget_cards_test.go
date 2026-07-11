@@ -42,15 +42,38 @@ func TestWriteCardsRenderFromEnvelope(t *testing.T) {
 	}
 
 	tenv := map[string]any{"ok": true, "meta": meta,
-		"data": map[string]any{"tactical_plan": mindset.TacticalPlan{Formation: "4-4-2", Mentality: "ATTACKING", Pressing: "HIGH"}}}
-	tc := tacticalCard(g, en, updateTacticalPlanIn{}, tenv)
-	for _, w := range []string{"Adjusted the tactical plan.", "4-4-2", "Attacking", "High press"} {
+		"data": map[string]any{"tactical_plan": mindset.TacticalPlan{
+			Formation: "4-4-2", Mentality: "ATTACKING", Pressing: "HIGH",
+			Tempo: "FAST", Width: "WIDE", Directness: "DIRECT", Counter: true,
+		}}}
+	counter := true
+	patch := updateTacticalPlanIn{
+		Formation: "4-4-2", Mentality: "ATTACKING", Pressing: "HIGH",
+		Tempo: "FAST", Width: "WIDE", Directness: "DIRECT", Counter: &counter,
+	}
+	tc := tacticalCard(g, en, patch, tenv)
+	for _, w := range []string{
+		"Adjusted the tactical plan.", "4-4-2", "Attacking", "High press",
+		"Fast tempo", "Wide", "Direct passing", "Counter attack", "yes",
+	} {
 		if !strings.Contains(tc, w) {
 			t.Fatalf("tactical card missing %q:\n%s", w, tc)
 		}
 	}
-	tko := tacticalCard(g, narrative.LocaleKO, updateTacticalPlanIn{}, tenv)
-	if !strings.Contains(tko, "전술을 조정했습니다.") || !strings.Contains(tko, "공격적") || !strings.Contains(tko, "하이 프레스") || strings.Contains(tko, "Adjusted") {
+	if got := strings.Count(tc, `class="nfw-r nfw-r--ch"`); got != 7 {
+		t.Fatalf("full tactical patch highlighted %d rows, want 7:\n%s", got, tc)
+	}
+	partial := tacticalCard(g, en, updateTacticalPlanIn{Tempo: "FAST"}, tenv)
+	if got := strings.Count(partial, `class="nfw-r nfw-r--ch"`); got != 1 {
+		t.Fatalf("tempo-only patch highlighted %d rows, want 1:\n%s", got, partial)
+	}
+	tko := tacticalCard(g, narrative.LocaleKO, patch, tenv)
+	for _, w := range []string{"전술을 조정했습니다.", "공격적", "하이 프레스", "빠른 템포", "넓은 폭", "다이렉트 패스", "역습", "예"} {
+		if !strings.Contains(tko, w) {
+			t.Fatalf("tactical ko card missing %q:\n%s", w, tko)
+		}
+	}
+	if strings.Contains(tko, "Adjusted") {
 		t.Fatalf("tactical ko not localized:\n%s", tko)
 	}
 }
