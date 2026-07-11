@@ -432,7 +432,27 @@ func (g *Gateway) headlines(cc *callCtx, n int) []map[string]any {
 	for i := len(w.News) - 1; i >= 0 && len(out) < n; i-- {
 		item := &w.News[i]
 		if g.newsVisible(item, cc.manager, "own") {
-			out = append(out, g.renderNews(item))
+			out = append(out, g.renderHeadline(item))
+		}
+	}
+	return out
+}
+
+// renderHeadline keeps get_situation wide and shallow. Full article bodies and
+// matchday result/table payloads stay behind get_news; the dashboard retains
+// enough information to identify and re-render its headline before drilling
+// down. Extend the strip list whenever a news key adds another heavy nested
+// detail param; the dashboard must never grow into a second get_news payload.
+func (g *Gateway) renderHeadline(n *worldgen.NewsItem) map[string]any {
+	out := g.renderNews(n)
+	if article, ok := out["article"].(map[string]any); ok {
+		delete(article, "body")
+	}
+	if headline, ok := out["headline"].(map[string]any); ok {
+		if params, ok := headline["params"].(map[string]any); ok {
+			for _, key := range []string{"fixtures", "results", "story", "table"} {
+				delete(params, key)
+			}
 		}
 	}
 	return out
