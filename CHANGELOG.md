@@ -9,11 +9,12 @@ section below.
 - The daemon's data directory now defaults to the per-user OS data path
   (`~/Library/Application Support/agenticfc` on macOS,
   `$XDG_DATA_HOME/agenticfc` or `~/.local/share/agenticfc` on Linux,
-  `%LocalAppData%\agenticfc` on Windows) when `-data` is omitted and no
-  `./data` exists in the working directory. A packaged binary launched from
-  any directory therefore resumes the same world; source checkouts with an
-  existing `./data` are unaffected. The startup banner prints the resolved
-  directory.
+  `%LocalAppData%\agenticfc` on Windows) when `-data` is omitted and the
+  working directory has no `./data` holding Agentic FC world state. A
+  packaged binary launched from any directory therefore resumes the same
+  world; source checkouts with an existing world in `./data` are unaffected,
+  and an unrelated project's `data/` folder is never adopted. The startup
+  banner prints the resolved directory.
 - Friendlier first launch of the daemon:
   - Listen addresses are bound before any world data is touched, so a busy
     port (for example a second daemon on the defaults) fails fast with a hint

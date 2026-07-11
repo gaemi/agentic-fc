@@ -95,7 +95,8 @@ client.
 First-run notes:
 
 - When `-data` is omitted, the daemon uses `./data` if that directory already
-  exists (the source-checkout layout above), and otherwise a per-user data
+  holds Agentic FC world state (the source-checkout layout above), and
+  otherwise a per-user data
   directory — `~/Library/Application Support/agenticfc` on macOS,
   `$XDG_DATA_HOME/agenticfc` (default `~/.local/share/agenticfc`) on Linux,
   `%LocalAppData%\agenticfc` on Windows. An installed binary run from any

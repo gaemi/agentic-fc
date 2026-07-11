@@ -44,11 +44,47 @@ func TestResolveDataDir(t *testing.T) {
 		t.Errorf("no ./data present: resolved to ./data; want the user data directory")
 	}
 
+	// A bare data/ directory without world state (an unrelated project's
+	// folder) must not be adopted.
 	if err := os.Mkdir(filepath.Join(dir, "data"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if got, _ := resolveDataDir(""); got == "./data" {
+		t.Errorf("empty ./data: resolved to ./data; want the user data directory")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "data", "world.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := resolveDataDir(""); err != nil || got != "./data" {
-		t.Errorf("existing ./data: got %q, %v; want ./data", got, err)
+		t.Errorf("./data with world state: got %q, %v; want ./data", got, err)
+	}
+}
+
+func TestIsWorldDataDir(t *testing.T) {
+	dir := t.TempDir()
+	if isWorldDataDir(dir) {
+		t.Error("empty dir: want false")
+	}
+	for _, marker := range []string{"world.json", "manifest.json", "admin.token"} {
+		sub := filepath.Join(dir, marker+"-case")
+		if err := os.Mkdir(sub, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sub, marker), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if !isWorldDataDir(sub) {
+			t.Errorf("dir with %s: want true", marker)
+		}
+	}
+	// A marker that is a directory does not count.
+	sub := filepath.Join(dir, "dir-marker")
+	if err := os.MkdirAll(filepath.Join(sub, "world.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if isWorldDataDir(sub) {
+		t.Error("world.json as a directory: want false")
 	}
 }
 

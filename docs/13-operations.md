@@ -40,7 +40,7 @@ Useful daemon flags:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `-data` | auto | Data directory for snapshot, manifest, logs, and tokens. Omitted: `./data` if it already exists, else the OS user data directory (see below). |
+| `-data` | auto | Data directory for snapshot, manifest, logs, and tokens. Omitted: `./data` if it already holds a world, else the OS user data directory (see below). |
 | `-console-addr` | `127.0.0.1:7420` | Console API listen address. |
 | `-mcp-addr` | `127.0.0.1:7421` | MCP Streamable HTTP listen address. |
 | `-preset` | `classic` | New-world preset: `compact`, `classic`, `deep`, `sprawling`. |
@@ -122,9 +122,10 @@ Custom name rules:
 
 When `-data` is omitted, the daemon resolves the directory in this order:
 
-1. `./data`, if that directory already exists in the current working
-   directory. This keeps source checkouts and pre-existing local worlds
-   working unchanged.
+1. `./data`, if that directory in the current working directory already holds
+   Agentic FC world state (`world.json`, `manifest.json`, or `admin.token`).
+   This keeps source checkouts and pre-existing local worlds working
+   unchanged, while an unrelated project's `data/` folder is never adopted.
 2. Otherwise, the per-user OS data directory:
 
    | OS | Default data directory |

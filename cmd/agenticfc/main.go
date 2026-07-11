@@ -46,7 +46,7 @@ import (
 )
 
 func main() {
-	dataFlag := flag.String("data", "", "world data directory (default: ./data if it already exists, otherwise the OS user data directory)")
+	dataFlag := flag.String("data", "", "world data directory (default: ./data if it already holds a world, otherwise the OS user data directory)")
 	consoleAddr := flag.String("console-addr", "127.0.0.1:7420", "Console API listen address")
 	mcpAddr := flag.String("mcp-addr", "127.0.0.1:7421", "MCP listen address (HTTP transport)")
 	preset := flag.String("preset", "classic", "world preset: compact|classic|deep|sprawling (new worlds only)")
@@ -865,17 +865,32 @@ func dialableAddr(addr string) string {
 }
 
 // resolveDataDir picks the world data directory when -data is not given.
-// An existing ./data keeps working (the source-checkout layout used by the
-// docs and Makefile); otherwise the per-user OS data directory is used, so a
-// packaged binary run from any working directory always finds the same world.
+// A ./data that already holds a world keeps working (the source-checkout
+// layout used by the docs and Makefile); otherwise the per-user OS data
+// directory is used, so a packaged binary run from any working directory
+// always finds the same world.
 func resolveDataDir(flagValue string) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
 	}
-	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+	if isWorldDataDir("data") {
 		return "./data", nil
 	}
 	return userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+}
+
+// isWorldDataDir reports whether dir holds Agentic FC world state. A bare
+// directory named data is not evidence: an installed binary launched from an
+// unrelated project must not adopt (and chmod 0700) that project's data/.
+// admin.token counts because a first launch may crash after minting it but
+// before the world snapshot lands.
+func isWorldDataDir(dir string) bool {
+	for _, marker := range []string{"world.json", "manifest.json", "admin.token"} {
+		if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // userDataDir is the per-OS conventional location for game saves. The data
