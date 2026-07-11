@@ -379,3 +379,25 @@ func TestLiveModalMirrorsAwayAttacks(t *testing.T) {
 		t.Fatal("ceremony/neutral scenes must not be mirrorable")
 	}
 }
+
+// Quiet commentary must stay on the build-up frame: crowd flavor may not
+// hijack an action scene.
+func TestQuietCommentaryStaysOnBuildUp(t *testing.T) {
+	quiet := regexp.MustCompile(`^comment\.quiet\.\d+$`)
+	for _, loc := range narrative.Supported {
+		checked := 0
+		for key := range narrative.Default[loc] {
+			if !quiet.MatchString(key) {
+				continue
+			}
+			checked++
+			line := narrative.Default.Render(loc, key, nil)
+			if got := matchSceneFromLine(line, nil).kind; got != "build" {
+				t.Errorf("%s %s: scene %q, want build for line %q", loc, key, got, line)
+			}
+		}
+		if checked < 15 {
+			t.Fatalf("locale %s: only %d quiet keys found", loc, checked)
+		}
+	}
+}

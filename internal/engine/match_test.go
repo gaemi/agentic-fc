@@ -622,3 +622,29 @@ func TestPickWidenedKeyKeepsLegacyDrawAndCoversPool(t *testing.T) {
 		t.Fatalf("state rotation exposed %d of %d variants: %v", len(seen), len(keys), seen)
 	}
 }
+
+// Quiet commentary also keeps the legacy RNG bound while covering the wider
+// pool through state rotation and the no-repeat probe.
+func TestQuietDrawKeepsLegacyBoundAndCoversPool(t *testing.T) {
+	for _, key := range quietCommentaryKeys {
+		for _, loc := range narrative.Supported {
+			if _, ok := narrative.Default[loc][key]; !ok {
+				t.Fatalf("quiet key %q missing from %s catalog", key, loc)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	for clock := 0; clock < len(quietCommentaryKeys); clock++ {
+		lm := &worldgen.LiveMatch{Clock: clock}
+		r1 := rand.New(rand.NewPCG(3, 5))
+		r2 := rand.New(rand.NewPCG(3, 5))
+		seen[pickUnusedCommentaryKey(r1, lm, quietCommentaryKeys)] = true
+		_ = r2.IntN(legacyQuietPoolSize)
+		if a, b := r1.Uint64(), r2.Uint64(); a != b {
+			t.Fatalf("quiet draw perturbed the stream at clock %d", clock)
+		}
+	}
+	if len(seen) < len(quietCommentaryKeys)-2 {
+		t.Fatalf("rotation covered only %d of %d quiet lines", len(seen), len(quietCommentaryKeys))
+	}
+}
