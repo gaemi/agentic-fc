@@ -431,7 +431,6 @@ func TestMatchdayResultsArticleRendersDetailedConsoleBody(t *testing.T) {
 	all := item.Source + item.Title + item.Deck + item.Body
 	for _, want := range []string{
 		"매치 센터",
-		"매치데이 라운드업",
 		"결과:",
 		"AFC Castleden 2-1 Eastvale Town",
 		"Stanton Albion 0-0 Union Steindorf",
@@ -443,6 +442,9 @@ func TestMatchdayResultsArticleRendersDetailedConsoleBody(t *testing.T) {
 		if !strings.Contains(all, want) {
 			t.Fatalf("matchday article missing %q: %#v", want, item)
 		}
+	}
+	if !strings.Contains(item.Title, "결과 데스크") && !strings.Contains(item.Title, "전술 장부") && !strings.Contains(item.Title, "압박 리포트") {
+		t.Fatalf("matchday article has no editorial title variant: %#v", item)
 	}
 	if strings.Contains(all, "프리뷰") || strings.Contains(all, "경기 일정:") {
 		t.Fatalf("preview article leaked into console media: %#v", item)

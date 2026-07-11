@@ -234,13 +234,13 @@ func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
 		},
 	}
 	article := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, 0)
-	for _, want := range []string{"Matchday round-up", "Results:", "Table picture:", "AFC Castleden 2-1 Eastvale Town", "Draws: 1"} {
+	for _, want := range []string{"Results desk", "Results:", "Table picture:", "AFC Castleden 2-1 Eastvale Town", "Draws: 1"} {
 		if !strings.Contains(fmt.Sprint(article["body"]), want) && !strings.Contains(fmt.Sprint(article["title"]), want) {
 			t.Fatalf("matchday article missing %q: %+v", want, article)
 		}
 	}
 	ko := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleKO, 0)
-	for _, want := range []string{"매치데이 라운드업", "결과:", "순위표 흐름:", "AFC Castleden 2-1 Eastvale Town", "무승부 1경기"} {
+	for _, want := range []string{"결과 데스크", "결과:", "순위표 흐름:", "AFC Castleden 2-1 Eastvale Town", "무승부 1경기"} {
 		if !strings.Contains(fmt.Sprint(ko["body"]), want) && !strings.Contains(fmt.Sprint(ko["title"]), want) {
 			t.Fatalf("ko matchday article missing %q: %+v", want, ko)
 		}
@@ -261,6 +261,23 @@ func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
 	article = g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, 0)
 	if !strings.Contains(fmt.Sprint(article["body"]), "No draw softened the table movement") {
 		t.Fatalf("all-winners story missing: %+v", article)
+	}
+}
+
+func TestMatchdayArticleTitlesVaryDeterministically(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	params := map[string]any{"count": 6, "kickoff_time": "15:00"}
+	titles := map[string]bool{}
+	for id := int64(1); id <= 60; id++ {
+		first := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, id)["title"].(string)
+		again := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, id)["title"].(string)
+		if first != again {
+			t.Fatalf("news %d title changed between reads: %q then %q", id, first, again)
+		}
+		titles[first] = true
+	}
+	if len(titles) != 3 {
+		t.Fatalf("selected %d matchday title variants, want 3: %v", len(titles), titles)
 	}
 }
 

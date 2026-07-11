@@ -36,7 +36,11 @@ func TestArticleTemplateKeyIsStableAndDistributesPool(t *testing.T) {
 func TestArticleVariantPoolsExistInEveryLocale(t *testing.T) {
 	for class, count := range articleVariantCounts {
 		for _, loc := range []Locale{LocaleEN, LocaleKO} {
-			for _, section := range []string{"deck", "body"} {
+			sections := []string{"deck", "body"}
+			if class == "matchday.results" {
+				sections = append(sections, "title")
+			}
+			for _, section := range sections {
 				base := "news.article." + section + "." + class
 				for variant := 1; variant <= count; variant++ {
 					key := base

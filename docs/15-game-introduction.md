@@ -58,7 +58,7 @@ The media desk turns simulation events into newspaper-style stories. Match
 results are grouped into round-ups, so a matchday becomes a single readable
 piece with scores, table movement, and pressure points.
 
-![TUI media desk with a matchday round-up article](assets/intro/tui-media-desk.png)
+![TUI media desk with a matchday results article](assets/intro/tui-media-desk.png)
 
 Fixtures and results share one screen. The next kick-off group and latest
 completed matchday stay together at the top, and completed matches can open as
