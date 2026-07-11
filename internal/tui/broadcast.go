@@ -172,12 +172,8 @@ func (m Model) elsewhereTicker(current int64, width int) string {
 			continue
 		}
 		entry := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
-		if len(mv.Markers) > 0 {
-			latest := mv.Markers[len(mv.Markers)-1]
-			age := mv.Minute - latest.Minute
-			if latest.Kind == "GOAL" && age >= 0 && age <= elsewhereGoalWindowMinutes {
-				entry = "G! " + entry
-			}
+		if hasFreshGoal(mv) {
+			entry = "G! " + entry
 		}
 		parts = append(parts, entry)
 	}
@@ -185,6 +181,23 @@ func (m Model) elsewhereTicker(current int64, width int) string {
 		return ""
 	}
 	return truncate(m.ui("ui.match.latest")+"  "+strings.Join(parts, " · "), width)
+}
+
+// hasFreshGoal reports whether any goal in the marker stream is still inside
+// the freshness window — a chance or card right after the goal must not age
+// the highlight out early.
+func hasFreshGoal(mv LiveMatchView) bool {
+	for i := len(mv.Markers) - 1; i >= 0; i-- {
+		mk := mv.Markers[i]
+		age := mv.Minute - mk.Minute
+		if age > elsewhereGoalWindowMinutes {
+			return false
+		}
+		if mk.Kind == "GOAL" && age >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // matchPhaseLabel tags the running minute as first or second half.

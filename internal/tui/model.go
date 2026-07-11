@@ -997,6 +997,7 @@ var uiFallbacks = map[string]string{
 	"ui.match.current_scene":          "Current scene",
 	"ui.match.history":                "Earlier flow",
 	"ui.match.goalflash":              "GOAL",
+	"ui.match.latest":                 "Latest scores",
 	"ui.match.timeline":               "Timeline",
 	"ui.match.momentum":               "Momentum",
 	"ui.match.phase.first":            "1H",
@@ -1294,7 +1295,9 @@ func (m Model) liveMatchModal(width, height int) string {
 		}
 	}
 	ticker := ""
-	if !compact {
+	// Gate on height alone: a narrow-but-tall terminal still has the spare
+	// closing row the ticker needs (docs/07: tall live layouts).
+	if height > 18 {
 		ticker = m.elsewhereTicker(mv.Fixture, width-4)
 	}
 	historyRows := contentRows - len(lines) - 2

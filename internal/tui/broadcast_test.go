@@ -148,6 +148,11 @@ func TestElsewhereTickerListsOtherMatchesAndFlagsFreshGoals(t *testing.T) {
 	if strings.Contains(ticker, "G! Epsilon") {
 		t.Fatalf("stale goal wrongly highlighted: %q", ticker)
 	}
+	// A chance right after a fresh goal must not age the highlight out.
+	m.Matches[1].Markers = append(m.Matches[1].Markers, LiveMarker{Minute: 61, Kind: "CHANCE", Side: "AWAY"})
+	if ticker := m.elsewhereTicker(current, 120); !strings.Contains(ticker, "G! Gamma 2-0 Delta") {
+		t.Fatalf("fresh goal lost behind a newer marker: %q", ticker)
+	}
 	if m.elsewhereTicker(current, 0) != "" {
 		t.Fatal("zero-width ticker should be empty")
 	}
@@ -159,6 +164,13 @@ func TestElsewhereTickerListsOtherMatchesAndFlagsFreshGoals(t *testing.T) {
 	v := m.View()
 	if !strings.Contains(v, "Elsewhere") || !strings.Contains(v, "G! Gamma 2-0 Delta") {
 		t.Fatalf("live modal missing elsewhere ticker:\n%s", v)
+	}
+
+	// Narrow-but-tall terminals keep the ticker: tallness is the only gate.
+	narrow := m
+	narrow.Width, narrow.Height = 72, 30
+	if v := narrow.View(); !strings.Contains(v, "Elsewhere") {
+		t.Fatalf("narrow-but-tall live modal lost the ticker:\n%s", v)
 	}
 }
 
