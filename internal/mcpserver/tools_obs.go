@@ -788,7 +788,7 @@ func careerHistory(g *Gateway, p *worldgen.Player) []any {
 			"season": rec.SeasonYear, "apps": rec.Apps, "goals": rec.Goals,
 		}
 		if rec.Apps > 0 {
-			row["rating_avg"] = float64(rec.RatingSumX10) / float64(10*rec.Apps)
+			row["rating_avg"] = publicRatingAverage(rec.RatingSumX10, rec.Apps)
 		}
 		if c := g.clubByID(rec.ClubID); c != nil {
 			row["club"] = c.Name
@@ -855,7 +855,7 @@ func (g *Gateway) personPlayer(cc *callCtx, id int64) (any, *apiError) {
 			sum += v
 		}
 		data["form"] = map[string]any{
-			"rating_avg": float64(sum) / float64(10*n),
+			"rating_avg": publicRatingAverage(sum, n),
 			"matches":    n,
 			"band":       g.descriptor("desc.form." + formBand(p)),
 		}
@@ -1000,14 +1000,21 @@ func (g *Gateway) getMatch(mid int64, sid string, in getMatchIn) map[string]any 
 		})
 }
 
-// seasonStats renders a player's accumulated season line. The average rating
-// derives from the ×10 integer sum, so it reaches the wire as a clean decimal
-// without a float ever entering the world hash.
-func seasonStats(p *worldgen.Player) map[string]any {
-	avg := 0.0
-	if p.SeasonApps > 0 {
-		avg = float64(p.RatingSumX10) / float64(10*p.SeasonApps)
+// publicRatingAverage rounds an accumulated ×10 rating to two decimal places
+// using integer arithmetic. World state remains integer-only, and Go's JSON
+// encoder emits the resulting shortest decimal instead of a repeating quotient.
+func publicRatingAverage(sumX10, matches int) float64 {
+	if matches <= 0 {
+		return 0
 	}
+	hundredths := (sumX10*10 + matches/2) / matches
+	return float64(hundredths) / 100
+}
+
+// seasonStats renders a player's accumulated season line. The average rating
+// derives from the ×10 integer sum, so no float enters the world hash.
+func seasonStats(p *worldgen.Player) map[string]any {
+	avg := publicRatingAverage(p.RatingSumX10, p.SeasonApps)
 	return map[string]any{
 		"apps": p.SeasonApps, "goals": p.SeasonGoals, "rating_avg": avg,
 	}
