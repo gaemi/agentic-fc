@@ -596,3 +596,29 @@ func TestMatchCommentaryKeyListsExistInCatalogs(t *testing.T) {
 		}
 	}
 }
+
+// The widened commentary pools must not change the RNG argument sequence:
+// draws stay on the legacy bound while state rotation exposes every variant.
+func TestPickWidenedKeyKeepsLegacyDrawAndCoversPool(t *testing.T) {
+	keys := goalCommentKeys(chanceCrossHeader)
+	if len(keys) != 4 {
+		t.Fatalf("cross goal pool = %d keys, want 4", len(keys))
+	}
+	seen := map[string]bool{}
+	for clock := 0; clock < 8; clock++ {
+		lm := &worldgen.LiveMatch{Clock: clock, HomeGoals: 1}
+		r1 := rand.New(rand.NewPCG(7, 9))
+		r2 := rand.New(rand.NewPCG(7, 9))
+		got := pickWidenedKey(r1, lm, legacyGoalPoolSize, keys)
+		seen[got] = true
+		// The reference draw with the legacy bound must leave both
+		// generators in the same state.
+		_ = r2.IntN(legacyGoalPoolSize)
+		if a, b := r1.Uint64(), r2.Uint64(); a != b {
+			t.Fatalf("widened draw perturbed the stream: %d vs %d", a, b)
+		}
+	}
+	if len(seen) != len(keys) {
+		t.Fatalf("state rotation exposed %d of %d variants: %v", len(seen), len(keys), seen)
+	}
+}

@@ -337,7 +337,7 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	}
 	if r.Float64() >= pGoal {
 		// A chance that came to nothing — saved or off target.
-		e.comment(lm, at, pickKeyFrom(r, missCommentKeys(chanceType)),
+		e.comment(lm, at, pickWidenedKey(r, lm, legacyMissPoolSize, missCommentKeys(chanceType)),
 			map[string]any{"player": name, "club": e.clubName(atkClub)})
 		return
 	}
@@ -349,9 +349,10 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	lm.Scorers = append(lm.Scorers, worldgen.MatchEvent{
 		Minute: lm.Clock, PlayerID: scorer, ClubID: atkClub,
 	})
-	// Always draw the pattern key so commentary choice never changes how much
-	// RNG the moment consumes (docs/12: presentation must not perturb play).
-	goalKey := pickKeyFrom(r, goalCommentKeys(chanceType))
+	// The pattern draw always happens and always uses the legacy pool bound,
+	// so commentary variety never changes how much RNG the moment consumes
+	// (docs/12: presentation must not perturb play).
+	goalKey := pickWidenedKey(r, lm, legacyGoalPoolSize, goalCommentKeys(chanceType))
 	if contextKey := goalContextCommentaryKey(lm, home); contextKey != "" {
 		goalKey = contextKey
 	}
@@ -360,6 +361,28 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 			"player": name, "club": e.clubName(atkClub),
 			"home_goals": lm.HomeGoals, "away_goals": lm.AwayGoals,
 		})
+}
+
+// Commentary pools were widened after launch, but the per-moment RNG
+// argument sequence is part of the determinism contract: rand/v2's IntN can
+// consume different amounts of the stream for different bounds. The draw
+// therefore stays on the legacy pool size, and public match state rotates
+// which slice of the widened pool that draw lands on.
+const (
+	legacyMissPoolSize = 4 // three chance lines + one save line per pattern
+	legacyGoalPoolSize = 3 // three goal lines per pattern
+)
+
+func pickWidenedKey(r *rand.Rand, lm *worldgen.LiveMatch, legacyCount int, keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	if legacyCount > len(keys) {
+		legacyCount = len(keys)
+	}
+	drawn := r.IntN(legacyCount)
+	offset := (lm.Clock + lm.HomeGoals*3 + lm.AwayGoals) % len(keys)
+	return keys[(drawn+offset)%len(keys)]
 }
 
 // kickoffCommentaryKey rotates the opening whistle line per fixture without
