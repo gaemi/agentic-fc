@@ -899,11 +899,13 @@ func resolveDataDir(flagValue string) (string, error) {
 	return dir, nil
 }
 
-// isWorldDataDir reports whether dir holds Agentic FC world state. A bare
-// directory named data is not evidence: an installed binary launched from an
-// unrelated project must not adopt (and chmod 0700) that project's data/.
-// admin.token counts because a first launch may crash after minting it but
-// before the world snapshot lands.
+// isWorldDataDir reports whether dir holds a resumable Agentic FC world: a
+// world.json snapshot accompanied by manifest.json or admin.token. A bare
+// directory named data is not evidence, and neither is a single generically
+// named file — an installed binary launched from an unrelated project must
+// not adopt (and chmod 0700, or worse, generate a fresh world over) that
+// project's data/. Requiring the snapshot means an adopted ./data is only
+// ever resumed, never written to from scratch.
 func isWorldDataDir(dir string) (bool, error) {
 	fi, err := os.Stat(dir)
 	switch {
@@ -914,18 +916,29 @@ func isWorldDataDir(dir string) (bool, error) {
 	case !fi.IsDir():
 		return false, nil
 	}
-	for _, marker := range []string{"world.json", "manifest.json", "admin.token"} {
-		fi, err := os.Stat(filepath.Join(dir, marker))
-		switch {
-		case err == nil:
-			if !fi.IsDir() {
-				return true, nil
-			}
-		case !errors.Is(err, fs.ErrNotExist):
-			return false, err
+	world, err := hasFile(dir, "world.json")
+	if err != nil || !world {
+		return false, err
+	}
+	for _, companion := range []string{"manifest.json", "admin.token"} {
+		ok, err := hasFile(dir, companion)
+		if err != nil || ok {
+			return ok, err
 		}
 	}
 	return false, nil
+}
+
+func hasFile(dir, name string) (bool, error) {
+	fi, err := os.Stat(filepath.Join(dir, name))
+	switch {
+	case err == nil:
+		return !fi.IsDir(), nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 // userDataDir is the per-OS conventional location for game saves. The data
@@ -934,16 +947,16 @@ func isWorldDataDir(dir string) (bool, error) {
 func userDataDir(goos string, getenv func(string) string, home func() (string, error)) (string, error) {
 	switch goos {
 	case "darwin":
-		h, err := home()
+		h, err := absHome(home)
 		if err != nil {
-			return "", fmt.Errorf("user home: %w", err)
+			return "", err
 		}
 		return filepath.Join(h, "Library", "Application Support", "agenticfc"), nil
 	case "windows":
-		if d := getenv("LocalAppData"); d != "" {
+		if d := getenv("LocalAppData"); d != "" && filepath.IsAbs(d) {
 			return filepath.Join(d, "agenticfc"), nil
 		}
-		return "", errors.New("LocalAppData is not set")
+		return "", errors.New("LocalAppData is not set to an absolute path")
 	default:
 		// The XDG spec requires XDG_DATA_HOME to be absolute; a relative
 		// value would make the world location depend on the working
@@ -951,12 +964,26 @@ func userDataDir(goos string, getenv func(string) string, home func() (string, e
 		if d := getenv("XDG_DATA_HOME"); d != "" && filepath.IsAbs(d) {
 			return filepath.Join(d, "agenticfc"), nil
 		}
-		h, err := home()
+		h, err := absHome(home)
 		if err != nil {
-			return "", fmt.Errorf("user home: %w", err)
+			return "", err
 		}
 		return filepath.Join(h, ".local", "share", "agenticfc"), nil
 	}
+}
+
+// absHome resolves the user home and rejects relative values: on Unix,
+// os.UserHomeDir returns $HOME verbatim, and a relative home would make the
+// "per-user" path depend on the working directory after all.
+func absHome(home func() (string, error)) (string, error) {
+	h, err := home()
+	if err != nil {
+		return "", fmt.Errorf("user home: %w", err)
+	}
+	if !filepath.IsAbs(h) {
+		return "", fmt.Errorf("user home %q is not an absolute path", h)
+	}
+	return h, nil
 }
 
 // listenTCP binds a daemon listen address, translating the launch failure a

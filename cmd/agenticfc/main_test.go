@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -54,8 +55,10 @@ func TestResolveDataDir(t *testing.T) {
 		t.Errorf("empty ./data: resolved to ./data; want the user data directory")
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "data", "world.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, f := range []string{"world.json", "manifest.json"} {
+		if err := os.WriteFile(filepath.Join(dir, "data", f), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if got, err := resolveDataDir(""); err != nil || got != "./data" {
 		t.Errorf("./data with world state: got %q, %v; want ./data", got, err)
@@ -81,21 +84,41 @@ func TestIsWorldDataDir(t *testing.T) {
 	if got, err := isWorldDataDir(filepath.Join(dir, "missing")); err != nil || got {
 		t.Errorf("missing dir: got %v, %v; want false", got, err)
 	}
-	for _, marker := range []string{"world.json", "manifest.json", "admin.token"} {
-		sub := filepath.Join(dir, marker+"-case")
+	// A snapshot must be accompanied by manifest.json or admin.token; any
+	// single generically named file is not evidence of a world.
+	cases := []struct {
+		name  string
+		files []string
+		want  bool
+	}{
+		{"world only", []string{"world.json"}, false},
+		{"manifest only", []string{"manifest.json"}, false},
+		{"token only", []string{"admin.token"}, false},
+		{"manifest and token, no snapshot", []string{"manifest.json", "admin.token"}, false},
+		{"world and manifest", []string{"world.json", "manifest.json"}, true},
+		{"world and token", []string{"world.json", "admin.token"}, true},
+		{"full world dir", []string{"world.json", "manifest.json", "admin.token"}, true},
+	}
+	for i, tc := range cases {
+		sub := filepath.Join(dir, fmt.Sprintf("case-%d", i))
 		if err := os.Mkdir(sub, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sub, marker), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
+		for _, f := range tc.files {
+			if err := os.WriteFile(filepath.Join(sub, f), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if got, err := isWorldDataDir(sub); err != nil || !got {
-			t.Errorf("dir with %s: got %v, %v; want true", marker, got, err)
+		if got, err := isWorldDataDir(sub); err != nil || got != tc.want {
+			t.Errorf("%s: got %v, %v; want %v", tc.name, got, err, tc.want)
 		}
 	}
 	// A marker that is a directory does not count.
 	sub := filepath.Join(dir, "dir-marker")
 	if err := os.MkdirAll(filepath.Join(sub, "world.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "manifest.json"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := isWorldDataDir(sub); err != nil || got {
@@ -133,31 +156,43 @@ func TestIsWorldDataDirUnreadable(t *testing.T) {
 }
 
 func TestUserDataDir(t *testing.T) {
-	xdg := t.TempDir() // host-absolute, so filepath.IsAbs holds on every platform
+	// t.TempDir is host-absolute, so filepath.IsAbs holds on every platform.
+	xdg := t.TempDir()
+	homeDir := t.TempDir()
+	localAppData := t.TempDir()
 	env := map[string]string{}
 	getenv := func(k string) string { return env[k] }
-	home := func() (string, error) { return "/home/gaemi", nil }
+	home := func() (string, error) { return homeDir, nil }
 
 	tests := []struct {
 		name string
 		goos string
 		env  map[string]string
-		want string
+		want string // empty means an error is expected
 	}{
 		{"darwin", "darwin", nil,
-			filepath.FromSlash("/home/gaemi/Library/Application Support/agenticfc")},
-		{"windows", "windows", map[string]string{"LocalAppData": `C:\Users\g\AppData\Local`},
-			filepath.Join(`C:\Users\g\AppData\Local`, "agenticfc")},
+			filepath.Join(homeDir, "Library", "Application Support", "agenticfc")},
+		{"windows", "windows", map[string]string{"LocalAppData": localAppData},
+			filepath.Join(localAppData, "agenticfc")},
+		{"windows without LocalAppData", "windows", nil, ""},
+		{"relative LocalAppData rejected", "windows",
+			map[string]string{"LocalAppData": `AppData\Local`}, ""},
 		{"linux xdg", "linux", map[string]string{"XDG_DATA_HOME": xdg},
 			filepath.Join(xdg, "agenticfc")},
 		{"linux relative xdg ignored", "linux", map[string]string{"XDG_DATA_HOME": ".xdg"},
-			filepath.FromSlash("/home/gaemi/.local/share/agenticfc")},
+			filepath.Join(homeDir, ".local", "share", "agenticfc")},
 		{"linux fallback", "linux", nil,
-			filepath.FromSlash("/home/gaemi/.local/share/agenticfc")},
+			filepath.Join(homeDir, ".local", "share", "agenticfc")},
 	}
 	for _, tt := range tests {
 		env = tt.env
 		got, err := userDataDir(tt.goos, getenv, home)
+		if tt.want == "" {
+			if err == nil {
+				t.Errorf("%s: want error, got %q", tt.name, got)
+			}
+			continue
+		}
 		if err != nil {
 			t.Errorf("%s: %v", tt.name, err)
 			continue
@@ -168,8 +203,11 @@ func TestUserDataDir(t *testing.T) {
 	}
 
 	env = nil
-	if _, err := userDataDir("windows", getenv, home); err == nil {
-		t.Error("windows without LocalAppData: want error, got nil")
+	relHome := func() (string, error) { return "relative-home", nil }
+	for _, goos := range []string{"darwin", "linux"} {
+		if _, err := userDataDir(goos, getenv, relHome); err == nil {
+			t.Errorf("%s with relative home: want error, got nil", goos)
+		}
 	}
 }
 

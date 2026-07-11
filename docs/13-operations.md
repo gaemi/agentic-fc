@@ -123,9 +123,11 @@ Custom name rules:
 When `-data` is omitted, the daemon resolves the directory in this order:
 
 1. `./data`, if that directory in the current working directory already holds
-   Agentic FC world state (`world.json`, `manifest.json`, or `admin.token`).
-   This keeps source checkouts and pre-existing local worlds working
-   unchanged, while an unrelated project's `data/` folder is never adopted.
+   a resumable world: a `world.json` snapshot accompanied by `manifest.json`
+   or `admin.token`. This keeps source checkouts and pre-existing local worlds
+   working unchanged, while an unrelated project's `data/` folder — even one
+   containing a single generically named file — is never adopted, and an
+   adopted `./data` is only ever resumed, never generated into.
 2. Otherwise, the per-user OS data directory:
 
    | OS | Default data directory |
