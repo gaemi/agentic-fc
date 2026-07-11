@@ -57,16 +57,13 @@ func (e *Engine) handlePlayerDrift(ev *sim.Event) error {
 	if !ok {
 		return e.log(ev, "drift", nil, "unknown_player", 0, 0)
 	}
-	// A retired player's tick ends the chain: no reschedule, and no mutation at
-	// all — the guard sits BEFORE the recovery writes below, or a retiree would
-	// keep "resting" forever (player lifecycle; mirrors the manager RETIRED
-	// guard in handleDecisionRoll).
+	// A retired player's tick ends the chain with no mutation or reschedule
+	// (player lifecycle; mirrors the manager RETIRED guard in handleDecisionRoll).
 	if p.Retired {
 		return e.log(ev, "drift", nil, "retired", 0, 0)
 	}
-	// Match recovery: the player tick doubles as rest — condition
-	// climbs back toward full between matches; sharpness eases off with idleness.
-	p.Condition = clampInt(p.Condition+conditionRecoverTick, 0, worldgen.ConditionMax)
+	// Defensive repair for legacy or hand-edited snapshots; ordinary match
+	// updates already clamp sharpness at the public 0..100 ceiling.
 	if p.Sharpness > worldgen.ConditionMax {
 		p.Sharpness = worldgen.ConditionMax
 	}

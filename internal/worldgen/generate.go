@@ -134,6 +134,7 @@ const (
 	PayloadMatchMoment   = "match_moment" // one sampled key moment
 	PayloadFinanceTick   = "finance_tick"
 	PayloadDecisionRoll  = "decision_roll"
+	PayloadConditionTick = "condition_recovery"
 	PayloadPlayerDrift   = "player_drift"
 	PayloadWindowClose   = "window_close"
 	PayloadWindowOpen    = "window_open"
@@ -156,6 +157,12 @@ func primeQueue(w *World, r *mrand.Rand) *sim.Queue {
 		q.Schedule(&sim.Event{Due: e.Due, Priority: sim.PriorityWorld,
 			Kind: sim.KindWorld, Payload: e.Payload})
 	}
+	q.Schedule(&sim.Event{
+		Due:      sim.MinutesPerDay,
+		Priority: sim.PriorityCondition,
+		Kind:     sim.KindWorld,
+		Payload:  PayloadConditionTick,
+	})
 
 	for i := range w.Clubs {
 		q.Schedule(&sim.Event{
