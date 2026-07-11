@@ -208,6 +208,7 @@ func buildMatchScenes() map[string]matchScene {
 		throughScene(), longshotScene(), setpieceScene(), counterScene(),
 		scrambleScene(), dribbleScene(), cardScene(), injuryScene(),
 		subScene(), chanceScene(), buildUpScene(),
+		kickoffScene(), intervalScene(), fulltimeScene(), shootoutScene(),
 	}
 	out := make(map[string]matchScene, len(scenes))
 	for _, s := range scenes {
@@ -663,6 +664,103 @@ func buildUpScene() matchScene {
 	return composeScene("build", "BUILD-UP", frame(0), frame(1), frame(2))
 }
 
+// Ceremony scenes bracket the football: the opening whistle, the interval,
+// the final whistle, and a penalty shootout.
+
+func kickoffScene() matchScene {
+	frame := func(step int) *sceneCanvas {
+		c := newSceneCanvas()
+		c.ground()
+		for _, y := range []int{0, 2, 4} {
+			c.put(24, y, '.')
+		}
+		c.label(21, 4, "(  )")
+		for _, x := range []int{3, 9, 15} {
+			c.stamp(x, figureRow, sprPlayer...)
+		}
+		for _, x := range []int{31, 37, 43} {
+			c.stamp(x, figureRow, sprPlayer...)
+		}
+		switch step {
+		case 0:
+			c.stamp(26, figureRow, sprPlayer...)
+			c.put(24, groundBallRow, '*')
+		case 1:
+			c.stamp(26, figureRow, " o/", "/| ", "/ \\")
+			c.put(24, groundBallRow, '*')
+			c.put(28, 1, '!')
+		default:
+			c.stamp(26, figureRow, sprPlayer...)
+			c.put(20, groundBallRow, '*')
+			c.put(22, groundBallRow, '.')
+		}
+		return c
+	}
+	return composeScene("kickoff", "KICK-OFF", frame(0), frame(1), frame(2))
+}
+
+func intervalScene() matchScene {
+	frame := func(step int) *sceneCanvas {
+		c := newSceneCanvas()
+		c.ground()
+		c.stamp(42, 1, " ____", "|", "|", "|", "|")
+		for _, x := range []int{8, 15, 22, 29} {
+			c.stamp(x+step*2, figureRow, " o ", "/| ", "/ \\")
+		}
+		c.label(2, 1, ". . .")
+		return c
+	}
+	return composeScene("interval", "INTERVAL", frame(0), frame(1), frame(2))
+}
+
+func fulltimeScene() matchScene {
+	frame := func(step int) *sceneCanvas {
+		c := newSceneCanvas()
+		c.ground()
+		if step%2 == 0 {
+			c.stamp(6, figureRow, sprCheerA...)
+			c.stamp(12, figureRow, sprCheerA...)
+		} else {
+			c.stamp(6, figureRow, sprCheerB...)
+			c.stamp(12, figureRow, sprCheerA...)
+		}
+		c.stamp(24, figureRow, " o ", "/|-", "/ \\")
+		c.stamp(28, figureRow, " o ", "-|\\", "/ \\")
+		c.stamp(38, 4, " o ", "/|\\")
+		return c
+	}
+	return composeScene("fulltime", "FULL TIME", frame(0), frame(1))
+}
+
+func shootoutScene() matchScene {
+	base := func() *sceneCanvas {
+		c := pitchWithGoal(false)
+		for _, x := range []int{2, 6, 10} {
+			c.put(x, figureRow, 'o')
+			c.put(x, ballRow, '.')
+		}
+		return c
+	}
+
+	settle := base()
+	settle.stamp(keeperLineX, figureRow, sprKeeper...)
+	settle.stamp(22, figureRow, sprPlayer...)
+	settle.put(27, groundBallRow, '*')
+	settle.label(30, 1, ". . .")
+
+	runUp := base()
+	runUp.stamp(keeperLineX, figureRow, sprKeeper...)
+	runUp.stamp(24, figureRow, sprRunner...)
+	runUp.put(27, groundBallRow, '*')
+
+	strike := base()
+	strike.stamp(38, 2, sprJumper...)
+	strike.stamp(25, figureRow, sprPlayer...)
+	strike.label(30, ballRow, "---*")
+
+	return composeScene("shootout", "PENALTIES", settle, runUp, strike)
+}
+
 func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
 	if line != "" {
 		// Prefer the prose shape over the marker so goal cut-backs, counters, and crosses
@@ -720,6 +818,14 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 			return sceneByKind(action)
 		}
 		return sceneByKind("goal")
+	case kind == "SHOOTOUT" || containsAny(lower, "penalties", "shootout", "승부차기"):
+		return sceneByKind("shootout")
+	case containsAny(lower, "half time", "전반 종료"):
+		return sceneByKind("interval")
+	case containsAny(lower, "full time", "after 90", "경기 종료", "90분 종료"):
+		return sceneByKind("fulltime")
+	case containsAny(lower, "under way", "on their way", "get us started", "경기가 시작", "막을 올립", "경기를 시작"):
+		return sceneByKind("kickoff")
 	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
 		return sceneByKind("card")
 	case kind == "INJURY" || containsAny(lower, "injury", "treatment", "is down", "stays down", "goes down", "쓰러", "치료", "부상"):

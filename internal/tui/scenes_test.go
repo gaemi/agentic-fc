@@ -254,3 +254,43 @@ func TestDumpScenes(t *testing.T) {
 		}
 	}
 }
+
+// Ceremony prose (whistles and shootouts) must play its ceremony scene, not
+// the quiet build-up frame, in both locales.
+func TestCeremonyCommentaryPlaysCeremonyScenes(t *testing.T) {
+	params := map[string]any{
+		"player": "Kim Min-jae", "club": "Alpha", "home": "Alpha", "away": "Beta",
+		"home_goals": 2, "away_goals": 1, "home_pens": 4, "away_pens": 3,
+		"winner": "Alpha", "round": 3, "competition": "LEAGUE",
+	}
+	families := []struct {
+		re   *regexp.Regexp
+		want string
+	}{
+		{regexp.MustCompile(`^comment\.kickoff`), "kickoff"},
+		{regexp.MustCompile(`^comment\.halftime`), "interval"},
+		{regexp.MustCompile(`^comment\.fulltime`), "fulltime"},
+		{regexp.MustCompile(`^comment\.shootout`), "shootout"},
+	}
+	for _, loc := range narrative.Supported {
+		for _, fam := range families {
+			checked := 0
+			for key := range narrative.Default[loc] {
+				if !fam.re.MatchString(key) {
+					continue
+				}
+				checked++
+				line := narrative.Default.Render(loc, key, params)
+				if got := matchSceneFromLine(line, nil).kind; got != fam.want {
+					t.Errorf("%s %s: scene %q, want %q for line %q", loc, key, got, fam.want, line)
+				}
+			}
+			if checked == 0 {
+				t.Fatalf("no %s keys found for locale %s", fam.re, loc)
+			}
+		}
+	}
+	if got := matchSceneFromLine("", &LiveMarker{Kind: "SHOOTOUT"}).kind; got != "shootout" {
+		t.Fatalf("shootout marker scene = %q, want shootout", got)
+	}
+}

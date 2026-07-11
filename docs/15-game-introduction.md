@@ -71,10 +71,13 @@ current scene art, and the commentary flow. Every recognized scene — goals wit
 net ripple and celebrations, keeper saves, crosses, cut-backs, through balls,
 long shots, set pieces, counters, scrambles, dribbles, cards, stoppages,
 substitutions, open chances, and quiet build-up — moves through a short
-fixed-canvas terminal animation while the live window is open; replays remain
-stable, and `Space` pauses or resumes motion. It is built for
+fixed-canvas terminal animation while the live window is open, and ceremony
+scenes mark kick-off, the interval, full time, and penalty shootouts; replays
+remain stable, and `Space` pauses or resumes motion. It is built for
 watching football unfold through concise terminal vignettes rather than for
 issuing live tactical commands.
+
+![TUI match view showing the kick-off ceremony scene](assets/intro/tui-match-kickoff.png)
 
 ![TUI match view showing a through-ball scene](assets/intro/tui-match-through.png)
 
