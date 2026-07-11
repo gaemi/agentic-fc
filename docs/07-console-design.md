@@ -104,6 +104,13 @@ substitutions, top ratings, and the preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.
 
+Reopening a finished-match pop-up shows any cached detail immediately and also
+refreshes that fixture from the Console API. Match facts do not change, but
+localized rendering and presentation may improve after a daemon deploy; a
+long-lived Console must not pin the earlier server-rendered prose forever.
+Late responses are applied only when their fixture is still the open replay;
+live and scheduled fixture flows keep their existing polling behavior.
+
 ### 4.4 Club / Manager / Player views
 
 | Element | S | M | L | XL |
