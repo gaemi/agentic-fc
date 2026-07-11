@@ -77,6 +77,8 @@ remain stable, and `Space` pauses or resumes motion. It is built for
 watching football unfold through concise terminal vignettes rather than for
 issuing live tactical commands.
 
+![TUI match view showing the kick-off ceremony scene](assets/intro/tui-match-kickoff.png)
+
 ![TUI match view showing a through-ball scene](assets/intro/tui-match-through.png)
 
 ![TUI match view showing a goal flash with the goal scene](assets/intro/tui-match-goal.png)
