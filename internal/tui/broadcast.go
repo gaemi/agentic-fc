@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -152,6 +153,38 @@ func labeledPairRows(label string, rows []string, width int) []string {
 		preformattedLinePrefix + fitLine(pad+" A "+rows[1], width, alignLeft),
 	}
 	return out
+}
+
+// elsewhereGoalWindowMinutes keeps a just-scored marker highlighted on the
+// elsewhere ticker for a couple of match minutes.
+const elsewhereGoalWindowMinutes = 2
+
+// elsewhereTicker summarizes the other live matches on one line so a
+// spectator never loses the rest of the matchday. Entries whose latest
+// marker is a fresh goal get a G! prefix.
+func (m Model) elsewhereTicker(current int64, width int) string {
+	if width <= 0 || len(m.Matches) < 2 {
+		return ""
+	}
+	parts := make([]string, 0, len(m.Matches)-1)
+	for _, mv := range m.Matches {
+		if mv.Fixture == current {
+			continue
+		}
+		entry := fmt.Sprintf("%s %d-%d %s", mv.Home, mv.HomeGoals, mv.AwayGoals, mv.Away)
+		if len(mv.Markers) > 0 {
+			latest := mv.Markers[len(mv.Markers)-1]
+			age := mv.Minute - latest.Minute
+			if latest.Kind == "GOAL" && age >= 0 && age <= elsewhereGoalWindowMinutes {
+				entry = "G! " + entry
+			}
+		}
+		parts = append(parts, entry)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return truncate(m.ui("ui.match.latest")+"  "+strings.Join(parts, " · "), width)
 }
 
 // matchPhaseLabel tags the running minute as first or second half.

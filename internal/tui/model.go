@@ -1293,13 +1293,26 @@ func (m Model) liveMatchModal(width, height int) string {
 			lines = append(lines, summary)
 		}
 	}
+	ticker := ""
+	if !compact {
+		ticker = m.elsewhereTicker(mv.Fixture, width-4)
+	}
 	historyRows := contentRows - len(lines) - 2
+	if ticker != "" {
+		historyRows -= 2 // keep the closing ticker row (plus its separator)
+	}
 	if historyRows > 0 {
 		history := recentHistory(mv.Commentary, historyRows)
 		if len(history) > 0 {
 			lines = append(lines, "", m.ui("ui.match.history"))
 			lines = append(lines, history...)
 		}
+	}
+	if ticker != "" && len(lines) < contentRows {
+		if len(lines)+1 < contentRows {
+			lines = append(lines, "")
+		}
+		lines = append(lines, ticker)
 	}
 	return modalBox(width, height, title, lines)
 }
@@ -2349,7 +2362,7 @@ func (m Model) viewFixtures(width, height int) string {
 func (m Model) fixtureList(width, height int) string {
 	cols := []tableColumn{
 		{Header: "", Width: 2, Align: alignLeft},
-		{Header: m.ui("ui.col.status"), Width: colWidth(m.ui("ui.col.status"), 8), Align: alignLeft},
+		{Header: m.ui("ui.col.status"), Width: colWidth(m.ui("ui.col.status"), 11), Align: alignLeft},
 		{Header: m.ui("ui.col.kickoff"), Width: colWidth(m.ui("ui.col.kickoff"), 18), Align: alignLeft},
 		{Header: m.ui("ui.col.round"), Width: colWidth(m.ui("ui.col.round"), 4), Align: alignRight},
 		{Header: m.ui("ui.col.fixture"), MinWidth: 18, Flex: true, Align: alignLeft},
@@ -2378,7 +2391,11 @@ func (m Model) fixtureList(width, height int) string {
 }
 
 func (m Model) fixtureStatus(f Fixture) string {
-	if _, ok := m.liveMatchForFixture(f.ID); ok || f.Status == "LIVE" {
+	if mv, ok := m.liveMatchForFixture(f.ID); ok {
+		// The running minute turns the fixture list into a matchday board.
+		return fmt.Sprintf("%s %d'", m.ui("ui.fixture.live"), mv.Minute)
+	}
+	if f.Status == "LIVE" {
 		return m.ui("ui.fixture.live")
 	}
 	if f.Status == "RESULT" {
