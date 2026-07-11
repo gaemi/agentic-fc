@@ -280,12 +280,12 @@ func (g *Gateway) renderNews(n *worldgen.NewsItem) map[string]any {
 		"game_time": gameTimeISO(n.GameTime),
 		"category":  n.Category,
 		"headline":  headline,
-		"article":   g.newsArticle(n.Category, n.Key, params, narrative.LocaleEN),
+		"article":   g.newsArticle(n.Category, n.Key, params, narrative.LocaleEN, n.ID),
 		"refs":      n.ClubIDs,
 	}
 }
 
-func (g *Gateway) newsArticle(category, key string, params map[string]any, loc narrative.Locale) map[string]any {
+func (g *Gateway) newsArticle(category, key string, params map[string]any, loc narrative.Locale, newsID int64) map[string]any {
 	title := g.renderMessageText(loc, key, params)
 	articleClass := category
 	switch articleClass {
@@ -302,8 +302,8 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 	return map[string]any{
 		"source": g.tr(loc, "news.article.source."+sourceClass),
 		"title":  title,
-		"deck":   g.tr2(loc, "news.article.deck."+articleClass, articleParams),
-		"body":   g.tr2(loc, "news.article.body."+articleClass, articleParams),
+		"deck":   g.tr2(loc, narrative.ArticleTemplateKey("deck", articleClass, newsID), articleParams),
+		"body":   g.tr2(loc, narrative.ArticleTemplateKey("body", articleClass, newsID), articleParams),
 	}
 }
 

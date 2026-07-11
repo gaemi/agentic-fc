@@ -141,7 +141,7 @@ The wide-shallow dashboard; the intended cheap heartbeat call.
 
 ### `get_news` — 1 FP
 **Params**: `since` (cursor; **per-session state** — a session's first call without `since` defaults to the start of the current game-day; pass explicit cursors thereafter), `categories?` (transfer/match/injury/board/media/decision/career/youth/contract), `scope?` (own | league | world; default own), `limit?` (≤ 100, default 50). Session identity is part of the replay input log ([03 §5](03-simulation-engine.md)), so cursor state replays deterministically.
-**Returns**: condensed narrative items `{id, game_time, category, headline{key,params,text}, article{source,title,deck,body}, refs[]}` + next cursor. `headline` remains the compact machine-readable news fact; `article` is the human press clipping used by MCP Apps cards, rendered only from the same masked params. Manager decisions appear here with their Mindset version (FR-16e).
+**Returns**: condensed narrative items `{id, game_time, category, headline{key,params,text}, article{source,title,deck,body}, refs[]}` + next cursor. `headline` remains the compact machine-readable news fact; `article` is the human press clipping used by MCP Apps cards, rendered only from the same masked params. Repeated injury and matchday events select a deterministic editorial angle from `id`; the same item keeps the same prose on reread and in Console/MCP Apps without consuming simulation RNG. Manager decisions appear here with their Mindset version (FR-16e).
 
 ### `get_league` — 2 FP
 **Params**: `division?` (default: own), `sections?` (table | results | fixtures | managers; default table+results).

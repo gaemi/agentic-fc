@@ -212,8 +212,8 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 		Category: n.Category,
 		Source:   s.Catalogs.Render(loc, "news.article.source."+sourceClass, nil),
 		Title:    title,
-		Deck:     s.Catalogs.Render(loc, "news.article.deck."+class, articleParams),
-		Body:     s.Catalogs.Render(loc, "news.article.body."+class, articleParams),
+		Deck:     s.Catalogs.Render(loc, narrative.ArticleTemplateKey("deck", class, n.ID), articleParams),
+		Body:     s.Catalogs.Render(loc, narrative.ArticleTemplateKey("body", class, n.ID), articleParams),
 		Refs:     n.ClubIDs,
 	}
 }
