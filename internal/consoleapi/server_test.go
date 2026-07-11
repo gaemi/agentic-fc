@@ -1139,6 +1139,19 @@ func TestLiveMatchPanes(t *testing.T) {
 	if !foundEarlyGoal {
 		t.Fatal("the early goal is missing from the uncapped marker stream")
 	}
+
+	// Beats mirror the rendered commentary with football minutes attached.
+	if len(lm.Beats) != len(lm.Commentary) {
+		t.Fatalf("beats = %d, commentary = %d — must be parallel", len(lm.Beats), len(lm.Commentary))
+	}
+	for i, b := range lm.Beats {
+		if b.Text != lm.Commentary[i] {
+			t.Fatalf("beat %d text %q != commentary %q", i, b.Text, lm.Commentary[i])
+		}
+		if i > 0 && b.Minute < lm.Beats[i-1].Minute {
+			t.Fatalf("beat minutes not monotonic: %d after %d", b.Minute, lm.Beats[i-1].Minute)
+		}
+	}
 }
 
 func TestPrioritizeFixtureWindowsSurfacesNextAndLatestMatchdays(t *testing.T) {

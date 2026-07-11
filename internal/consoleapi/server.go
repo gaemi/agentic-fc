@@ -888,6 +888,15 @@ type matchDetailDTO struct {
 	Subs              []matchSubDTO             `json:"subs,omitempty"`
 	Ratings           []liveRatingDTO           `json:"ratings,omitempty"`
 	Commentary        []string                  `json:"commentary,omitempty"`
+	Beats             []beatDTO                 `json:"beats,omitempty"`
+}
+
+// beatDTO is one minute-stamped commentary beat. Commentary keeps the plain
+// rendered strings for older consoles; Beats carries the same lines with
+// their football minute for match-report style displays.
+type beatDTO struct {
+	Minute int    `json:"minute"`
+	Text   string `json:"text"`
 }
 
 func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
@@ -994,7 +1003,9 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names, players map[int64]s
 		return dto.Ratings[i].Name < dto.Ratings[j].Name
 	})
 	for _, cl := range r.Commentary {
-		dto.Commentary = append(dto.Commentary, s.Catalogs.Render(loc, cl.Key, cl.Params))
+		text := s.Catalogs.Render(loc, cl.Key, cl.Params)
+		dto.Commentary = append(dto.Commentary, text)
+		dto.Beats = append(dto.Beats, beatDTO{Minute: cl.Minute, Text: text})
 	}
 	return dto
 }
@@ -1048,12 +1059,13 @@ type liveMatchDTO struct {
 	AwayGoals   int             `json:"away_goals"`
 	Minute      int             `json:"minute"`
 	Commentary  []string        `json:"commentary"`
+	Beats       []beatDTO       `json:"beats,omitempty"`
 	Markers     []liveMarkerDTO `json:"markers"`
 	Stats       liveStatsDTO    `json:"stats"`
 	Ratings     []liveRatingDTO `json:"ratings"`
 	// Momentum is one signed value per 10-minute bucket (home positive,
-	// goals ×3 + chances ×1), derived from the FULL event stream — the
-	// markers field is windowed for the pitch, the sparkline is not.
+	// goals ×3 + chances ×1). Both it and the markers field carry the full
+	// match story.
 	Momentum []int `json:"momentum"`
 }
 
@@ -1096,7 +1108,9 @@ func (s *Server) handleLiveMatches(w http.ResponseWriter, r *http.Request) {
 				from = 0
 			}
 			for _, cl := range lm.Commentary[from:] {
-				dto.Commentary = append(dto.Commentary, s.Catalogs.Render(loc, cl.Key, cl.Params))
+				text := s.Catalogs.Render(loc, cl.Key, cl.Params)
+				dto.Commentary = append(dto.Commentary, text)
+				dto.Beats = append(dto.Beats, beatDTO{Minute: cl.Minute, Text: text})
 			}
 			// The full stream feeds both the momentum sparkline and the
 			// modal timeline; windowing it would silently drop early goals

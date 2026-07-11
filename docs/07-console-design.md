@@ -54,6 +54,12 @@ controls.
 The pop-up carries the score/clock header (with a first/second-half tag),
 public match stats and diagnostics,
 live ratings, and the rhythmic commentary stream ([FR-35a](06-requirements.md)).
+Commentary beats carry their football minute: the live "earlier flow" backlog
+and the replay log read as a match report (`27' Goal! …`). The current live
+beat stays prose-first; the replay's selected beat carries its minute so
+scrubbing always shows where you are. The opening whistle stays unstamped
+(there is no 0th minute), and older daemons without minute data fall back to
+plain lines.
 On tall layouts the live pop-up also draws two at-a-glance strips built from
 public data only: a **marker timeline** (home events above, away below, on a
 minute ruler with 15-minute ticks and a play head, using the marker legend

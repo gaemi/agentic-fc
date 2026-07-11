@@ -1860,3 +1860,58 @@ func TestWaitingMatchModalClosesWhenFixtureDisappears(t *testing.T) {
 		t.Fatalf("missing fixture notice = %q", m.Notice)
 	}
 }
+
+// Minute-stamped beats drive the replay log and live history; plain
+// commentary remains the fallback for daemons that predate beats.
+func TestMinuteStampedBeatsInReplayAndHistory(t *testing.T) {
+	if got := beatLines(nil, []string{"plain"}); got[0] != "plain" {
+		t.Fatalf("fallback lost plain commentary: %q", got)
+	}
+	stamped := beatLines([]CommentaryBeat{{Minute: 34, Text: "line"}}, []string{"line"})
+	if stamped[0] != "34' line" {
+		t.Fatalf("beat line = %q, want minute prefix", stamped[0])
+	}
+	if got := beatLines([]CommentaryBeat{{Minute: 0, Text: "kickoff prose"}}, []string{"kickoff prose"}); got[0] != "kickoff prose" {
+		t.Fatalf("opening whistle must stay unstamped: %q", got[0])
+	}
+	if got := beatLines([]CommentaryBeat{{Minute: 1, Text: "x"}}, []string{"a", "b"}); got[0] != "a" {
+		t.Fatalf("length mismatch must fall back: %q", got)
+	}
+
+	m := liveModel(140, 36)
+	m.MatchModal = modalReplay
+	m.MatchModalID = 0
+	m.Fixtures = nil
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 1, AwayGoals: 0,
+		Commentary: []string{
+			"We're under way at Alpha v Beta.",
+			"Goal! Rao finds the net for Alpha — it's 1–0.",
+		},
+		Beats: []CommentaryBeat{
+			{Minute: 1, Text: "We're under way at Alpha v Beta."},
+			{Minute: 27, Text: "Goal! Rao finds the net for Alpha — it's 1–0."},
+		},
+	}
+	m.ReplayOffset = 0
+	box := m.replayMatchModal(120, 30)
+	if !strings.Contains(box, "▶ 1' We're under way") {
+		t.Fatalf("replay current line missing minute stamp:\n%s", box)
+	}
+	m.MatchDetail.Beats[0].Minute = 0
+	if box := m.replayMatchModal(120, 30); !strings.Contains(box, "▶ We're under way") {
+		t.Fatalf("0' kickoff beat should render unstamped:\n%s", box)
+	}
+	m.MatchDetail.Beats[0].Minute = 1
+	if !strings.Contains(box, "· 27' Goal!") {
+		t.Fatalf("replay log missing minute stamp:\n%s", box)
+	}
+
+	live := liveModel(140, 36)
+	live.Matches[0].Commentary = []string{"first beat text", "second beat text"}
+	live.Matches[0].Beats = []CommentaryBeat{{Minute: 3, Text: "first beat text"}, {Minute: 8, Text: "second beat text"}}
+	v := live.View()
+	if !strings.Contains(v, "· 3' first beat text") {
+		t.Fatalf("live history missing minute stamp:\n%s", v)
+	}
+}
