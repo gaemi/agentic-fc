@@ -876,6 +876,12 @@ func (m Model) ui(key string) string {
 }
 
 var uiFallbacks = map[string]string{
+	"ui.help.media":           "↑/↓ story · PgUp/PgDn article",
+	"ui.help.table":           "←/→ division",
+	"ui.help.clubs":           "↑/↓ club · Tab player",
+	"ui.help.fixtures":        "↑/↓ fixture · Enter/Space open · ←/→ division",
+	"ui.help.settings":        "↑/↓ setting · +/- or [/] adjust",
+	"ui.help.quit":            "q quit",
 	"ui.match.current_scene":  "Current scene",
 	"ui.match.history":        "Earlier flow",
 	"ui.match.goalflash":      "GOAL",
@@ -944,11 +950,7 @@ func (m Model) View() string {
 
 	header := styleHeader.Render(truncate(fmt.Sprintf("%s · %s · [%s]",
 		m.World.Name, m.World.ClockText, m.World.TempoLabel), bodyWidth))
-	helpKey := "ui.help.keys"
-	if m.AdminMode {
-		helpKey = "ui.help.keys_admin"
-	}
-	footer := styleDim.Render(truncate(m.ui(helpKey), bodyWidth))
+	footer := styleDim.Render(m.footerKeyBar(bodyWidth))
 	status := ""
 	if m.Err != "" {
 		status = m.ui("ui.error.prefix") + " " + m.Err
@@ -980,6 +982,51 @@ func (m Model) View() string {
 		Footer:   footer,
 		Overlays: overlays,
 	}.Render()
+}
+
+// footerKeyBar keeps the active screen's controls readable and reserves the
+// right edge for the global quit key. The tab row already advertises screen
+// navigation, so repeating every tab here would crowd out the useful controls
+// on compact and double-width locales.
+func (m Model) footerKeyBar(width int) string {
+	left := ""
+	switch m.MatchModal {
+	case modalReplay:
+		left = m.ui("ui.match.modal.replay_help")
+	case modalLive, modalWaiting:
+		left = m.ui("ui.match.modal.close")
+	default:
+		switch m.Tab {
+		case tabMedia:
+			left = m.ui("ui.help.media")
+		case tabTable:
+			left = m.ui("ui.help.table")
+		case tabClubs:
+			left = m.ui("ui.help.clubs")
+		case tabFixtures:
+			left = m.ui("ui.help.fixtures")
+		case tabAdminSettings:
+			left = m.ui("ui.help.settings")
+		}
+	}
+	return splitKeyBar(left, m.ui("ui.help.quit"), width)
+}
+
+func splitKeyBar(left, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	right = truncate(right, width)
+	rightWidth := lipgloss.Width(right)
+	if left == "" || rightWidth >= width {
+		return fitLine(right, width, alignRight)
+	}
+	const separator = " · "
+	leftWidth := width - lipgloss.Width(separator) - rightWidth
+	if leftWidth <= 0 {
+		return fitLine(right, width, alignRight)
+	}
+	return fitLine(left, leftWidth, alignLeft) + separator + right
 }
 
 func (m Model) matchModalOverlay(width, height int) (Overlay, bool) {

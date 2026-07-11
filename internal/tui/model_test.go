@@ -78,6 +78,12 @@ func testModel() Model {
 		"ui.header.division":                       "Division {tier}",
 		"ui.help.keys":                             "help",
 		"ui.help.keys_admin":                       "admin help",
+		"ui.help.media":                            "up/down story · page article",
+		"ui.help.table":                            "left/right division",
+		"ui.help.clubs":                            "up/down club · tab player",
+		"ui.help.fixtures":                         "up/down fixture · enter open",
+		"ui.help.settings":                         "up/down setting · +/- adjust",
+		"ui.help.quit":                             "q quit",
 		"ui.admin.token_required":                  "Admin token required",
 		"ui.admin.settings.loading":                "Loading settings",
 		"ui.admin.settings.title":                  "Runtime Settings",
@@ -233,7 +239,7 @@ func TestAdminSettingsTabAndAdjustments(t *testing.T) {
 		t.Fatalf("admin settings tab = %d", m.Tab)
 	}
 	v := m.View()
-	for _, want := range []string{"Runtime Settings", "Game speed", "15x", "Idle acceleration", "Pacing only", "admin help"} {
+	for _, want := range []string{"Runtime Settings", "Game speed", "15x", "Idle acceleration", "Pacing only", "up/down setting", "q quit"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("admin settings missing %q:\n%s", want, v)
 		}
@@ -297,7 +303,7 @@ func TestViewRendersChrome(t *testing.T) {
 	m := testModel()
 	v := m.View()
 	for _, want := range []string{"Testshire League", "Aug 16, 15:00", "Division 1",
-		"Agentic FC", "Alderton appoint Lee Carter", "Club Desk", "help"} {
+		"Agentic FC", "Alderton appoint Lee Carter", "Club Desk", "up/down story", "q quit"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q", want)
 		}
@@ -348,6 +354,36 @@ func TestKoreanTableKeepsColumnWidths(t *testing.T) {
 		if strings.Contains(line, "│") && lipgloss.Width(line) != m.Width {
 			t.Fatalf("framed table line width = %d, want %d: %q", lipgloss.Width(line), m.Width, line)
 		}
+	}
+}
+
+func TestContextualFooterKeepsCurrentControlsAndQuitVisible(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 80, 24
+	m.Tab = tabFixtures
+	m.UI["ui.help.fixtures"] = "↑/↓ 경기 · Enter/Space 열기 · ←/→ 디비전"
+	m.UI["ui.help.quit"] = "q 종료"
+
+	lines := strings.Split(plain(m.View()), "\n")
+	footer := lines[len(lines)-2]
+	for _, want := range []string{"Enter/Space 열기", "q 종료"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("80-column contextual footer missing %q: %q", want, footer)
+		}
+	}
+	if got := lipgloss.Width(footer); got != m.Width {
+		t.Fatalf("footer width = %d, want %d: %q", got, m.Width, footer)
+	}
+}
+
+func TestContextualFooterFollowsMatchModal(t *testing.T) {
+	m := testModel()
+	m.Width, m.Height = 80, 24
+	m.MatchModal = modalReplay
+	v := plain(m.View())
+	footer := strings.Split(v, "\n")[m.Height-2]
+	if !strings.Contains(footer, "PgUp/PgDn") || !strings.Contains(footer, "q quit") {
+		t.Fatalf("replay footer does not expose modal controls and quit: %q", footer)
 	}
 }
 
