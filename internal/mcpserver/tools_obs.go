@@ -297,6 +297,7 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 	articleParams := map[string]any{"headline": title}
 	if key == "feed.matchday.results" {
 		articleClass = "matchday.results"
+		title = g.tr2(loc, narrative.ArticleTemplateKey("title", articleClass, newsID), params)
 		articleParams = g.matchdayResultsArticleParams(loc, params, title)
 	}
 	return map[string]any{

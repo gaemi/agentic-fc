@@ -203,6 +203,7 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 	articleParams := map[string]any{"headline": title}
 	if n.Key == "feed.matchday.results" {
 		class = "matchday.results"
+		title = s.Catalogs.Render(loc, narrative.ArticleTemplateKey("title", class, n.ID), params)
 		articleParams = s.matchdayResultsArticleParams(loc, params, title)
 	}
 	return newsArticleDTO{
