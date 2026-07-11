@@ -421,9 +421,10 @@ func TestManifestAndQueue(t *testing.T) {
 		tokens[mc.Token] = true
 	}
 
-	// 4 calendar events, a finance tick and a youth intake per club,
-	// a decision roll per manager, a drift per player, and a kickoff per fixture.
-	want := 4 + 2*len(w.Clubs) + len(w.Managers) + len(w.Players) + len(w.Fixtures)
+	// 4 calendar events, one daily condition recovery, a finance tick and a
+	// youth intake per club, a decision roll per manager, a drift per player,
+	// and a kickoff per fixture.
+	want := 5 + 2*len(w.Clubs) + len(w.Managers) + len(w.Players) + len(w.Fixtures)
 	if res.Queue.Len() != want {
 		t.Fatalf("primed queue has %d events, want %d", res.Queue.Len(), want)
 	}

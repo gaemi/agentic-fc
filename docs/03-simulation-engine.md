@@ -75,6 +75,8 @@ Design constraints:
 
 **Match engine granularity (decision):** the match engine uses **key-moment sampling**, not a continuous minute-by-minute physical simulation. It rolls a sequence of significant passages (chances, momentum shifts, cards, injuries, set pieces, Manager decision points) whose density and character derive from tactics, player effective attributes, and match state — enough resolution to (a) produce commentary-grade event streams with connective tissue lines, (b) drive per-player ratings, condition drain, and stats, and (c) give the Manager in-match decision events. Classic CM proved the text surface needs curated moments, not physics ([90 §2](90-reference-cm-fm.md)).
 
+Condition recovery is a deterministic daily world event, separate from the slower jittered player-attribute drift cycle. One fixed-order pass recovers every active player and self-schedules the next day; loading an older snapshot without that event backfills exactly one next-midnight tick.
+
 The next match-engine rebuild keeps key-moment sampling but replaces the
 generic "chance" shortcut with an event grammar: tactics and personnel choose
 the event family (cross, cutback, through ball, counter, set piece, scramble,

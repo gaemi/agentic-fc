@@ -65,10 +65,9 @@ const (
 	subReasonFatigue  = "FATIGUE"
 	subReasonTactical = "TACTICAL"
 
-	conditionDrainPlay   = 22 // condition a full match costs a starter
-	conditionFloorPlay   = 5  // a match never drains below this
-	sharpnessGainPlay    = 8  // sharpness a match builds
-	conditionRecoverTick = 14 // condition recovered per player drift tick
+	conditionDrainPlay = 22 // condition a full match costs a starter
+	conditionFloorPlay = 5  // a match never drains below this
+	sharpnessGainPlay  = 8  // sharpness a match builds
 
 	// Rating band values live in worldgen (docs/98) — LiveRatingsX10 is shared
 	// with the Console's live ratings pane; the full alias set keeps engine

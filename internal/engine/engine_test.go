@@ -314,7 +314,8 @@ func TestQueueNeverStarves(t *testing.T) {
 		kinds[ev.Payload.(string)] = true
 	}
 	for _, want := range []string{
-		worldgen.PayloadPlayerDrift, worldgen.PayloadFinanceTick, worldgen.PayloadDecisionRoll,
+		worldgen.PayloadConditionTick, worldgen.PayloadPlayerDrift,
+		worldgen.PayloadFinanceTick, worldgen.PayloadDecisionRoll,
 	} {
 		if !kinds[want] {
 			t.Errorf("no future %s events after 60 days — system starved", want)

@@ -105,6 +105,7 @@ func (e *Engine) ResumeAt(t sim.GameTime) {
 	if t > e.now {
 		e.now = t
 	}
+	e.ensureConditionRecoveryTick()
 }
 
 // Now is the game time of the last drained event (0 before any).
@@ -169,6 +170,8 @@ func (e *Engine) handle(ev *sim.Event) error {
 		return e.handleCalendarAlert(ev, payload)
 	}
 	switch payload {
+	case worldgen.PayloadConditionTick:
+		return e.handleConditionRecovery(ev)
 	case worldgen.PayloadPlayerDrift:
 		return e.handlePlayerDrift(ev)
 	case worldgen.PayloadFinanceTick:
