@@ -119,7 +119,7 @@ The Console API endpoints backing this screen are:
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /v1/admin/settings` | Read mutable runtime settings and their allowed ranges. |
-| `PATCH /v1/admin/settings` | Partially update runtime pacing settings. |
+| `PATCH /v1/admin/settings` | Partially update runtime pacing settings. Accepts one JSON object containing only `game_speed`, `idle_acceleration`, and/or `offseason_acceleration`; unknown fields or trailing JSON values return `400 Bad Request`. An empty object is a valid no-op. |
 
 ## Connect an MCP Client
 

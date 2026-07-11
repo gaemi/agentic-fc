@@ -691,6 +691,22 @@ func TestAdminRuntimeSettings(t *testing.T) {
 		t.Fatalf("empty patch should preserve settings: %#v", out.Runtime)
 	}
 
+	for _, malformed := range []string{
+		`{"base_game_speed":60}`,
+		`{"game_speed":60} {"idle_acceleration":40}`,
+	} {
+		code, body = do(http.MethodPatch, "/v1/admin/settings", malformed, true)
+		if code != http.StatusBadRequest {
+			t.Fatalf("strict patch %q status = %d, want 400: %s", malformed, code, body)
+		}
+		if !strings.Contains(body, "error.bad_request") {
+			t.Fatalf("strict patch %q body = %s", malformed, body)
+		}
+		if current := host.RuntimeSettings(); current.GameSpeed != sim.Speed30 || current.IdleAcceleration != 20 {
+			t.Fatalf("rejected patch %q mutated settings: %+v", malformed, current)
+		}
+	}
+
 	code, body = do(http.MethodPatch, "/v1/admin/settings", `{"game_speed":17}`, true)
 	if code != http.StatusBadRequest {
 		t.Fatalf("invalid speed status = %d", code)
