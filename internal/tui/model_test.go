@@ -1404,11 +1404,33 @@ func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
 }
 
 func TestSceneFramePreservesArtBlockCoordinates(t *testing.T) {
-	first := centerSceneArtLine("o", 8, 30)
-	second := centerSceneArtLine("  |", 8, 30)
-	got := strings.Index(second, "|") - strings.Index(first, "o")
-	if got != 2 {
-		t.Fatalf("scene art coordinates drifted by %d cells, want 2:\n%q\n%q", got, first, second)
+	// Canvas frames share one exact width, so the centered art block must sit
+	// at the same left offset in every animation frame.
+	scene := matchSceneFromLine("Goal! Rao finds the net for Alpha.", nil)
+	base := liveModel(120, 32)
+	ground := strings.Repeat("_", sceneCanvasWidth)
+	groundCol := -1
+	for f := range scene.frames {
+		rendered := sceneFrameAt(base, scene, 90, 9, f)
+		if len(rendered) == 0 {
+			t.Fatalf("goal scene frame %d was omitted", f)
+		}
+		col := -1
+		for _, line := range rendered {
+			if idx := strings.Index(line, ground); idx >= 0 {
+				col = idx
+				break
+			}
+		}
+		if col < 0 {
+			t.Fatalf("goal scene frame %d lost its ground line:\n%s", f, strings.Join(rendered, "\n"))
+		}
+		if groundCol == -1 {
+			groundCol = col
+		}
+		if col != groundCol {
+			t.Fatalf("goal scene frame %d art block drifted: ground at %d, want %d", f, col, groundCol)
+		}
 	}
 
 	m := liveModel(120, 32)
@@ -1438,13 +1460,13 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 	}
 	for _, line := range cases {
 		scene := matchSceneFromLine(line, nil)
-		if len(scene.frames) != 3 {
-			t.Fatalf("scene %q frames = %d, want 3", scene.kind, len(scene.frames))
+		if len(scene.frames) < 3 {
+			t.Fatalf("scene %q frames = %d, want at least 3", scene.kind, len(scene.frames))
 		}
 		seen := map[string]bool{}
 		for frame := range scene.frames {
-			if len(scene.frames[frame]) != 7 {
-				t.Fatalf("scene %q frame %d rows = %d, want 7", scene.kind, frame, len(scene.frames[frame]))
+			if len(scene.frames[frame]) != sceneCanvasHeight {
+				t.Fatalf("scene %q frame %d rows = %d, want %d", scene.kind, frame, len(scene.frames[frame]), sceneCanvasHeight)
 			}
 			rendered := sceneFrameAt(m, scene, 100, 9, frame)
 			if len(rendered) != 9 {
@@ -1459,19 +1481,6 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 				raw := strings.TrimPrefix(row, preformattedLinePrefix)
 				if got := lipgloss.Width(raw); got != 100 {
 					t.Fatalf("scene %q frame %d width = %d, want 100: %q", scene.kind, frame, got, raw)
-				}
-			}
-		}
-		anchorRows := map[string][]int{
-			"goal": {0, 1, 2, 3, 4, 5},
-			"save": {2},
-		}
-		for _, row := range anchorRows[scene.kind] {
-			want := lipgloss.Width(strings.TrimRight(scene.frames[0][row], " "))
-			for frame := 1; frame < len(scene.frames); frame++ {
-				got := lipgloss.Width(strings.TrimRight(scene.frames[frame][row], " "))
-				if got != want {
-					t.Fatalf("scene %q anchor row %d frame %d ends at column %d, want %d", scene.kind, row, frame, got, want)
 				}
 			}
 		}
@@ -1563,10 +1572,10 @@ func TestSceneArtTemplatesStayCompactAndVisual(t *testing.T) {
 			if scene.kind != tc.kind {
 				t.Fatalf("scene kind = %q, want %q", scene.kind, tc.kind)
 			}
-			if len(scene.art) != 7 {
-				t.Fatalf("scene art lines = %d, want 7: %#v", len(scene.art), scene.art)
+			if len(scene.frames[0]) != sceneCanvasHeight {
+				t.Fatalf("scene art lines = %d, want %d: %#v", len(scene.frames[0]), sceneCanvasHeight, scene.frames[0])
 			}
-			for _, line := range scene.art {
+			for _, line := range scene.frames[0] {
 				if lipgloss.Width(line) > 52 {
 					t.Fatalf("scene art line too wide (%d): %q", lipgloss.Width(line), line)
 				}

@@ -67,10 +67,12 @@ replay detail without paging past the full future schedule.
 ![TUI fixtures and results overview](assets/intro/tui-results-detail.png)
 
 The match view focuses on scoreboard, public stats, scorers, cards, ratings,
-current scene art, and the commentary flow. Goals, saves, crosses, through
-balls, long shots, set pieces, counters, and open chances move through short
-fixed-width terminal animations while the live window is open; quiet phases
-and replays remain stable, and `Space` pauses or resumes motion. It is built for
+current scene art, and the commentary flow. Every recognized scene — goals with
+net ripple and celebrations, keeper saves, crosses, cut-backs, through balls,
+long shots, set pieces, counters, scrambles, dribbles, cards, stoppages,
+substitutions, open chances, and quiet build-up — moves through a short
+fixed-canvas terminal animation while the live window is open; replays remain
+stable, and `Space` pauses or resumes motion. It is built for
 watching football unfold through concise terminal vignettes rather than for
 issuing live tactical commands.
 
