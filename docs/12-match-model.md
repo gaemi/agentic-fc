@@ -445,6 +445,13 @@ command for either side. Full-time distinguishes goalless, scoring-level,
 one-goal edge, two-goal win, and three-plus-goal emphatic win. Legacy generic
 keys remain renderable for saved matches.
 
+The half-time whistle is its own queue event at exactly 45 minutes; it is no
+longer borrowed from the sampled 47' key moment. A match resumed from an older
+in-progress snapshot without that event records one 45' fallback line when the
+47' moment arrives, without duplicating commentary or changing its moment
+roll. A legacy snapshot already past 47' keeps its persisted 47' whistle rather
+than rewriting historical world state.
+
 Formula policy:
 
 ```
