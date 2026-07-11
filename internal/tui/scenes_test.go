@@ -161,6 +161,40 @@ func TestGoalCommentaryNeverFallsBackToBuildUp(t *testing.T) {
 	}
 }
 
+// The goal banners hang off goalProse, so every goal template must trip it
+// and the interval/final/shootout bookkeeping (which also quotes the score)
+// must not, or halftime beats would flash GOAL.
+func TestGoalProseCoversGoalTemplatesOnly(t *testing.T) {
+	params := map[string]any{
+		"player": "Kim Min-jae", "club": "Alpha", "home": "Alpha", "away": "Beta",
+		"home_goals": 2, "away_goals": 1, "home_pens": 4, "away_pens": 3,
+		"winner": "Alpha",
+	}
+	goalKey := regexp.MustCompile(`^comment\.goal\.`)
+	notGoalKey := regexp.MustCompile(`^comment\.(halftime|fulltime|shootout)`)
+	for _, loc := range narrative.Supported {
+		goals, others := 0, 0
+		for key := range narrative.Default[loc] {
+			line := narrative.Default.Render(loc, key, params)
+			switch {
+			case goalKey.MatchString(key):
+				goals++
+				if !goalProse(line) {
+					t.Errorf("%s %s: goal template not detected as goal prose: %q", loc, key, line)
+				}
+			case notGoalKey.MatchString(key):
+				others++
+				if goalProse(line) {
+					t.Errorf("%s %s: interval/final line wrongly detected as goal prose: %q", loc, key, line)
+				}
+			}
+		}
+		if goals == 0 || others == 0 {
+			t.Fatalf("locale %s: goal templates %d, interval templates %d — expected both", loc, goals, others)
+		}
+	}
+}
+
 // DUMP_SCENES=1 go test ./internal/tui -run TestDumpScenes -v
 // prints every frame of every scene for visual review.
 func TestDumpScenes(t *testing.T) {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -663,6 +664,35 @@ func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
 	return matchSceneFromLine("", &mv.Markers[len(mv.Markers)-1])
 }
 
+// Every goal template quotes the new score with an en-dash; the only other
+// commentary carrying one is the interval/final/shootout bookkeeping.
+var commentScorePattern = regexp.MustCompile(`\d+–\d+`)
+
+// goalProse reports whether a commentary line announces a scored goal.
+// Both the scene classifier and the modal goal banners rely on it, so a
+// patterned goal that plays its action scene still carries a goal signal.
+func goalProse(line string) bool {
+	if line == "" {
+		return false
+	}
+	lower := strings.ToLower(line)
+	// Interval, final-whistle, and shootout bookkeeping quotes scores and may
+	// mention goals without one being scored on this beat.
+	if containsAny(lower, "half time", "full time", "after 90", "penalties",
+		"전반 종료", "경기 종료", "90분 종료", "승부차기") {
+		return false
+	}
+	if commentScorePattern.MatchString(line) {
+		return true
+	}
+	return containsAny(lower,
+		"goal!", "scores", "scored", "finds the net", "it's in",
+		"strikes!", "lashes it home", "ruthless finish", "buries it", "smashes",
+		"finish, noise", "rolls it home", "bundles it",
+		"득점", "골!", "골망", "들어갔", "꽂아 넣", "냉정한 마무리", "첫 터치, 슛",
+		"밀어 넣", "굴려 넣")
+}
+
 func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 	kind := ""
 	if marker != nil {
@@ -670,16 +700,11 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 	}
 	lower := strings.ToLower(line)
 	switch {
-	case kind == "GOAL" || containsAny(lower,
-		"goal!", "scores", "scored", "finds the net", "it's in",
-		"strikes!", "lashes it home", "ruthless finish", "buries it", "smashes",
-		"finish, noise", "rolls it home", "bundles it",
-		"득점", "골!", "골망", "들어갔", "꽂아 넣", "냉정한 마무리", "첫 터치, 슛",
-		"밀어 넣", "굴려 넣"):
-		// A scored move keeps its action scene — the flash banner already
-		// announces the goal — so cut-back, counter, and cross goals play
-		// their specific frames. Prose without an action shape gets the
-		// generic goal celebration.
+	case kind == "GOAL" || goalProse(line):
+		// A scored move keeps its action scene — the goal banner rendered by
+		// the live and replay modals announces the goal — so cut-back,
+		// counter, and cross goals play their specific frames. Prose without
+		// an action shape gets the generic goal celebration.
 		if action := actionSceneKind(lower); action != "" {
 			return sceneByKind(action)
 		}

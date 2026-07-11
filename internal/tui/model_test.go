@@ -1727,6 +1727,42 @@ func TestGoalFlashBannerSpansFullModalWidth(t *testing.T) {
 	}
 }
 
+// A patterned goal plays its action scene, so the goal signal must survive
+// without the timed marker flash: replays get a static banner on goal beats,
+// and live keeps a banner up while the goal is still the visible line.
+func TestGoalBannerWithoutTimedFlash(t *testing.T) {
+	m := liveModel(140, 36)
+
+	m.MatchModal = modalReplay
+	m.MatchModalID = 0
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1,
+		Commentary: []string{
+			"Alpha work it to the byline; one pass back, one calm touch from Rao, goal. 1–0.",
+			"A quiet spell as the sides feel each other out.",
+		},
+	}
+	m.Fixtures = nil
+	m.ReplayOffset = 0
+	box := m.replayMatchModal(120, 30)
+	if !strings.Contains(box, "█") || !strings.Contains(box, "GOAL") {
+		t.Fatalf("replay goal beat missing static banner:\n%s", box)
+	}
+	m.ReplayOffset = 1
+	if box := m.replayMatchModal(120, 30); strings.Contains(box, "█") {
+		t.Fatalf("replay quiet beat should not show goal banner:\n%s", box)
+	}
+
+	live := liveModel(140, 36)
+	live.Matches[0].Minute = 80
+	live.Matches[0].Markers = []LiveMarker{{Minute: 70, Kind: "GOAL", Side: "HOME"}}
+	live.Matches[0].Commentary = []string{"Rao lashes it home for Alpha! The stand erupts — 2–1."}
+	box = live.liveMatchModal(120, 30)
+	if !strings.Contains(box, "█") || !strings.Contains(box, "GOAL") {
+		t.Fatalf("live goal beat with expired flash missing banner:\n%s", box)
+	}
+}
+
 func TestGoalFlashExpiresBeforeTheNextMoment(t *testing.T) {
 	m := liveModel(140, 36)
 	m.Matches[0].Markers = []LiveMarker{{Minute: 67, Kind: "GOAL", Side: "HOME"}}

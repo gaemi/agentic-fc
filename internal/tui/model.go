@@ -1233,7 +1233,14 @@ func (m Model) liveMatchModal(width, height int) string {
 	lines := []string{
 		fmt.Sprintf("%d' · %s · %d/%d · %s · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
 	}
-	if flash := m.goalFlashLine(mv, width-2); flash != "" {
+	flash := m.goalFlashLine(mv, width-2)
+	if flash == "" && goalProse(current) {
+		// The timed flash has expired (or the marker is missing) but the
+		// visible beat is still the scored goal — keep the goal signal up
+		// while an action scene plays.
+		flash = m.plainGoalBanner(width - 2)
+	}
+	if flash != "" {
 		// Already exactly content-wide; wrapText would collapse its double
 		// spaces and leave a ragged right edge on the banner.
 		lines = append(lines, preformattedLinePrefix+flash)
@@ -1388,6 +1395,11 @@ func (m Model) replayMatchModal(width, height int) string {
 		current = md.Commentary[start]
 	}
 	sc := matchSceneFromLine(current, nil)
+	if goalProse(current) {
+		// Replays never show the timed live flash, so browsing onto a goal
+		// beat raises a static banner above its action scene instead.
+		lines = append(lines, preformattedLinePrefix+m.plainGoalBanner(width-2))
+	}
 	if !compact && height-2-len(lines) >= 14 {
 		if frame := sceneFrame(m, sc, width-2, sceneFrameRows); len(frame) > 0 {
 			lines = append(lines, "")
@@ -1498,6 +1510,22 @@ func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
 	left := pad / 2
 	right := pad - left
 	return strings.Repeat("█", left) + msg + strings.Repeat("█", right)
+}
+
+// plainGoalBanner is the untimed variant of goalFlashLine for moments where
+// the marker window is unavailable — replay browsing and live beats whose
+// flash already expired — but the visible line still announces a goal.
+func (m Model) plainGoalBanner(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	msg := fmt.Sprintf("  %s  ", strings.ToUpper(m.ui("ui.match.goalflash")))
+	if lipgloss.Width(msg) > width {
+		msg = truncate(msg, width)
+	}
+	pad := width - lipgloss.Width(msg)
+	left := pad / 2
+	return strings.Repeat("█", left) + msg + strings.Repeat("█", pad-left)
 }
 
 func modalBox(width, height int, title string, lines []string) string {
