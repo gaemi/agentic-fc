@@ -277,8 +277,17 @@ func (g *Gateway) getMindset(mid int64, sid string, _ emptyIn) map[string]any {
 	return g.run(mid, sid, focus.GetMindset, nil, flatCost(focus.GetMindset),
 		func(cc *callCtx) (any, *apiError) {
 			m := cc.manager
+			// Normalize only the public value copy. A custom or legacy save may
+			// carry nil slices, and changing them here would alter persisted state.
+			publicMindset := m.Mindset
+			if publicMindset.Priorities == nil {
+				publicMindset.Priorities = []mindset.Priority{}
+			}
+			if publicMindset.Directives == nil {
+				publicMindset.Directives = []mindset.Directive{}
+			}
 			data := map[string]any{
-				"mindset":    m.Mindset,
+				"mindset":    publicMindset,
 				"employment": g.employment(m),
 				"reputation": g.descriptor("desc.reputation." + reputationBand(m.Reputation)),
 				// The descriptor surface is stable even before richer morale and

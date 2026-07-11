@@ -200,6 +200,35 @@ func TestFreeToolsCostNothingButAreLogged(t *testing.T) {
 	}
 }
 
+func TestGetMindsetRendersEmptyListsAsArrays(t *testing.T) {
+	g, _, _, manifest := newGateway(t)
+	mid := firstManagerID(manifest)
+	if g.managers[mid].Mindset.Directives != nil {
+		t.Fatal("test fixture unexpectedly starts with initialized directives")
+	}
+	g.managers[mid].Mindset.Priorities = nil
+
+	env := g.getMindset(mid, "s1", emptyIn{})
+	data := dataOf(t, env)
+	view := data["mindset"].(mindset.Mindset)
+	if view.Priorities == nil || len(view.Priorities) != 0 {
+		t.Fatalf("public priorities = %#v, want an empty non-nil slice", view.Priorities)
+	}
+	if view.Directives == nil || len(view.Directives) != 0 {
+		t.Fatalf("public directives = %#v, want an empty non-nil slice", view.Directives)
+	}
+	if g.managers[mid].Mindset.Priorities != nil || g.managers[mid].Mindset.Directives != nil {
+		t.Fatal("rendering the public view mutated persisted manager state")
+	}
+	wire, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wire), `"priorities":[]`) || !strings.Contains(string(wire), `"directives":[]`) {
+		t.Fatalf("get_mindset JSON did not preserve the empty-list contract: %s", wire)
+	}
+}
+
 func TestGuideIncludesPlayableVocabulary(t *testing.T) {
 	g, _, _, manifest := newGateway(t)
 	mid := firstManagerID(manifest)
