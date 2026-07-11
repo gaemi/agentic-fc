@@ -317,6 +317,42 @@ func TestNewsArticles(t *testing.T) {
 	}
 }
 
+func TestNewsArticleAnglesVaryAcrossRepeatedEvents(t *testing.T) {
+	s, host := newTestServer(t)
+	for i, player := range []string{"Alex North", "Bruno Vale", "Choi Min-jun"} {
+		host.world.AddNews(worldgen.NewsItem{
+			GameTime: sim.GameTime(100 + i), Category: "injury", Key: "news.injury.weeks",
+			Params: map[string]any{"club": "Alderton Athletic", "player": player},
+		})
+	}
+
+	code, body := get(t, s, "/v1/news?limit=10&locale=en")
+	if code != http.StatusOK {
+		t.Fatalf("news status = %d: %s", code, body)
+	}
+	var out struct {
+		Items []newsArticleDTO `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 3 {
+		t.Fatalf("injury articles = %d, want 3", len(out.Items))
+	}
+	angles := map[string]bool{}
+	for _, item := range out.Items {
+		angles[item.Deck+"\n"+item.Body] = true
+	}
+	if len(angles) < 2 {
+		t.Fatalf("three repeated injuries did not vary their prose angle: %#v", out.Items)
+	}
+
+	_, again := get(t, s, "/v1/news?limit=10&locale=en")
+	if again != body {
+		t.Fatal("the same news ids changed article prose between reads")
+	}
+}
+
 func TestNewsHidesMatchdayPreviewArticles(t *testing.T) {
 	s, host := newTestServer(t)
 	host.world.AddNews(worldgen.NewsItem{
@@ -403,7 +439,6 @@ func TestMatchdayResultsArticleRendersDetailedConsoleBody(t *testing.T) {
 		"AFC Castleden, 승점 6점으로 선두",
 		"핵심 흐름:",
 		"무승부 1경기",
-		"다음 선발 회의와 훈련장 메시지",
 	} {
 		if !strings.Contains(all, want) {
 			t.Fatalf("matchday article missing %q: %#v", want, item)

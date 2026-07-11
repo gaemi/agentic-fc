@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"testing"
 
@@ -179,6 +180,36 @@ func TestNewsCardRendersArticle(t *testing.T) {
 	}
 }
 
+func TestNewsCardKeepsStructuredArticleAngle(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	params := map[string]any{"club": "Alderton Athletic", "player": "Alex North"}
+	env := map[string]any{
+		"ok": true,
+		"meta": map[string]any{
+			"focus": map[string]any{"spent": 1, "balance": 99},
+			"tool":  string(focus.GetNews),
+		},
+		"data": map[string]any{"items": []map[string]any{{
+			"id": 2, "category": "injury",
+			"headline": map[string]any{"key": "news.injury.weeks", "params": params},
+		}}},
+	}
+	article := g.newsArticle("injury", "news.injury.weeks", params, narrative.LocaleEN, 2)
+	card := newsCard(g, narrative.LocaleEN, getNewsIn{}, env)
+	bodyParagraphs := strings.Split(fmt.Sprint(article["body"]), "\n\n")
+	if len(bodyParagraphs) < 2 {
+		t.Fatalf("variant article has no editorial body paragraph: %+v", article)
+	}
+	for field, want := range map[string]string{
+		"deck": html.EscapeString(fmt.Sprint(article["deck"])),
+		"body": html.EscapeString(bodyParagraphs[1]),
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("news card lost id-selected %s angle %q:\n%s", field, want, card)
+		}
+	}
+}
+
 func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
 	g, _, _, _ := newGateway(t)
 	params := map[string]any{
@@ -202,13 +233,13 @@ func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
 			"draws":       1,
 		},
 	}
-	article := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN)
+	article := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, 0)
 	for _, want := range []string{"Matchday round-up", "Results:", "Table picture:", "AFC Castleden 2-1 Eastvale Town", "Draws: 1"} {
 		if !strings.Contains(fmt.Sprint(article["body"]), want) && !strings.Contains(fmt.Sprint(article["title"]), want) {
 			t.Fatalf("matchday article missing %q: %+v", want, article)
 		}
 	}
-	ko := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleKO)
+	ko := g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleKO, 0)
 	for _, want := range []string{"매치데이 라운드업", "결과:", "순위표 흐름:", "AFC Castleden 2-1 Eastvale Town", "무승부 1경기"} {
 		if !strings.Contains(fmt.Sprint(ko["body"]), want) && !strings.Contains(fmt.Sprint(ko["title"]), want) {
 			t.Fatalf("ko matchday article missing %q: %+v", want, ko)
@@ -227,7 +258,7 @@ func TestMatchdayNewsArticleUsesGroupedBody(t *testing.T) {
 		"away_goals":  1,
 		"draws":       0,
 	}
-	article = g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN)
+	article = g.newsArticle("match", "feed.matchday.results", params, narrative.LocaleEN, 0)
 	if !strings.Contains(fmt.Sprint(article["body"]), "No draw softened the table movement") {
 		t.Fatalf("all-winners story missing: %+v", article)
 	}

@@ -63,6 +63,22 @@ func mstr(m map[string]any, key string) string {
 	return ""
 }
 
+func mint64(m map[string]any, key string) int64 {
+	if m == nil {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
+}
+
 // moneyDisplay reads the human string out of a money map ({amount, display}).
 func moneyDisplay(v any) string {
 	if m := anyMap(v); m != nil {
@@ -193,7 +209,7 @@ func headlineLines(g *Gateway, loc narrative.Locale, rows []map[string]any) []wi
 		title := ""
 		if headline := anyMap(row["headline"]); headline != nil {
 			if key := mstr(headline, "key"); key != "" {
-				article := g.newsArticle(fmt.Sprint(row["category"]), key, anyMap(headline["params"]), loc)
+				article := g.newsArticle(fmt.Sprint(row["category"]), key, anyMap(headline["params"]), loc, mint64(row, "id"))
 				title = mstr(article, "title")
 			}
 		}
@@ -392,7 +408,7 @@ func newsCard(g *Gateway, loc narrative.Locale, _ getNewsIn, env map[string]any)
 	top := items[0]
 	if headline := anyMap(top["headline"]); headline != nil {
 		params := anyMap(headline["params"])
-		article := g.newsArticle(fmt.Sprint(top["category"]), mstr(headline, "key"), params, loc)
+		article := g.newsArticle(fmt.Sprint(top["category"]), mstr(headline, "key"), params, loc, mint64(top, "id"))
 		c.headline = mstr(article, "title")
 		c.row(g.tr(loc, "widget.row.source"), mstr(article, "source"))
 		c.row(g.tr(loc, "widget.row.category"), fmt.Sprint(top["category"]))

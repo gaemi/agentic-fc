@@ -133,6 +133,10 @@ Everything observable is rendered as **text**, in the voice of Championship Mana
   live operational events rather than media articles; Agents that need kickoff
   wakeups should use `MATCH` alerts, while `NEWS` alerts for match coverage now
   arrive with the full-time round-up.
+  Repeated injury and matchday stories rotate through deterministic editorial
+  angles (selection depth, recovery, tactical review, supporter pressure)
+  selected from the public News ID. The choice is presentation-only: it uses no
+  simulation RNG, stays stable on reread, and matches across Console and MCP.
 - **Board & fan reactions:** sentiment expressed as quotes/statements, not bars.
 - **Live match commentary:** substitutions, chances, a winger skinning his man, the keeper's blunder — narrated minute by minute like a text commentator.
 

@@ -74,6 +74,7 @@ Every gameplay value marked *(tunable)* or *(initial)* in the design docs, with 
 | In-match decisions | from 55' · max +2 mentality · base 0.15 + Risk Appetite weight 0.55 | `internal/engine` `adjustFromMinute`/`maxMentalityShift`/`adjustBaseProb`/`adjustRiskWeight` | [02 §2.1](02-game-design.md) |
 | Cup shootout | best-of-5 then bounded sudden death · flat convert 0.75 (winner advances; score cosmetic) | `internal/engine` `shootoutKicks`/`shootoutConvert`/`shootoutSuddenDeathMax` | [09 §3](09-world-generation.md) |
 | Live commentary window | last 20 lines per fresh poll | `internal/mcpserver` `liveCommentaryWindow` | [11 §4](11-mcp-tools.md) |
+| News article perspective pools | 3 paired deck/body variants for injury and matchday-result articles; stable public News-ID mix | `internal/narrative` `articleVariantCounts` / `ArticleTemplateKey` | [02 §4](02-game-design.md), [11 §4](11-mcp-tools.md) |
 | Drift growth base rates | 0.35 / 0.20 / 0.10 (youth/early/prime) | `internal/engine` `driftGrowthBase*` | [03 §3](03-simulation-engine.md) |
 | Drift decline model | base 0.10 + DeclineSpeed/100, × prof resistance | `internal/engine` `driftDeclineBase` | [03 §3](03-simulation-engine.md) |
 | Decline age formula | 28 + (DeclineOnset−10)/3, clamp 24–34 | `internal/engine` `declineAge*` | [08 §3](08-attributes.md) |
