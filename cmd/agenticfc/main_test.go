@@ -32,9 +32,10 @@ func TestListenTCP(t *testing.T) {
 func TestDialableAddr(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"0.0.0.0:7420", "127.0.0.1:7420"},
-		{"[::]:7421", "127.0.0.1:7421"},
+		{"[::]:7421", "[::1]:7421"},
 		{":7420", "127.0.0.1:7420"},
 		{"127.0.0.1:7420", "127.0.0.1:7420"},
+		{"[::1]:7421", "[::1]:7421"},
 		{"192.168.1.5:80", "192.168.1.5:80"},
 		{"example.local:7420", "example.local:7420"},
 		{"not-an-address", "not-an-address"},

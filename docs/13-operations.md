@@ -82,10 +82,11 @@ its own ports:
 ```
 
 Port `0` asks the OS for a random free port. The startup banner always prints
-the addresses that were actually bound (wildcard hosts such as `0.0.0.0` are
-shown as `127.0.0.1` so the URL is directly dialable), so
-`-console-addr 127.0.0.1:0` is a safe way to launch without picking a port
-first; point the console's `-server` flag at the printed address.
+the addresses that were actually bound (wildcard hosts are shown as the
+matching loopback address — `127.0.0.1` or `::1` — so the URL is directly
+dialable), so `-console-addr 127.0.0.1:0` is a safe way to launch without
+picking a port first; point the console's `-server` flag at the printed
+address.
 
 Because the ports are bound before the world loads, a client that connects
 during startup receives `503 Service Unavailable` with a `Retry-After` header

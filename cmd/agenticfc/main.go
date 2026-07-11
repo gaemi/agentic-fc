@@ -839,14 +839,20 @@ func (s *startupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // dialableAddr rewrites a wildcard bind address (":7420", "0.0.0.0:…",
 // "[::]:…") to its loopback equivalent so banner URLs and copy-paste hints
-// always point somewhere a local client can actually dial.
+// always point somewhere a local client can actually dial. The family is
+// preserved: an IPv6 wildcard maps to ::1, because on IPV6_V6ONLY hosts the
+// listener is not reachable via 127.0.0.1 (and ::1 also works dual-stack).
 func dialableAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return addr
 	}
-	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+	ip := net.ParseIP(host)
+	switch {
+	case host == "" || (ip != nil && ip.IsUnspecified() && ip.To4() != nil):
 		return net.JoinHostPort("127.0.0.1", port)
+	case ip != nil && ip.IsUnspecified():
+		return net.JoinHostPort("::1", port)
 	}
 	return addr
 }
