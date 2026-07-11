@@ -917,10 +917,20 @@ type lineupEntryDTO struct {
 	Bench     bool `json:"bench,omitempty"`
 }
 
+// teamSheetOrder ranks positions the way a printed team sheet reads: keeper,
+// back line, midfield, then the front — inside a band, right before left.
+// Unknown positions sink to the end.
+var teamSheetOrder = map[string]int{
+	"GK": 0, "DR": 1, "DC": 2, "DL": 3, "DM": 4,
+	"MC": 5, "MR": 6, "ML": 7, "AM": 8, "WR": 9, "WL": 10, "ST": 11,
+}
+
 // lineupEntries assembles one side's team sheet from the persisted match
 // story. Everything here is already-public spectacle: names, positions, and
-// the goal/card/sub events the pop-up lists elsewhere. Ids without a
-// resolvable player (defensive) are skipped.
+// the goal/card/sub events the pop-up lists elsewhere. Starters are served
+// in team-sheet order (the stored XI order is a selection artifact, not a
+// presentation promise); entrants and bench keep their story order. Ids
+// without a resolvable player (defensive) are skipped.
 func lineupEntries(clubID int64, xi, bench []int64, subs []worldgen.SubEvent,
 	scorers, cards []worldgen.MatchEvent, ratings map[int64]int,
 	playerOf func(int64) *worldgen.Player) []lineupEntryDTO {
@@ -941,7 +951,24 @@ func lineupEntries(clubID int64, xi, bench []int64, subs []worldgen.SubEvent,
 		index[id] = len(rows)
 		rows = append(rows, row)
 	}
-	for _, id := range xi {
+	starters := make([]int64, len(xi))
+	copy(starters, xi)
+	sort.SliceStable(starters, func(i, j int) bool {
+		pi, pj := playerOf(starters[i]), playerOf(starters[j])
+		if (pi == nil) != (pj == nil) {
+			return pj == nil
+		}
+		if pi == nil {
+			return false
+		}
+		oi, iOK := teamSheetOrder[pi.Position]
+		oj, jOK := teamSheetOrder[pj.Position]
+		if iOK != jOK {
+			return iOK
+		}
+		return oi < oj
+	})
+	for _, id := range starters {
 		add(id, 0, false)
 	}
 	for _, sub := range subs {

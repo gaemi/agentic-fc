@@ -2101,6 +2101,12 @@ func TestLiveMatchModalLineupPanelTogglesAndRenders(t *testing.T) {
 	if m.LineupView {
 		t.Fatal("closing the modal should reset the lineup panel")
 	}
+
+	m.LineupView = true
+	um, _ := m.liveModalFinished()
+	if um.(Model).LineupView {
+		t.Fatal("the full-time transition should reset the lineup panel")
+	}
 }
 
 func TestReplayModalLineupPanelAndNarrowStack(t *testing.T) {

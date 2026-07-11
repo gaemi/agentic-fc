@@ -113,7 +113,8 @@ public rating; players who came on follow the starters, and the live variant
 closes with the unused bench, dimmed. The panel is assembled from the
 already-public lineup rows the Console API serves (`home_lineup` /
 `away_lineup` on both the live and match-detail payloads — names, positions,
-ratings, and event minutes only), so it respects the same visibility
+ratings, and event minutes only, with starters already serialized in
+team-sheet order), so it respects the same visibility
 boundaries as the rest of the pop-up; older daemons without those fields get
 an honest empty-panel notice instead. The toggle resets when the pop-up
 closes.

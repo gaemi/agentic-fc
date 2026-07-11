@@ -1597,7 +1597,8 @@ var lineupPositionOrder = map[string]int{
 
 // sortLineup orders the starter prefix by position band (stable, so the
 // served order breaks ties); entrants and bench rows keep their story order
-// after the starters. Presentation only — the wire keeps the stored XI order.
+// after the starters. Current daemons already serve team-sheet order, so
+// this is an idempotent guard for older daemons that served raw XI order.
 func sortLineup(entries []LineupEntry) []LineupEntry {
 	starters := 0
 	for _, e := range entries {
@@ -2717,6 +2718,10 @@ func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
 
 func (m Model) liveModalFinished() (tea.Model, tea.Cmd) {
 	m.stopMatchAnimation()
+	// Full time swaps the modal kind under the viewer; the replay (or
+	// waiting) body should open on its normal broadcast view, not a lineup
+	// panel left over from the live match.
+	m.LineupView = false
 	if idx := m.fixtureIndexByID(m.MatchModalID); idx >= 0 {
 		f := m.Fixtures[idx]
 		m.FixtureIdx = idx
