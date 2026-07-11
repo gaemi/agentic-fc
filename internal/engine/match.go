@@ -268,14 +268,25 @@ var quietCommentaryKeys = []string{
 	"comment.quiet.5", "comment.quiet.6", "comment.quiet.7", "comment.quiet.8",
 	"comment.quiet.9", "comment.quiet.10", "comment.quiet.11", "comment.quiet.12",
 	"comment.quiet.13", "comment.quiet.14", "comment.quiet.15",
+	"comment.quiet.16", "comment.quiet.17", "comment.quiet.18",
+	"comment.quiet.19", "comment.quiet.20", "comment.quiet.21",
 }
+
+// legacyQuietPoolSize anchors the quiet draw's RNG bound (see pickWidenedKey).
+const legacyQuietPoolSize = 15
 
 // pickUnusedCommentaryKey preserves the original single IntN draw and bound,
 // then probes deterministically past keys already used in this match. Thus
 // presentation avoids repeats until the pool is exhausted without moving the
 // RNG stream seen by cards, injuries, or any other simulation outcome.
 func pickUnusedCommentaryKey(r *rand.Rand, lm *worldgen.LiveMatch, keys []string) string {
-	start := r.IntN(len(keys))
+	legacyCount := legacyQuietPoolSize
+	if legacyCount > len(keys) {
+		legacyCount = len(keys)
+	}
+	// The draw keeps its original bound; state rotation spreads it across
+	// any later pool growth without moving the RNG stream (see pickWidenedKey).
+	start := (r.IntN(legacyCount) + lm.Clock + len(lm.Commentary)*3) % len(keys)
 	used := make(map[string]bool, len(lm.Commentary))
 	for _, line := range lm.Commentary {
 		used[line.Key] = true
