@@ -54,19 +54,24 @@ type Adjustment struct {
 // key moments. It stores aggregate facts only — no private player traits or
 // formula weights — and is safe for MCP/Console/TUI surfaces.
 type MatchDiagnostics struct {
-	ShotQuality    map[string]int `json:"shot_quality,omitempty"`     // LOW | MEDIUM | HIGH
-	AerialDuels    map[string]int `json:"aerial_duels,omitempty"`     // HOME | AWAY attempts
-	AerialWins     map[string]int `json:"aerial_wins,omitempty"`      // HOME | AWAY wins
-	PressTurnovers map[string]int `json:"press_turnovers,omitempty"`  // HOME | AWAY
-	SetPieceThreat map[string]int `json:"set_piece_threat,omitempty"` // HOME | AWAY
-	TacticalTilt   map[string]int `json:"tactical_tilt,omitempty"`    // HOME_WIDE, AWAY_CENTRAL, ...
+	ShotQuality       map[string]int `json:"shot_quality,omitempty"`         // LOW | MEDIUM | HIGH aggregate
+	ShotQualityBySide map[string]int `json:"shot_quality_by_side,omitempty"` // HOME_HIGH, AWAY_MEDIUM, ...
+	AerialDuels       map[string]int `json:"aerial_duels,omitempty"`         // HOME | AWAY attempts
+	AerialWins        map[string]int `json:"aerial_wins,omitempty"`          // HOME | AWAY wins
+	PressTurnovers    map[string]int `json:"press_turnovers,omitempty"`      // HOME | AWAY
+	SetPieceThreat    map[string]int `json:"set_piece_threat,omitempty"`     // HOME | AWAY
+	TacticalTilt      map[string]int `json:"tactical_tilt,omitempty"`        // HOME_WIDE, AWAY_CENTRAL, ...
 }
 
-func (d *MatchDiagnostics) AddShotQuality(band string) {
+func (d *MatchDiagnostics) AddShotQuality(side, band string) {
 	if d.ShotQuality == nil {
 		d.ShotQuality = map[string]int{}
 	}
 	d.ShotQuality[band]++
+	if d.ShotQualityBySide == nil {
+		d.ShotQualityBySide = map[string]int{}
+	}
+	d.ShotQualityBySide[side+"_"+band]++
 }
 
 func (d *MatchDiagnostics) AddSide(m *map[string]int, side string) {
@@ -382,12 +387,13 @@ func (r *MatchResult) archiveCopy() MatchResult {
 
 func (d MatchDiagnostics) Clone() MatchDiagnostics {
 	return MatchDiagnostics{
-		ShotQuality:    cloneStringIntMap(d.ShotQuality),
-		AerialDuels:    cloneStringIntMap(d.AerialDuels),
-		AerialWins:     cloneStringIntMap(d.AerialWins),
-		PressTurnovers: cloneStringIntMap(d.PressTurnovers),
-		SetPieceThreat: cloneStringIntMap(d.SetPieceThreat),
-		TacticalTilt:   cloneStringIntMap(d.TacticalTilt),
+		ShotQuality:       cloneStringIntMap(d.ShotQuality),
+		ShotQualityBySide: cloneStringIntMap(d.ShotQualityBySide),
+		AerialDuels:       cloneStringIntMap(d.AerialDuels),
+		AerialWins:        cloneStringIntMap(d.AerialWins),
+		PressTurnovers:    cloneStringIntMap(d.PressTurnovers),
+		SetPieceThreat:    cloneStringIntMap(d.SetPieceThreat),
+		TacticalTilt:      cloneStringIntMap(d.TacticalTilt),
 	}
 }
 

@@ -846,6 +846,9 @@ func TestMatchCommentaryAndForm(t *testing.T) {
 	played := w.Results[0]
 	w.Results[0].ChanceTypes = map[string]int{"COUNTER": 2, "CUTBACK": 1}
 	w.Results[0].Diagnostics.ShotQuality = map[string]int{"HIGH": 1, "MEDIUM": 2}
+	w.Results[0].Diagnostics.ShotQualityBySide = map[string]int{
+		"HOME_HIGH": 1, "HOME_MEDIUM": 1, "AWAY_MEDIUM": 1,
+	}
 	w.Results[0].Diagnostics.PressTurnovers = map[string]int{"HOME": 2}
 
 	mv := dataOf(t, g.getMatch(mid, "s1", getMatchIn{Fixture: played.FixtureID}))
@@ -859,7 +862,9 @@ func TestMatchCommentaryAndForm(t *testing.T) {
 		t.Fatalf("match_patterns not rendered as player-facing rows: %+v", patterns)
 	}
 	quality := stats["shot_quality"].([]map[string]any)
-	if len(quality) == 0 || quality[0]["band"] != "MEDIUM" || quality[0]["count"] != 2 {
+	if len(quality) != 3 || quality[0]["side"] != "HOME" || quality[0]["band"] != "HIGH" ||
+		quality[1]["side"] != "HOME" || quality[1]["band"] != "MEDIUM" ||
+		quality[2]["side"] != "AWAY" || quality[2]["band"] != "MEDIUM" {
 		t.Fatalf("shot quality not exposed as public diagnostic rows: %+v", quality)
 	}
 	press := stats["press_turnovers"].([]map[string]any)
@@ -886,6 +891,28 @@ func TestMatchCommentaryAndForm(t *testing.T) {
 	}
 	if !sawForm {
 		t.Fatal("no club shows league form after matches played")
+	}
+}
+
+func TestShotQualityRowsLabelLegacyAggregateUnknown(t *testing.T) {
+	rows := shotQualityRows(worldgen.MatchDiagnostics{
+		ShotQuality: map[string]int{"HIGH": 1, "MEDIUM": 2},
+	})
+	if len(rows) != 2 || rows[0]["side"] != "UNKNOWN" || rows[0]["band"] != "HIGH" ||
+		rows[1]["side"] != "UNKNOWN" || rows[1]["band"] != "MEDIUM" {
+		t.Fatalf("legacy shot quality rows = %+v", rows)
+	}
+}
+
+func TestShotQualityRowsPreserveMixedVersionRemainder(t *testing.T) {
+	rows := shotQualityRows(worldgen.MatchDiagnostics{
+		ShotQuality:       map[string]int{"HIGH": 2, "MEDIUM": 2},
+		ShotQualityBySide: map[string]int{"HOME_HIGH": 1, "AWAY_MEDIUM": 2},
+	})
+	if len(rows) != 3 || rows[0]["side"] != "HOME" || rows[0]["band"] != "HIGH" ||
+		rows[1]["side"] != "AWAY" || rows[1]["band"] != "MEDIUM" ||
+		rows[2]["side"] != "UNKNOWN" || rows[2]["band"] != "HIGH" || rows[2]["count"] != 1 {
+		t.Fatalf("mixed-version shot quality rows = %+v", rows)
 	}
 }
 

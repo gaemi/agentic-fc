@@ -1666,7 +1666,7 @@ func (g *Gateway) matchStats(homeShots, awayShots int, chanceTypes map[string]in
 	if patterns := g.matchPatternRows(chanceTypes); len(patterns) > 0 {
 		stats["match_patterns"] = patterns
 	}
-	if quality := matchCountRows(diag.ShotQuality); len(quality) > 0 {
+	if quality := shotQualityRows(diag); len(quality) > 0 {
 		stats["shot_quality"] = quality
 	}
 	if sides := sideCountRows(diag.AerialDuels); len(sides) > 0 {
@@ -1687,26 +1687,32 @@ func (g *Gateway) matchStats(homeShots, awayShots int, chanceTypes map[string]in
 	return stats
 }
 
-func matchCountRows(counts map[string]int) []map[string]any {
-	type pair struct {
-		key string
-		val int
+func shotQualityRows(diag worldgen.MatchDiagnostics) []map[string]any {
+	if len(diag.ShotQualityBySide) == 0 {
+		out := make([]map[string]any, 0, len(diag.ShotQuality))
+		for _, band := range []string{"HIGH", "MEDIUM", "LOW"} {
+			if n := diag.ShotQuality[band]; n > 0 {
+				out = append(out, map[string]any{"side": "UNKNOWN", "band": band, "count": n})
+			}
+		}
+		return out
 	}
-	pairs := make([]pair, 0, len(counts))
-	for k, v := range counts {
-		if v > 0 {
-			pairs = append(pairs, pair{key: k, val: v})
+	out := make([]map[string]any, 0, len(diag.ShotQualityBySide))
+	for _, side := range []string{"HOME", "AWAY"} {
+		for _, band := range []string{"HIGH", "MEDIUM", "LOW"} {
+			if n := diag.ShotQualityBySide[side+"_"+band]; n > 0 {
+				out = append(out, map[string]any{"side": side, "band": band, "count": n})
+			}
 		}
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].val != pairs[j].val {
-			return pairs[i].val > pairs[j].val
+	// A match may straddle an upgrade: old moments exist only in the aggregate,
+	// while new moments have a side. Preserve the unattributed remainder rather
+	// than dropping it or guessing which team took those shots.
+	for _, band := range []string{"HIGH", "MEDIUM", "LOW"} {
+		attributed := diag.ShotQualityBySide["HOME_"+band] + diag.ShotQualityBySide["AWAY_"+band]
+		if unknown := diag.ShotQuality[band] - attributed; unknown > 0 {
+			out = append(out, map[string]any{"side": "UNKNOWN", "band": band, "count": unknown})
 		}
-		return pairs[i].key < pairs[j].key
-	})
-	out := make([]map[string]any, 0, len(pairs))
-	for _, p := range pairs {
-		out = append(out, map[string]any{"band": p.key, "count": p.val})
 	}
 	return out
 }

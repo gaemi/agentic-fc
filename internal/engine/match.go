@@ -1466,7 +1466,7 @@ func (e *Engine) recordMatchDiagnostics(lm *worldgen.LiveMatch, home bool, chanc
 	if home {
 		side = "HOME"
 	}
-	lm.Diagnostics.AddShotQuality(shotQualityBand(attackScore - defenseScore))
+	lm.Diagnostics.AddShotQuality(side, shotQualityBand(attackScore-defenseScore))
 	lm.Diagnostics.AddTilt(side, chanceFamily(chanceType))
 	if chanceType == chanceCrossHeader || chanceType == chanceSetPieceHeader {
 		lm.Diagnostics.AddSide(&lm.Diagnostics.AerialDuels, side)

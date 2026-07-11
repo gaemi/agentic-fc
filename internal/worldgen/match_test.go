@@ -2,6 +2,19 @@ package worldgen
 
 import "testing"
 
+func TestShotQualityKeepsAggregateAndSideCounts(t *testing.T) {
+	var d MatchDiagnostics
+	d.AddShotQuality("AWAY", "HIGH")
+	d.AddShotQuality("HOME", "MEDIUM")
+	d.AddShotQuality("AWAY", "HIGH")
+	if d.ShotQuality["HIGH"] != 2 || d.ShotQuality["MEDIUM"] != 1 {
+		t.Fatalf("aggregate quality = %v", d.ShotQuality)
+	}
+	if d.ShotQualityBySide["AWAY_HIGH"] != 2 || d.ShotQualityBySide["HOME_MEDIUM"] != 1 {
+		t.Fatalf("side quality = %v", d.ShotQualityBySide)
+	}
+}
+
 // TestLiveMatchSubDerivations locks the derived on-pitch model:
 // OnPitch/Participants/SubsUsed are computed from XI + Subs, so an old
 // mid-match snapshot with no Subs reads as "starters unchanged", a covered sub
@@ -58,9 +71,10 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 		Commentary:  []CommentaryLine{{Minute: 1, Key: "comment.kickoff"}},
 		ChanceTypes: map[string]int{"CUTBACK": 2},
 		Diagnostics: MatchDiagnostics{
-			ShotQuality: map[string]int{"HIGH": 1},
-			AerialDuels: map[string]int{"HOME": 2},
-			AerialWins:  map[string]int{"HOME": 1},
+			ShotQuality:       map[string]int{"HIGH": 1},
+			ShotQualityBySide: map[string]int{"HOME_HIGH": 1},
+			AerialDuels:       map[string]int{"HOME": 2},
+			AerialWins:        map[string]int{"HOME": 1},
 		},
 	}
 	arch := src.archiveCopy()
@@ -70,6 +84,7 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 	if arch.FixtureID != 7 || arch.HomeGoals != 2 || len(arch.Subs) != 1 ||
 		arch.Subs[0].Reason != "TACTICAL" || len(arch.Cards) != 1 || arch.RatingsX10[1] != 74 ||
 		arch.ChanceTypes["CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
+		arch.Diagnostics.ShotQualityBySide["HOME_HIGH"] != 1 ||
 		arch.Diagnostics.AerialDuels["HOME"] != 2 || arch.Diagnostics.AerialWins["HOME"] != 1 {
 		t.Fatalf("archive lost facts: %+v", arch)
 	}
@@ -77,10 +92,12 @@ func TestArchiveCopyIsDeep(t *testing.T) {
 	src.Cards[0].Detail, src.RatingsX10[1], src.Adjustments[0].Key = "YELLOW", 0, "x"
 	src.ChanceTypes["CUTBACK"] = 0
 	src.Diagnostics.ShotQuality["HIGH"] = 0
+	src.Diagnostics.ShotQualityBySide["HOME_HIGH"] = 0
 	src.Diagnostics.AerialDuels["HOME"] = 0
 	if arch.HomeXI[0] == 99 || arch.Subs[0].On == 99 || arch.Scorers[0].PlayerID == 99 ||
 		arch.Cards[0].Detail == "YELLOW" || arch.RatingsX10[1] != 74 || arch.Adjustments[0].Key == "x" ||
 		arch.ChanceTypes["CUTBACK"] != 2 || arch.Diagnostics.ShotQuality["HIGH"] != 1 ||
+		arch.Diagnostics.ShotQualityBySide["HOME_HIGH"] != 1 ||
 		arch.Diagnostics.AerialDuels["HOME"] != 2 {
 		t.Fatal("archive aliases the source — deep copy required")
 	}
