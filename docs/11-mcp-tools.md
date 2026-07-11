@@ -203,6 +203,7 @@ Payload schemas per [10-mindset-schema.md](10-mindset-schema.md); all return the
 
 ### `update_tactical_plan` — 15 FP
 **Params**: partial patch of the plan (`formation?`, dials…). Validated against active `FORBID` directives — a patch that violates one is rejected with `CONFLICT` (remove the fence first; the Mindset never contradicts itself).
+The MCP decision card shows the complete resulting plan (formation, mentality, pressing, tempo, width, passing directness, and counter toggle) and highlights only fields submitted in the partial patch.
 
 ## 7. Unemployed scope matrix (FR-20d)
 

@@ -629,13 +629,24 @@ func removeDirectiveCard(g *Gateway, loc narrative.Locale, _ removeDirectiveIn, 
 	return renderCard(c)
 }
 
-func tacticalCard(g *Gateway, loc narrative.Locale, _ updateTacticalPlanIn, env map[string]any) string {
+func tacticalCard(g *Gateway, loc narrative.Locale, in updateTacticalPlanIn, env map[string]any) string {
 	c := g.baseCard(loc, "write", "widget.badge.decided", string(focus.UpdateTacticalPlan), env)
 	c.headline = g.tr(loc, "widget.headline.tactical")
 	if tp, ok := envData(env)["tactical_plan"].(mindset.TacticalPlan); ok {
-		c.row(g.tr(loc, "widget.row.formation"), tp.Formation)
-		c.changeRow(g.tr(loc, "widget.row.mentality"), g.enumLabel(loc, "mentality", tp.Mentality))
-		c.changeRow(g.tr(loc, "widget.row.pressing"), g.enumLabel(loc, "pressing", tp.Pressing))
+		row := func(changed bool, label, value string) {
+			if changed {
+				c.changeRow(label, value)
+				return
+			}
+			c.row(label, value)
+		}
+		row(in.Formation != "", g.tr(loc, "widget.row.formation"), tp.Formation)
+		row(in.Mentality != "", g.tr(loc, "widget.row.mentality"), g.enumLabel(loc, "mentality", tp.Mentality))
+		row(in.Pressing != "", g.tr(loc, "widget.row.pressing"), g.enumLabel(loc, "pressing", tp.Pressing))
+		row(in.Tempo != "", g.tr(loc, "widget.row.tempo"), g.enumLabel(loc, "tempo", tp.Tempo))
+		row(in.Width != "", g.tr(loc, "widget.row.width"), g.enumLabel(loc, "width", tp.Width))
+		row(in.Directness != "", g.tr(loc, "widget.row.directness"), g.enumLabel(loc, "directness", tp.Directness))
+		row(in.Counter != nil, g.tr(loc, "widget.row.counter"), g.tr(loc, fmt.Sprintf("widget.bool.%t", tp.Counter)))
 	}
 	return renderCard(c)
 }

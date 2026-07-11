@@ -270,6 +270,9 @@ var Default = Catalogs{
 		"widget.row.formation":             "Formation",
 		"widget.row.mentality":             "Mentality",
 		"widget.row.pressing":              "Pressing",
+		"widget.row.width":                 "Width",
+		"widget.row.directness":            "Passing",
+		"widget.row.counter":               "Counter attack",
 
 		// World lifecycle (admin actions surface on the feed — A11)
 
@@ -1017,6 +1020,9 @@ var Default = Catalogs{
 		"widget.row.formation":             "포메이션",
 		"widget.row.mentality":             "멘탈리티",
 		"widget.row.pressing":              "압박",
+		"widget.row.width":                 "폭",
+		"widget.row.directness":            "패스 방식",
+		"widget.row.counter":               "역습",
 
 		// World lifecycle (admin actions surface on the feed — A11)
 		// Enum vocabularies — 위젯 카드의 enum 값 로컬라이즈.
