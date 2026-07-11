@@ -845,6 +845,7 @@ func TestMatchCommentaryAndForm(t *testing.T) {
 	}
 	played := w.Results[0]
 	w.Results[0].ChanceTypes = map[string]int{"COUNTER": 2, "CUTBACK": 1}
+	w.Results[0].ChanceTypesBySide = map[string]int{"HOME_COUNTER": 1, "AWAY_COUNTER": 1, "AWAY_CUTBACK": 1}
 	w.Results[0].Diagnostics.ShotQuality = map[string]int{"HIGH": 1, "MEDIUM": 2}
 	w.Results[0].Diagnostics.ShotQualityBySide = map[string]int{
 		"HOME_HIGH": 1, "HOME_MEDIUM": 1, "AWAY_MEDIUM": 1,
@@ -857,8 +858,10 @@ func TestMatchCommentaryAndForm(t *testing.T) {
 		t.Fatal("MCP get_match exposed raw chance_types instead of player-facing match_patterns")
 	}
 	patterns := stats["match_patterns"].([]map[string]any)
-	if len(patterns) != 2 || patterns[0]["pattern"] != "COUNTER" ||
-		patterns[0]["label"] != "Counters" || patterns[0]["count"] != 2 {
+	if len(patterns) != 3 || patterns[0]["side"] != "HOME" || patterns[0]["pattern"] != "COUNTER" ||
+		patterns[0]["label"] != "Counters" || patterns[0]["count"] != 1 ||
+		patterns[1]["side"] != "AWAY" || patterns[1]["pattern"] != "COUNTER" ||
+		patterns[2]["side"] != "AWAY" || patterns[2]["pattern"] != "CUTBACK" {
 		t.Fatalf("match_patterns not rendered as player-facing rows: %+v", patterns)
 	}
 	quality := stats["shot_quality"].([]map[string]any)
@@ -913,6 +916,42 @@ func TestShotQualityRowsPreserveMixedVersionRemainder(t *testing.T) {
 		rows[1]["side"] != "AWAY" || rows[1]["band"] != "MEDIUM" ||
 		rows[2]["side"] != "UNKNOWN" || rows[2]["band"] != "HIGH" || rows[2]["count"] != 1 {
 		t.Fatalf("mixed-version shot quality rows = %+v", rows)
+	}
+}
+
+func TestMatchPatternRowsLabelLegacyAggregateUnknown(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	rows := g.matchPatternRows(map[string]int{"COUNTER": 2, "CUTBACK": 1}, nil)
+	if len(rows) != 2 || rows[0]["side"] != "UNKNOWN" || rows[0]["pattern"] != "COUNTER" ||
+		rows[0]["label"] != "Counters" || rows[0]["count"] != 2 ||
+		rows[1]["side"] != "UNKNOWN" || rows[1]["pattern"] != "CUTBACK" {
+		t.Fatalf("legacy match pattern rows = %+v", rows)
+	}
+}
+
+func TestMatchPatternRowsPreserveMixedVersionRemainder(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	rows := g.matchPatternRows(
+		map[string]int{"COUNTER": 3, "CUTBACK": 2},
+		map[string]int{"HOME_COUNTER": 1, "AWAY_COUNTER": 1, "AWAY_CUTBACK": 2},
+	)
+	if len(rows) != 4 || rows[0]["side"] != "HOME" || rows[0]["pattern"] != "COUNTER" ||
+		rows[1]["side"] != "AWAY" || rows[1]["pattern"] != "CUTBACK" || rows[1]["count"] != 2 ||
+		rows[2]["side"] != "AWAY" || rows[2]["pattern"] != "COUNTER" ||
+		rows[3]["side"] != "UNKNOWN" || rows[3]["pattern"] != "COUNTER" || rows[3]["count"] != 1 {
+		t.Fatalf("mixed-version match pattern rows = %+v", rows)
+	}
+}
+
+func TestMatchPatternRowsTreatSideCountsAsAuthoritative(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	rows := g.matchPatternRows(
+		map[string]int{"COUNTER": 1},
+		map[string]int{"HOME_COUNTER": 2, "AWAY_COUNTER": 1},
+	)
+	if len(rows) != 2 || rows[0]["side"] != "HOME" || rows[0]["count"] != 2 ||
+		rows[1]["side"] != "AWAY" || rows[1]["count"] != 1 {
+		t.Fatalf("authoritative side-aware match pattern rows = %+v", rows)
 	}
 }
 

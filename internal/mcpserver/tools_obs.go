@@ -1106,7 +1106,7 @@ func (g *Gateway) finishedMatch(w *worldgen.World, r *worldgen.MatchResult) map[
 		"subs":        subRows(r.Subs),
 		"commentary":  g.renderCommentary(r.Commentary),
 		"adjustments": adjustmentRows(r.Adjustments),
-		"stats":       g.matchStats(r.HomeShots, r.AwayShots, r.ChanceTypes, r.Diagnostics),
+		"stats":       g.matchStats(r.HomeShots, r.AwayShots, r.ChanceTypes, r.ChanceTypesBySide, r.Diagnostics),
 	}
 	// Cup ties carry the advancing club — decisive or on penalties.
 	if r.Winner != 0 {
@@ -1155,7 +1155,7 @@ func (g *Gateway) liveMatch(w *worldgen.World, lm *worldgen.LiveMatch, viewerClu
 		"minute": lm.Clock, "scorers": scorers, "cards": cards, "subs": subRows(lm.Subs),
 		"commentary":  g.renderCommentary(lm.Commentary[from:]),
 		"cursor":      len(lm.Commentary),
-		"stats":       g.matchStats(lm.HomeShots, lm.AwayShots, lm.ChanceTypes, lm.Diagnostics),
+		"stats":       g.matchStats(lm.HomeShots, lm.AwayShots, lm.ChanceTypes, lm.ChanceTypesBySide, lm.Diagnostics),
 		"adjustments": adjustmentRows(lm.Adjustments),
 	}
 	if viewerClub != 0 && (lm.HomeID == viewerClub || lm.AwayID == viewerClub) {
@@ -1661,12 +1661,12 @@ func familiarityKey(p *worldgen.Player) string {
 	return strconvUpper(attr.FamiliarityDescriptor(p.Familiarity[p.Position]))
 }
 
-func (g *Gateway) matchStats(homeShots, awayShots int, chanceTypes map[string]int, diag worldgen.MatchDiagnostics) map[string]any {
+func (g *Gateway) matchStats(homeShots, awayShots int, chanceTypes, chanceTypesBySide map[string]int, diag worldgen.MatchDiagnostics) map[string]any {
 	stats := map[string]any{
 		"home_shots": homeShots,
 		"away_shots": awayShots,
 	}
-	if patterns := g.matchPatternRows(chanceTypes); len(patterns) > 0 {
+	if patterns := g.matchPatternRows(chanceTypes, chanceTypesBySide); len(patterns) > 0 {
 		stats["match_patterns"] = patterns
 	}
 	if quality := shotQualityRows(diag); len(quality) > 0 {
@@ -1763,18 +1763,52 @@ func tacticalTiltRows(counts map[string]int) []map[string]any {
 	return out
 }
 
-func (g *Gateway) matchPatternRows(types map[string]int) []map[string]any {
+func (g *Gateway) matchPatternRows(types, bySide map[string]int) []map[string]any {
 	type pair struct {
-		key string
-		val int
+		side string
+		key  string
+		val  int
 	}
-	pairs := make([]pair, 0, len(types))
-	for k, v := range types {
-		if v > 0 {
-			pairs = append(pairs, pair{key: k, val: v})
+	pairs := make([]pair, 0, len(bySide)+len(types))
+	if len(bySide) > 0 {
+		for _, side := range []string{"HOME", "AWAY"} {
+			prefix := side + "_"
+			for k, v := range bySide {
+				if v > 0 && strings.HasPrefix(k, prefix) {
+					pairs = append(pairs, pair{side: side, key: strings.TrimPrefix(k, prefix), val: v})
+				}
+			}
+		}
+		// Preserve the unattributed aggregate remainder for matches that span
+		// this upgrade. Side-aware values are authoritative if they exceed an
+		// old or malformed aggregate; a negative remainder is never emitted.
+		for k, total := range types {
+			attributed := bySide["HOME_"+k] + bySide["AWAY_"+k]
+			if unknown := total - attributed; unknown > 0 {
+				pairs = append(pairs, pair{side: "UNKNOWN", key: k, val: unknown})
+			}
+		}
+	} else {
+		for k, v := range types {
+			if v > 0 {
+				pairs = append(pairs, pair{side: "UNKNOWN", key: k, val: v})
+			}
 		}
 	}
 	sort.Slice(pairs, func(i, j int) bool {
+		sideRank := func(side string) int {
+			switch side {
+			case "HOME":
+				return 0
+			case "AWAY":
+				return 1
+			default:
+				return 2
+			}
+		}
+		if sideRank(pairs[i].side) != sideRank(pairs[j].side) {
+			return sideRank(pairs[i].side) < sideRank(pairs[j].side)
+		}
 		if pairs[i].val != pairs[j].val {
 			return pairs[i].val > pairs[j].val
 		}
@@ -1783,6 +1817,7 @@ func (g *Gateway) matchPatternRows(types map[string]int) []map[string]any {
 	out := make([]map[string]any, 0, len(pairs))
 	for _, p := range pairs {
 		out = append(out, map[string]any{
+			"side":    p.side,
 			"pattern": p.key,
 			"label":   g.Catalogs.Render(narrative.LocaleEN, "term.chance_type."+p.key, nil),
 			"count":   p.val,
