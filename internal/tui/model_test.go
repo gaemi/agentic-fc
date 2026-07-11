@@ -1404,11 +1404,33 @@ func TestMatchSceneClassificationCoversVariedMoments(t *testing.T) {
 }
 
 func TestSceneFramePreservesArtBlockCoordinates(t *testing.T) {
-	first := centerSceneArtLine("o", 8, 30)
-	second := centerSceneArtLine("  |", 8, 30)
-	got := strings.Index(second, "|") - strings.Index(first, "o")
-	if got != 2 {
-		t.Fatalf("scene art coordinates drifted by %d cells, want 2:\n%q\n%q", got, first, second)
+	// Canvas frames share one exact width, so the centered art block must sit
+	// at the same left offset in every animation frame.
+	scene := matchSceneFromLine("Goal! Rao finds the net for Alpha.", nil)
+	base := liveModel(120, 32)
+	ground := strings.Repeat("_", sceneCanvasWidth)
+	groundCol := -1
+	for f := range scene.frames {
+		rendered := sceneFrameAt(base, scene, 90, 9, f)
+		if len(rendered) == 0 {
+			t.Fatalf("goal scene frame %d was omitted", f)
+		}
+		col := -1
+		for _, line := range rendered {
+			if idx := strings.Index(line, ground); idx >= 0 {
+				col = idx
+				break
+			}
+		}
+		if col < 0 {
+			t.Fatalf("goal scene frame %d lost its ground line:\n%s", f, strings.Join(rendered, "\n"))
+		}
+		if groundCol == -1 {
+			groundCol = col
+		}
+		if col != groundCol {
+			t.Fatalf("goal scene frame %d art block drifted: ground at %d, want %d", f, col, groundCol)
+		}
 	}
 
 	m := liveModel(120, 32)
@@ -1438,13 +1460,13 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 	}
 	for _, line := range cases {
 		scene := matchSceneFromLine(line, nil)
-		if len(scene.frames) != 3 {
-			t.Fatalf("scene %q frames = %d, want 3", scene.kind, len(scene.frames))
+		if len(scene.frames) < 3 {
+			t.Fatalf("scene %q frames = %d, want at least 3", scene.kind, len(scene.frames))
 		}
 		seen := map[string]bool{}
 		for frame := range scene.frames {
-			if len(scene.frames[frame]) != 7 {
-				t.Fatalf("scene %q frame %d rows = %d, want 7", scene.kind, frame, len(scene.frames[frame]))
+			if len(scene.frames[frame]) != sceneCanvasHeight {
+				t.Fatalf("scene %q frame %d rows = %d, want %d", scene.kind, frame, len(scene.frames[frame]), sceneCanvasHeight)
 			}
 			rendered := sceneFrameAt(m, scene, 100, 9, frame)
 			if len(rendered) != 9 {
@@ -1459,19 +1481,6 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 				raw := strings.TrimPrefix(row, preformattedLinePrefix)
 				if got := lipgloss.Width(raw); got != 100 {
 					t.Fatalf("scene %q frame %d width = %d, want 100: %q", scene.kind, frame, got, raw)
-				}
-			}
-		}
-		anchorRows := map[string][]int{
-			"goal": {0, 1, 2, 3, 4, 5},
-			"save": {2},
-		}
-		for _, row := range anchorRows[scene.kind] {
-			want := lipgloss.Width(strings.TrimRight(scene.frames[0][row], " "))
-			for frame := 1; frame < len(scene.frames); frame++ {
-				got := lipgloss.Width(strings.TrimRight(scene.frames[frame][row], " "))
-				if got != want {
-					t.Fatalf("scene %q anchor row %d frame %d ends at column %d, want %d", scene.kind, row, frame, got, want)
 				}
 			}
 		}
@@ -1563,10 +1572,10 @@ func TestSceneArtTemplatesStayCompactAndVisual(t *testing.T) {
 			if scene.kind != tc.kind {
 				t.Fatalf("scene kind = %q, want %q", scene.kind, tc.kind)
 			}
-			if len(scene.art) != 7 {
-				t.Fatalf("scene art lines = %d, want 7: %#v", len(scene.art), scene.art)
+			if len(scene.frames[0]) != sceneCanvasHeight {
+				t.Fatalf("scene art lines = %d, want %d: %#v", len(scene.frames[0]), sceneCanvasHeight, scene.frames[0])
 			}
-			for _, line := range scene.art {
+			for _, line := range scene.frames[0] {
 				if lipgloss.Width(line) > 52 {
 					t.Fatalf("scene art line too wide (%d): %q", lipgloss.Width(line), line)
 				}
@@ -1692,6 +1701,65 @@ func TestLiveMatchModalGoalFlashAndClose(t *testing.T) {
 	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
 	if m.MatchModal != modalNone {
 		t.Fatalf("Esc did not close live modal: %q", m.MatchModal)
+	}
+}
+
+// The flash banner is pre-sized to the modal content width; if it went through
+// word wrapping its double spaces would collapse and leave a ragged right edge.
+func TestGoalFlashBannerSpansFullModalWidth(t *testing.T) {
+	m := liveModel(140, 36)
+	m.Matches[0].Minute = 62
+	m.Matches[0].Markers = append(m.Matches[0].Markers, LiveMarker{Minute: 62, Kind: "GOAL", Side: "AWAY"})
+	box := m.liveMatchModal(98, 20)
+	found := false
+	for _, line := range strings.Split(box, "\n") {
+		if !strings.Contains(line, "█") {
+			continue
+		}
+		found = true
+		inner := strings.TrimSuffix(strings.TrimPrefix(line, "║"), "║")
+		if !strings.HasPrefix(inner, "█") || !strings.HasSuffix(inner, "█") {
+			t.Fatalf("goal flash does not span the modal: %q", inner)
+		}
+	}
+	if !found {
+		t.Fatalf("goal flash banner missing:\n%s", box)
+	}
+}
+
+// A patterned goal plays its action scene, so the goal signal must survive
+// without the timed marker flash: replays get a static banner on goal beats,
+// and live keeps a banner up while the goal is still the visible line.
+func TestGoalBannerWithoutTimedFlash(t *testing.T) {
+	m := liveModel(140, 36)
+
+	m.MatchModal = modalReplay
+	m.MatchModalID = 0
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 2, AwayGoals: 1,
+		Commentary: []string{
+			"Alpha work it to the byline; one pass back, one calm touch from Rao, goal. 1–0.",
+			"A quiet spell as the sides feel each other out.",
+		},
+	}
+	m.Fixtures = nil
+	m.ReplayOffset = 0
+	box := m.replayMatchModal(120, 30)
+	if !strings.Contains(box, "█") || !strings.Contains(box, "GOAL") {
+		t.Fatalf("replay goal beat missing static banner:\n%s", box)
+	}
+	m.ReplayOffset = 1
+	if box := m.replayMatchModal(120, 30); strings.Contains(box, "█") {
+		t.Fatalf("replay quiet beat should not show goal banner:\n%s", box)
+	}
+
+	live := liveModel(140, 36)
+	live.Matches[0].Minute = 80
+	live.Matches[0].Markers = []LiveMarker{{Minute: 70, Kind: "GOAL", Side: "HOME"}}
+	live.Matches[0].Commentary = []string{"Rao lashes it home for Alpha! The stand erupts — 2–1."}
+	box = live.liveMatchModal(120, 30)
+	if !strings.Contains(box, "█") || !strings.Contains(box, "GOAL") {
+		t.Fatalf("live goal beat with expired flash missing banner:\n%s", box)
 	}
 }
 

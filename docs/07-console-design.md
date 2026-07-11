@@ -53,12 +53,16 @@ controls.
 
 The pop-up carries the score/clock header, public match stats and diagnostics,
 live ratings, and the rhythmic commentary stream ([FR-35a](06-requirements.md)).
-On wide layouts, active football scenes (goal, save, cross, through ball,
-long-range shot, set piece, counter, and generic chance) play as fixed-width
-three-frame terminal animations. The 180 ms presentation tick exists only
+On wide layouts, every recognized football scene (goal, save, cross, cut-back,
+through ball, long-range shot, set piece, counter, scramble, dribble, card,
+stoppage, substitution, generic chance, and quiet build-up) plays as a terminal
+animation of three to six frames. Scene frames are composed on one fixed-size
+cell canvas (single-width runes only, out-of-canvas draws clipped), so every
+frame of every scene shares exact dimensions and the art can never render
+ragged. The 180 ms presentation tick exists only
 while a live match pop-up is open, restarts when the latest commentary beat
 changes (including a new action of the same kind),
-and is invalidated immediately on close or full time. Quiet build-up and replay
+and is invalidated immediately on close or full time. Replay
 views stay on a stable frame, so the spectator surface does not flicker when
 nothing is happening. `Space` pauses the live animation and invalidates its
 timer chain; pressing it again starts a fresh chain. Presentation never changes

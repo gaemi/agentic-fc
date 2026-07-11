@@ -33,7 +33,7 @@ const (
 	settingsUpdateDebounce = 250 * time.Millisecond
 	runtimeSettingCount    = 3
 	minMatchModalHeight    = 6
-	sceneFrameRows         = 9
+	sceneFrameRows         = sceneCanvasHeight + 2 // canvas rows plus box borders
 	goalFlashWindowMinutes = 4
 	matchAnimationInterval = 180 * time.Millisecond
 )
@@ -1233,8 +1233,17 @@ func (m Model) liveMatchModal(width, height int) string {
 	lines := []string{
 		fmt.Sprintf("%d' · %s · %d/%d · %s · %s", mv.Minute, mv.Competition, idx+1, len(m.Matches), m.ui("ui.match.modal.close"), m.matchAnimationHelp()),
 	}
-	if flash := m.goalFlashLine(mv, width-2); flash != "" {
-		lines = append(lines, flash)
+	flash := m.goalFlashLine(mv, width-2)
+	if flash == "" && goalProse(current) {
+		// The timed flash has expired (or the marker is missing) but the
+		// visible beat is still the scored goal — keep the goal signal up
+		// while an action scene plays.
+		flash = m.plainGoalBanner(width - 2)
+	}
+	if flash != "" {
+		// Already exactly content-wide; wrapText would collapse its double
+		// spaces and leave a ragged right edge on the banner.
+		lines = append(lines, preformattedLinePrefix+flash)
 	}
 	lines = append(lines,
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), mv.Stats.HomeShots, mv.Stats.AwayShots),
@@ -1386,6 +1395,11 @@ func (m Model) replayMatchModal(width, height int) string {
 		current = md.Commentary[start]
 	}
 	sc := matchSceneFromLine(current, nil)
+	if goalProse(current) {
+		// Replays never show the timed live flash, so browsing onto a goal
+		// beat raises a static banner above its action scene instead.
+		lines = append(lines, preformattedLinePrefix+m.plainGoalBanner(width-2))
+	}
 	if !compact && height-2-len(lines) >= 14 {
 		if frame := sceneFrame(m, sc, width-2, sceneFrameRows); len(frame) > 0 {
 			lines = append(lines, "")
@@ -1413,286 +1427,6 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, m.ui("ui.match.replay.archived"))
 	}
 	return modalBox(width, height, title, lines)
-}
-
-type matchScene struct {
-	kind   string
-	title  string
-	art    []string
-	frames [][]string
-}
-
-func newScene(kind, title string, art ...string) matchScene {
-	return matchScene{kind: kind, title: title, art: art}
-}
-
-func newAnimatedScene(kind, title string, frames ...[]string) matchScene {
-	if len(frames) == 0 {
-		panic("animated match scene requires at least one frame")
-	}
-	return matchScene{kind: kind, title: title, art: frames[0], frames: frames}
-}
-
-func matchSceneFromLive(mv LiveMatchView, line string) matchScene {
-	if line != "" {
-		// Prefer the prose shape over the marker so goal cut-backs, counters, and crosses
-		// can show the specific action frame instead of a generic goal frame.
-		return matchSceneFromLine(line, nil)
-	}
-	if len(mv.Markers) == 0 {
-		return matchSceneFromLine("", nil)
-	}
-	return matchSceneFromLine("", &mv.Markers[len(mv.Markers)-1])
-}
-
-func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
-	kind := ""
-	if marker != nil {
-		kind = strings.ToUpper(marker.Kind)
-	}
-	lower := strings.ToLower(line)
-	switch {
-	case kind == "GOAL" || containsAny(lower, "goal!", "scores", "scored", "finds the net", "it's in", "득점", "골!", "골망", "들어갔"):
-		return newAnimatedScene("goal", "GOAL SCENE",
-			[]string{
-				"                     _____________________",
-				"             o       |        NET          |",
-				"            /|\\  *-->|                    |",
-				"____________/ \\______|______________\\o/__|",
-				"                     |                |   |",
-				"                     |________________/ \\_|",
-				"________________________________________________",
-			},
-			[]string{
-				"       . . .         _____________________",
-				"    \\   |   /       |        NET           |",
-				"     \\  |  /        |        *       \\o/  |",
-				"______\\_|_/_________|_______________ |___|",
-				"       / \\          |                / \\  |",
-				"                     |____________________|",
-				"________________________________________________",
-			},
-			[]string{
-				"      .  .  .        _____________________",
-				"   \\   |   /        |    *   NET   *       |",
-				"    \\  |  /    \\o/ |  *   *   *   *       |",
-				"_____\\_|_/______|__|_____________________|",
-				"      / \\      / \\ |      G O A L         |",
-				"                     |____________________|",
-				"________________________________________________",
-			})
-	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
-		return newScene("card", "REFEREE'S BOOK",
-			"          _______",
-			"   o  !  | CARD! |        o",
-			"  /|\\    |_______|       /|\\",
-			"  / \\        |           / \\",
-			"___________ _|_ _____________________",
-			"        . . .     . . .",
-			"________________________________________________")
-	case kind == "INJURY" || containsAny(lower, "injury", "treatment", "is down", "stays down", "goes down", "쓰러", "치료", "부상"):
-		return newScene("injury", "STOPPAGE",
-			"                  +",
-			"       o        _/_\\_       o",
-			"______/|\\______/____\\______/|\\________",
-			"      / \\       _/\\_        / \\",
-			"        ____o__/    \\__o____",
-			"              +   +",
-			"________________________________________________")
-	case kind == "SUB" || containsAny(lower, "replaces", "fresh legs", "make a change", "comes on", "교체", "투입"):
-		return newScene("sub", "TECHNICAL AREA",
-			"   o  --->             <---  o",
-			"  /|\\                       /|\\",
-			"  / \\       [ 62 ]          / \\",
-			"___________|_____|_____________________",
-			"      ___        |        ___",
-			"        ^                 ^",
-			"________________________________________________")
-	case kind == "CHANCE":
-		return chanceScene()
-	case containsAny(lower,
-		"fine stop", "strong hand", "gets down sharply", "clawed out", "palm it away",
-		"tip it away", "makes the stop", "strong save", "somehow blocks", "keeper stays big",
-		"throws up a strong hand", "goalkeeper reacts", "goalkeeper gets down", "keeper claws through bodies to save",
-		"선방", "강한 손", "쳐냅니다", "쳐냅", "낮게 몸을 던져", "빠르게 반응해", "걷어 올려집니다",
-		"골키퍼가 크게 버티며", "손끝으로 밀어냅니다", "몸들 사이로 걷어냅니다",
-		"골키퍼가 어떻게든", "골키퍼가 읽고 나와"):
-		return newAnimatedScene("save", "KEEPER'S SAVE",
-			[]string{
-				"        o  -- * ---->              o",
-				"       /|\\                       /|\\",
-				"_______/ \\_______________________/ \\______",
-				"",
-				"",
-				"",
-				"________________________________________________",
-			},
-			[]string{
-				"        o  -------- * ------>       \\o",
-				"       /|\\                          |\\",
-				"_______/ \\_________________________/ \\____",
-				"                                      *",
-				"",
-				"",
-				"________________________________________________",
-			},
-			[]string{
-				"        o                         __\\o/",
-				"       /|\\                    __/   |",
-				"_______/ \\___________________/_____/ \\____",
-				"                              *",
-				"                         [  SAVE  ]",
-				"",
-				"________________________________________________",
-			})
-	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
-		return newAnimatedScene("cross", "WIDE DELIVERY",
-			[]string{"     o  *~~~~~>", "    /|\\                         o", "____/ \\________________________/|\\_____", "             o             o", "            /|\\           /|\\", "            / \\           / \\", "________________________________________________"},
-			[]string{"     o       ~~~~~ * ~~~~>", "    /|\\                         o", "____/ \\________________________/|\\_____", "             o       ^     o", "            /|\\           /|\\", "            / \\           / \\", "________________________________________________"},
-			[]string{"     o             ~~~~~>", "    /|\\                    *    o", "____/ \\________________________/|\\_____", "             o             o", "            /|\\           /|\\", "            / \\           / \\", "________________________________________________"})
-	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
-		return newScene("cutback", "CUT-BACK",
-			" |",
-			" |   o",
-			" |  /|\\_______<___   o",
-			"_|__/ \\_________________/|\\______",
-			"                          / \\",
-			"       o        o        o",
-			"________________________________________________")
-	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "스루패스", "수비 라인", "일대일"):
-		return newAnimatedScene("through", "THROUGH BALL",
-			[]string{"    o  *------------->", "   /|\\      |   |   |          o", "___/ \\______|___|___|_________/|\\____", "            |   |   |         / \\ ", "            |   |   |", "", "________________________________________________"},
-			[]string{"    o  ------- * ------>", "   /|\\      |   |   |          o", "___/ \\______|___|___|_________/|\\____", "            |   |   |         / \\ ", "            |   |   |          --->", "", "________________________________________________"},
-			[]string{"    o  -------------->", "   /|\\      |   |   |             o", "___/ \\______|___|___|____________/|\\_", "            |   |   |        *  _/ \\_", "            |   |   |              --->", "", "________________________________________________"})
-	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
-		return newAnimatedScene("longshot", "FROM RANGE",
-			[]string{"                 o", "                /|\\  *----->", "________________/ \\______________________", "       o        o        o          [GK]", "      /|\\      /|\\      /|\\          \\o/", "      / \\      / \\      / \\           |", "________________________________________________"},
-			[]string{"                 o", "                /|\\  ------ * --->", "________________/ \\______________________", "       o        o        o          [GK]", "      /|\\      /|\\      /|\\          \\o/", "      / \\      / \\      / \\           |", "________________________________________________"},
-			[]string{"                 o", "                /|\\  ------------->", "________________/ \\______________________", "       o        o        o       *  [GK]", "      /|\\      /|\\      /|\\       __\\o", "      / \\      / \\      / \\      /    |", "________________________________________________"})
-	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
-		return newAnimatedScene("setpiece", "SET PIECE",
-			[]string{"       | | | |        [   ]", "     o o o o        o  o  o", "     | | | |       /|\\/|\\/|\\", "  o  *--+---->     / \\/ \\/ \\", " /|\\", " / \\", "________________________________________________"},
-			[]string{"       | | | |        [   ]", "     o o o o        o  o  o", "     | | | |       /|\\/|\\/|\\", "  o ----+-- * -->  / \\/ \\/ \\", " /|\\          .----.", " / \\", "________________________________________________"},
-			[]string{"       | | | |        [   ]", "     o o o o        o  o  o", "     | | | |       /|\\/|\\/|\\", "  o --------->     / \\/ \\/ \\", " /|\\               *", " / \\            .----.", "________________________________________________"})
-	case containsAny(lower, "counter", "on the break", "burst forward", "races clear", "grass ahead", "역습", "공간", "빠른"):
-		return newAnimatedScene("counter", "COUNTER ATTACK",
-			[]string{"   o *-->      o ---->      o", "  /|\\         /|\\          /|\\", "__/ \\_________/ \\__________/ \\___________", "              .  .  .", "      o     o       o", "     /|\\   /|\\     /|\\", "________________________________________________"},
-			[]string{"   o ---->     o *-->       o ---->", "  /|\\         /|\\          /|\\", "__/ \\_________/ \\__________/ \\___________", "                  .  .  .", "      o       o       o", "     /|\\     /|\\     /|\\", "________________________________________________"},
-			[]string{"   o ---->     o ---->      o *---->", "  /|\\         /|\\          /|\\", "__/ \\_________/ \\__________/ \\___________", "                       .  .  .", "        o       o       o", "       /|\\     /|\\     /|\\", "________________________________________________"})
-	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "혼전", "튕", "흐른 공"):
-		return newScene("scramble", "SIX-YARD SCRAMBLE",
-			"     [   ]",
-			"   o   o    *     o",
-			"  /|\\ /|\\  \\o/  /|\\",
-			"__/ \\/ \\___ | __/ \\____________",
-			"            / \\",
-			"        o         \\o",
-			"________________________________________________")
-	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
-		return newScene("dribble", "DRIBBLE",
-			"             o             o",
-			"            /|\\   o       /|\\",
-			"___________/ \\___/|\\______/ \\________",
-			"                / \\",
-			"          o          . . .",
-			"         /|\\        /",
-			"________________________________________________")
-	case containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "fizz wide", "skids wide", "dragged wide", "슛", "슈팅", "기회", "마무리"):
-		return chanceScene()
-	default:
-		return newScene("build", "BUILD-UP",
-			"   o          o          o",
-			"  /|\\  --->  /|\\  --->  /|\\",
-			"__/ \\________/ \\________/ \\__________",
-			"       .----.     .----.",
-			"   o          o          o",
-			"  /|\\        /|\\        /|\\",
-			"________________________________________________")
-	}
-}
-
-func chanceScene() matchScene {
-	return newAnimatedScene("chance", "CHANCE",
-		[]string{"      o  *   o      ---->       [ ]", "     /|\\    /|\\       . . .   [   ]", "_____/ \\____/ \\_________________[___]", "          \\        o        /", "           \\______/|\\______/", "                  / \\", "________________________________________________"},
-		[]string{"      o      o  *   ---->       [ ]", "     /|\\    /|\\       . . .   [   ]", "_____/ \\____/ \\_________________[___]", "          \\        o        /", "           \\______/|\\______/", "                  / \\", "________________________________________________"},
-		[]string{"      o      o      ---->   *   [ ]", "     /|\\    /|\\       . . .   [   ]", "_____/ \\____/ \\_________________[___]", "          \\        o        /", "           \\______/|\\______/", "                  / \\", "________________________________________________"})
-}
-
-func sceneFrame(m Model, scene matchScene, width, height int) []string {
-	return sceneFrameAt(m, scene, width, height, 0)
-}
-
-func sceneFrameAt(m Model, scene matchScene, width, height, frame int) []string {
-	if width < 28 || height < 5 {
-		return nil
-	}
-	art := sceneArt(scene, frame)
-	content := width - 2
-	artWidth := maxSceneArtWidth(scene)
-	if content < artWidth {
-		return nil
-	}
-	if artHeight := len(art) + 2; artHeight < height {
-		height = artHeight
-	}
-	title := m.ui("ui.match.scene." + scene.kind)
-	if strings.HasPrefix(title, "ui.match.scene.") {
-		title = scene.title
-	}
-	out := []string{preformattedLinePrefix + "╭" + fitLine(" "+title+" ", content, alignCenter) + "╮"}
-	for i := 0; i < height-2; i++ {
-		line := ""
-		if i < len(art) {
-			line = art[i]
-		}
-		out = append(out, preformattedLinePrefix+"│"+centerSceneArtLine(line, artWidth, content)+"│")
-	}
-	out = append(out, preformattedLinePrefix+"╰"+strings.Repeat("─", content)+"╯")
-	return out
-}
-
-func sceneArt(scene matchScene, frame int) []string {
-	if len(scene.frames) == 0 {
-		return scene.art
-	}
-	if frame < 0 {
-		frame = 0
-	}
-	return scene.frames[frame%len(scene.frames)]
-}
-
-func centerSceneArtLine(line string, artWidth, contentWidth int) string {
-	if artWidth <= 0 {
-		return strings.Repeat(" ", contentWidth)
-	}
-	// Keep every glyph on the scene's shared coordinate grid. Per-row
-	// centering would make the ball and players jump sideways between frames.
-	block := fitLine(line, artWidth, alignLeft)
-	return fitLine(block, contentWidth, alignCenter)
-}
-
-func sceneLabel(m Model, scene matchScene) string {
-	title := m.ui("ui.match.scene." + scene.kind)
-	if strings.HasPrefix(title, "ui.match.scene.") {
-		return scene.title
-	}
-	return title
-}
-
-func maxSceneArtWidth(scene matchScene) int {
-	max := 0
-	frames := scene.frames
-	if len(frames) == 0 {
-		frames = [][]string{scene.art}
-	}
-	for _, frame := range frames {
-		for _, line := range frame {
-			if w := lipgloss.Width(line); w > max {
-				max = w
-			}
-		}
-	}
-	return max
 }
 
 func recentHistory(commentary []string, limit int) []string {
@@ -1776,6 +1510,22 @@ func (m Model) goalFlashLine(mv LiveMatchView, width int) string {
 	left := pad / 2
 	right := pad - left
 	return strings.Repeat("█", left) + msg + strings.Repeat("█", right)
+}
+
+// plainGoalBanner is the untimed variant of goalFlashLine for moments where
+// the marker window is unavailable — replay browsing and live beats whose
+// flash already expired — but the visible line still announces a goal.
+func (m Model) plainGoalBanner(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	msg := fmt.Sprintf("  %s  ", strings.ToUpper(m.ui("ui.match.goalflash")))
+	if lipgloss.Width(msg) > width {
+		msg = truncate(msg, width)
+	}
+	pad := width - lipgloss.Width(msg)
+	left := pad / 2
+	return strings.Repeat("█", left) + msg + strings.Repeat("█", pad-left)
 }
 
 func modalBox(width, height int, title string, lines []string) string {
