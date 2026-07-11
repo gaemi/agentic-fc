@@ -1305,7 +1305,7 @@ func (m Model) liveMatchModal(width, height int) string {
 		historyRows -= 2 // keep the closing ticker row (plus its separator)
 	}
 	if historyRows > 0 {
-		history := recentHistory(mv.Commentary, historyRows)
+		history := recentHistory(beatLines(mv.Beats, mv.Commentary), historyRows)
 		if len(history) > 0 {
 			lines = append(lines, "", m.ui("ui.match.history"))
 			lines = append(lines, history...)
@@ -1435,19 +1435,20 @@ func (m Model) replayMatchModal(width, height int) string {
 			lines = append(lines, frame...)
 		}
 	}
+	display := beatLines(md.Beats, md.Commentary)
 	lines = append(lines, "", m.ui("ui.match.current_scene"))
 	if current == "" {
 		lines = append(lines, "▶ "+sceneLabel(m, sc))
 	} else {
-		lines = append(lines, "▶ "+current)
+		lines = append(lines, "▶ "+display[start])
 	}
 	lines = append(lines, "", m.ui("ui.match.replay"))
 	commentRows := height - len(lines) - 2
 	if commentRows < 3 {
 		commentRows = 3
 	}
-	for i := start + 1; i < len(md.Commentary) && len(lines) < height-2; i++ {
-		lines = append(lines, "· "+md.Commentary[i])
+	for i := start + 1; i < len(display) && len(lines) < height-2; i++ {
+		lines = append(lines, "· "+display[i])
 		if i-start >= commentRows {
 			break
 		}
@@ -1456,6 +1457,19 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, m.ui("ui.match.replay.archived"))
 	}
 	return modalBox(width, height, title, lines)
+}
+
+// beatLines returns minute-stamped display strings for commentary, falling
+// back to the plain lines when the daemon predates beats.
+func beatLines(beats []CommentaryBeat, fallback []string) []string {
+	if len(beats) != len(fallback) || len(beats) == 0 {
+		return fallback
+	}
+	out := make([]string, len(beats))
+	for i, b := range beats {
+		out[i] = fmt.Sprintf("%d' %s", b.Minute, b.Text)
+	}
+	return out
 }
 
 func recentHistory(commentary []string, limit int) []string {

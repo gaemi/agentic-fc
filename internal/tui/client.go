@@ -312,6 +312,7 @@ type MatchDetail struct {
 	Subs              []MatchSub       `json:"subs"`
 	Ratings           []LiveRating     `json:"ratings"`
 	Commentary        []string         `json:"commentary"`
+	Beats             []CommentaryBeat `json:"beats"`
 }
 
 func (c *Client) Match(id int64) (MatchDetail, error) {
@@ -321,6 +322,13 @@ func (c *Client) Match(id int64) (MatchDetail, error) {
 }
 
 // LiveMarker / LiveMatchView mirror GET /v1/matches/live (docs/07 §4.1).
+// CommentaryBeat is a minute-stamped commentary line; older daemons omit it
+// and the plain commentary strings remain the fallback.
+type CommentaryBeat struct {
+	Minute int    `json:"minute"`
+	Text   string `json:"text"`
+}
+
 type LiveMarker struct {
 	Minute int    `json:"minute"`
 	Kind   string `json:"kind"` // GOAL | CHANCE | CARD | INJURY | SUB
@@ -347,18 +355,19 @@ type LiveRating struct {
 }
 
 type LiveMatchView struct {
-	Fixture     int64        `json:"fixture"`
-	Competition string       `json:"competition"`
-	Home        string       `json:"home"`
-	Away        string       `json:"away"`
-	HomeGoals   int          `json:"home_goals"`
-	AwayGoals   int          `json:"away_goals"`
-	Minute      int          `json:"minute"`
-	Commentary  []string     `json:"commentary"`
-	Markers     []LiveMarker `json:"markers"`
-	Stats       LiveStats    `json:"stats"`
-	Ratings     []LiveRating `json:"ratings"`
-	Momentum    []int        `json:"momentum"`
+	Fixture     int64            `json:"fixture"`
+	Competition string           `json:"competition"`
+	Home        string           `json:"home"`
+	Away        string           `json:"away"`
+	HomeGoals   int              `json:"home_goals"`
+	AwayGoals   int              `json:"away_goals"`
+	Minute      int              `json:"minute"`
+	Commentary  []string         `json:"commentary"`
+	Beats       []CommentaryBeat `json:"beats"`
+	Markers     []LiveMarker     `json:"markers"`
+	Stats       LiveStats        `json:"stats"`
+	Ratings     []LiveRating     `json:"ratings"`
+	Momentum    []int            `json:"momentum"`
 }
 
 func (c *Client) LiveMatches() ([]LiveMatchView, error) {
