@@ -1027,7 +1027,8 @@ func TestFixturesAndMatchDetailServeResults(t *testing.T) {
 	if len(detail.Scorers) != 1 || detail.Scorers[0].Player != hp.Name ||
 		len(detail.Cards) != 1 || detail.Cards[0].Detail != "YELLOW" ||
 		len(detail.Subs) != 1 || detail.Subs[0].Reason != "TACTICAL" ||
-		len(detail.Ratings) != 2 || detail.Ratings[0].Name != hp.Name {
+		len(detail.Ratings) != 2 || detail.Ratings[0].Name != hp.Name ||
+		detail.Ratings[0].Side != "HOME" || detail.Ratings[1].Side != "AWAY" {
 		t.Fatalf("detail facts wrong: %+v", detail)
 	}
 }

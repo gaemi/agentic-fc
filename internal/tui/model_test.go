@@ -168,7 +168,7 @@ func testModel() Model {
 		Scorers:     []MatchEvent{{Minute: 12, Club: "A", Player: "Rae Quinn"}},
 		Cards:       []MatchEvent{{Minute: 70, Club: "B", Player: "Lee Ward", Detail: "YELLOW"}},
 		Subs:        []MatchSub{{Minute: 65, Club: "A", Off: "Old Legs", On: "Fresh Legs", Reason: "TACTICAL"}},
-		Ratings:     []LiveRating{{Name: "Rae Quinn", RatingX10: 78}},
+		Ratings:     []LiveRating{{Side: "HOME", Name: "Rae Quinn", RatingX10: 78}},
 		Commentary:  []string{"A work the ball through midfield.", "Rae Quinn lashes it home."},
 	}
 	return m
@@ -771,10 +771,15 @@ func TestFixtureResultsScreenShowsReplay(t *testing.T) {
 		t.Fatalf("enter did not open replay modal: %q", m.MatchModal)
 	}
 	v = m.View()
-	for _, want := range []string{"A 2-1 B", "Chance mix Counters 2", "Scorers", "Rae Quinn", "Cards", "Lee Ward", "Subs", "Fresh Legs", "Ratings", "7.8 Rae Quinn", "Replay log", "lashes it home"} {
+	for _, want := range []string{"A 2-1 B", "Chance mix Counters 2", "Scorers", "Rae Quinn", "Cards", "Lee Ward", "Subs", "Fresh Legs", "Ratings", "7.8 A · Rae Quinn", "Replay log", "lashes it home"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("replay modal missing %q:\n%s", want, v)
 		}
+	}
+	m.MatchDetail.Ratings[0].Side = ""
+	v = m.View()
+	if !strings.Contains(v, "7.8 Rae Quinn") || strings.Contains(v, "7.8 A · Rae Quinn") {
+		t.Fatalf("legacy replay rating did not fall back to an unlabelled row:\n%s", v)
 	}
 
 	m.MatchDetail.Commentary = append(m.MatchDetail.Commentary,
@@ -877,7 +882,7 @@ func TestCompactReplayModalPrioritizesCommentary(t *testing.T) {
 			t.Fatalf("compact replay missing %q:\n%s", want, v)
 		}
 	}
-	for _, hidden := range []string{"Cards", "Lee Ward", "Ratings", "7.8 Rae Quinn"} {
+	for _, hidden := range []string{"Cards", "Lee Ward", "Ratings", "7.8 A · Rae Quinn"} {
 		if strings.Contains(v, hidden) {
 			t.Fatalf("compact replay rendered secondary %q:\n%s", hidden, v)
 		}
