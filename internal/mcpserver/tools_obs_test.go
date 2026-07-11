@@ -855,8 +855,24 @@ func TestLiveViewOwnVsOther(t *testing.T) {
 	if own["status"] != "LIVE" {
 		t.Fatalf("own live match status = %v", own["status"])
 	}
-	if _, ok := own["own_team"]; !ok {
+	team, ok := own["own_team"].(map[string]any)
+	if !ok {
 		t.Fatal("own live match missing own_team state")
+	}
+	idx := playerIndex(w)
+	sawDrain := false
+	for _, row := range team["players"].([]map[string]any) {
+		condition := row["condition"].(int)
+		if condition < 0 || condition > worldgen.ConditionMax {
+			t.Fatalf("live condition outside 0..100: %+v", row)
+		}
+		stored := idx[row["player"].(int64)].Condition
+		if condition < stored {
+			sawDrain = true
+		}
+	}
+	if !sawDrain {
+		t.Fatal("own live match still exposes only stale pre-match condition")
 	}
 	// Cards are as public live as finished — a red visibly ejects, so the
 	// structured fact must exist while the match runs.

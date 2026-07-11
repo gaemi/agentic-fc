@@ -495,6 +495,8 @@ MCP/Console expose, at appropriate fidelity:
 - shot quality bands, not a real-world xG claim;
 - tactical tilt: wide/central/distance/set-piece/transition/scramble profile;
 - player role fit and body profile hints where public;
+- current own-team condition during a live match, derived from each player's
+  minutes on the pitch rather than the unchanged pre-match stored value;
 - post-match "why it happened" summaries built from public stats and
   descriptors.
 

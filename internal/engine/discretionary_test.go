@@ -110,6 +110,27 @@ func TestFatigueSubFires(t *testing.T) {
 	}
 }
 
+func TestLivePlayerConditionUsesMinutesOnPitch(t *testing.T) {
+	p := &worldgen.Player{ID: 7, Condition: worldgen.ConditionMax}
+	lm := &worldgen.LiveMatch{Clock: 45}
+	if got, want := LivePlayerCondition(p, lm), 89; got != want {
+		t.Fatalf("starter condition at 45' = %d, want %d", got, want)
+	}
+
+	lm.Clock = 75
+	lm.Subs = []worldgen.SubEvent{{Minute: 30, On: p.ID}}
+	if got, want := LivePlayerCondition(p, lm), 89; got != want {
+		t.Fatalf("45-minute substitute spell condition = %d, want %d", got, want)
+	}
+
+	p.Condition = conditionFloorPlay
+	lm.Subs = nil
+	lm.Clock = matchFullTimeMinutes
+	if got := LivePlayerCondition(p, lm); got != 0 {
+		t.Fatalf("live condition must clamp at zero, got %d", got)
+	}
+}
+
 // TestDiscretionaryReserveRule locks the last-card reserve: with one sub left
 // before subReserveUntil nothing voluntary happens; past it the change fires.
 // And a side that never finds an upgrade appends nothing — a discretionary
