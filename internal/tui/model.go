@@ -28,6 +28,8 @@ const (
 	scrollPageLines        = 8
 	scrollWheelLines       = 4
 	pollInterval           = 2 * time.Second
+	uiRefreshInterval      = 30 * time.Second
+	uiRefreshEveryPolls    = int(uiRefreshInterval / pollInterval)
 	settingsUpdateDebounce = 250 * time.Millisecond
 	runtimeSettingCount    = 3
 	minMatchModalHeight    = 6
@@ -110,6 +112,8 @@ type Model struct {
 	Width         int
 	Height        int
 	Err           string
+
+	uiRefreshCountdown int
 }
 
 func NewModel(c *Client) Model {
@@ -508,6 +512,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Err = ""
 	case UIMsg:
 		m.UI = msg
+		m.uiRefreshCountdown = uiRefreshEveryPolls
 	case NewsMsg:
 		if len(msg) > 0 && msg[0].ID > m.LatestNewsID {
 			if m.LatestNewsID != 0 {
@@ -622,12 +627,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.ageNotice()
 		cmds := []tea.Cmd{m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick()}
+		if cmd := m.refreshUIIfDue(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if m.AdminMode && m.Tab == tabAdminSettings {
 			cmds = append(cmds, m.fetchAdminSettings())
 		}
 		return m, tea.Batch(cmds...)
 	}
 	return m, nil
+}
+
+// refreshUIIfDue keeps a long-running Console synchronized with server-side
+// catalog changes. An empty catalog retries every normal poll so a Console
+// started before the daemon recovers without being restarted.
+func (m *Model) refreshUIIfDue() tea.Cmd {
+	if len(m.UI) == 0 {
+		return m.fetchUI()
+	}
+	m.uiRefreshCountdown--
+	if m.uiRefreshCountdown > 0 {
+		return nil
+	}
+	return m.fetchUI()
 }
 
 const noticeTicks = 4
