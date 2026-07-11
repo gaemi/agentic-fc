@@ -132,7 +132,7 @@ func TestElsewhereTickerListsOtherMatchesAndFlagsFreshGoals(t *testing.T) {
 		LiveMatchView{Fixture: 11, Home: "Gamma", Away: "Delta", HomeGoals: 2, AwayGoals: 0, Minute: 61,
 			Markers: []LiveMarker{{Minute: 60, Kind: "GOAL", Side: "HOME"}}},
 		LiveMatchView{Fixture: 12, Home: "Epsilon", Away: "Zeta", HomeGoals: 0, AwayGoals: 1, Minute: 62,
-			Markers: []LiveMarker{{Minute: 40, Kind: "GOAL", Side: "AWAY"}}},
+			Markers: []LiveMarker{{Minute: 30, Kind: "GOAL", Side: "AWAY"}}},
 	)
 	current := m.Matches[0].Fixture
 	ticker := m.elsewhereTicker(current, 120)

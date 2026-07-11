@@ -156,8 +156,10 @@ func labeledPairRows(label string, rows []string, width int) []string {
 }
 
 // elsewhereGoalWindowMinutes keeps a just-scored marker highlighted on the
-// elsewhere ticker for a couple of match minutes.
-const elsewhereGoalWindowMinutes = 2
+// elsewhere ticker. It mirrors the main goal flash window: at the fastest
+// game speed the 2s poll can skip ~2 football minutes, so a shorter window
+// could age a goal out before the first refresh that shows it.
+const elsewhereGoalWindowMinutes = goalFlashWindowMinutes
 
 // elsewhereTicker summarizes the other live matches on one line so a
 // spectator never loses the rest of the matchday. Entries whose latest
