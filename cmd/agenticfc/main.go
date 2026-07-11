@@ -91,6 +91,23 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Serve immediately so a client that connects while the world is still
+	// loading gets a truthful 503 instead of hanging in the accept backlog;
+	// the real handlers are installed below once the world is up.
+	consoleHandler := &startupHandler{}
+	mcpStartup := &startupHandler{}
+	srv := &http.Server{Handler: consoleHandler}
+	mcpHTTP := &http.Server{Handler: mcpStartup}
+	go func() {
+		if err := srv.Serve(consoleLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("console api: %v", err)
+		}
+	}()
+	go func() {
+		if err := mcpHTTP.Serve(mcpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("mcp gateway: %v", err)
+		}
+	}()
 
 	adminToken, firstLaunch, err := ensureAdminToken(*dataDir)
 	if err != nil {
@@ -218,7 +235,9 @@ func main() {
 	fmt.Printf("manager tokens: %s (0600)\n", manifestPath)
 	// The listeners' addresses, not the flag values: with a ":0" flag this is
 	// where the picked port becomes visible.
-	fmt.Printf("Console API: http://%s  ·  MCP: http://%s\n", consoleLn.Addr(), mcpLn.Addr())
+	consoleURL := "http://" + dialableAddr(consoleLn.Addr().String())
+	mcpURL := "http://" + dialableAddr(mcpLn.Addr().String())
+	fmt.Printf("Console API: %s  ·  MCP: %s\n", consoleURL, mcpURL)
 
 	if willRun {
 		if err := host.Start(); err != nil {
@@ -229,8 +248,8 @@ func main() {
 	if host.State() == "ready" {
 		fmt.Println("the world clock is stopped until the world is started.")
 		fmt.Println("start it by relaunching with -start, or through the Console API:")
-		fmt.Printf("  curl -X POST http://%s/v1/admin/start -H \"Authorization: Bearer <token from %s>\"\n",
-			consoleLn.Addr(), filepath.Join(*dataDir, "admin.token"))
+		fmt.Printf("  curl -X POST %s/v1/admin/start -H \"Authorization: Bearer <token from %s>\"\n",
+			consoleURL, filepath.Join(*dataDir, "admin.token"))
 	}
 
 	api := &consoleapi.Server{
@@ -239,24 +258,13 @@ func main() {
 		Feed:       hub,
 		Catalogs:   narrative.Default,
 	}
-	srv := &http.Server{Handler: api.Routes()}
-	go func() {
-		if err := srv.Serve(consoleLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("console api: %v", err)
-		}
-	}()
+	consoleHandler.Set(api.Routes())
 
 	// MCP gateway: Manager-Token bearer auth in front of the streamable
 	// transport (docs/04 §0; INVALID_TOKEN surfaces as 401 here).
 	mcpSrv := gateway.MCPServer()
-	mcpHandler := auth.RequireBearerToken(gateway.VerifyToken, nil)(
-		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil))
-	mcpHTTP := &http.Server{Handler: mcpHandler}
-	go func() {
-		if err := mcpHTTP.Serve(mcpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("mcp gateway: %v", err)
-		}
-	}()
+	mcpStartup.Set(auth.RequireBearerToken(gateway.VerifyToken, nil)(
+		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil)))
 
 	// Periodic snapshots: cheap insurance between the pause/shutdown saves.
 	snapCtx, snapCancel := context.WithCancel(context.Background())
@@ -809,6 +817,38 @@ func (h *worldHost) Shutdown() {
 		h.cancel()
 		<-h.done
 	}
+}
+
+// startupHandler answers 503 until the real handler is installed, so the
+// early-bound listeners never leave a client hanging while the world loads.
+type startupHandler struct {
+	h atomic.Pointer[http.Handler]
+}
+
+func (s *startupHandler) Set(h http.Handler) { s.h.Store(&h) }
+
+func (s *startupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h := s.h.Load()
+	if h == nil {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "agenticfc is starting up", http.StatusServiceUnavailable)
+		return
+	}
+	(*h).ServeHTTP(w, r)
+}
+
+// dialableAddr rewrites a wildcard bind address (":7420", "0.0.0.0:…",
+// "[::]:…") to its loopback equivalent so banner URLs and copy-paste hints
+// always point somewhere a local client can actually dial.
+func dialableAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		return net.JoinHostPort("127.0.0.1", port)
+	}
+	return addr
 }
 
 // listenTCP binds a daemon listen address, translating the launch failure a

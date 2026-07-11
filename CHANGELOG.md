@@ -11,8 +11,11 @@ section below.
     port (for example a second daemon on the defaults) fails fast with a hint
     naming the flag to change — instead of generating a world first and
     leaving the corrected relaunch to silently resume it.
-  - The startup banner prints the actually bound addresses, making
-    `-console-addr 127.0.0.1:0` (random free port) usable.
+  - The startup banner prints the actually bound addresses (wildcard hosts
+    rewritten to loopback so the URL is dialable), making
+    `-console-addr 127.0.0.1:0` (random free port) usable, and requests that
+    arrive while the world is still loading get `503 Service Unavailable`
+    with `Retry-After` instead of stalling.
   - A world created without `-start` now prints how to start it (relaunch
     with `-start`, or the exact Console API call).
 - Match broadcast overhaul in the spectator console:
