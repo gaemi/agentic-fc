@@ -6,7 +6,21 @@ section below.
 
 ## Unreleased
 
-- No unreleased changes.
+- Match broadcast overhaul in the spectator console:
+  - Live scenes are composed on a fixed cell canvas (no more ragged ASCII),
+    animated in two to six frames, and direction-aware — away attacks play
+    mirrored with readable banners.
+  - New ceremony scenes bracket each match: kick-off, the interval, full
+    time, and penalty shootouts.
+  - The live pop-up gained a marker timeline (home/away rows with a play
+    head), a momentum strip, first/second-half tags, a full-width goal flash
+    (also on replay goal beats), and a closing "elsewhere" ticker with fresh
+    goal highlights; the fixtures board shows running minutes on live rows.
+  - Goal commentary is score-aware (opener, equalizer, late drama) and every
+    chance pattern gained extra goal/chance/save lines in both locales — all
+    selected without consuming match RNG, so seeds replay identically.
+  - The live markers payload is no longer windowed, so the timeline carries
+    the full match story.
 
 ## 0.1.0 - 2026-07-09
 
