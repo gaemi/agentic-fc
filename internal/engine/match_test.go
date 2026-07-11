@@ -519,3 +519,80 @@ func TestQuietCommentarySelectionPreservesRNGPosition(t *testing.T) {
 		t.Fatalf("commentary selection moved RNG position: got %d want %d", got, want)
 	}
 }
+
+// Score-context calls replace the pattern line only for the moments that
+// matter (opener, equalizer, late drama) and never consume match RNG.
+func TestGoalContextCommentaryKey(t *testing.T) {
+	cases := []struct {
+		name       string
+		clock      int
+		homeGoals  int
+		awayGoals  int
+		home       bool
+		wantPrefix string
+	}{
+		{"opener", 10, 1, 0, true, "comment.goal.opener."},
+		{"away equalizer", 30, 1, 1, false, "comment.goal.equalizer."},
+		{"late equalizer", 88, 2, 2, true, "comment.goal.late."},
+		{"late winner", 87, 1, 0, true, "comment.goal.late."},
+		{"late go-ahead", 86, 2, 1, true, "comment.goal.late."},
+		{"padding the lead", 50, 2, 0, true, ""},
+		{"late but comfortable", 88, 3, 1, true, ""},
+		{"go-ahead keeps the pattern call", 40, 2, 1, true, ""},
+	}
+	for _, tc := range cases {
+		lm := &worldgen.LiveMatch{Clock: tc.clock, HomeGoals: tc.homeGoals, AwayGoals: tc.awayGoals}
+		got := goalContextCommentaryKey(lm, tc.home)
+		if tc.wantPrefix == "" {
+			if got != "" {
+				t.Fatalf("%s: key %q, want pattern call", tc.name, got)
+			}
+			continue
+		}
+		if !strings.HasPrefix(got, tc.wantPrefix) {
+			t.Fatalf("%s: key %q, want prefix %q", tc.name, got, tc.wantPrefix)
+		}
+		for _, loc := range narrative.Supported {
+			if _, ok := narrative.Default[loc][got]; !ok {
+				t.Fatalf("%s: key %q missing from %s catalog", tc.name, got, loc)
+			}
+		}
+	}
+}
+
+func TestKickoffCommentaryKeyRotatesAndExists(t *testing.T) {
+	seen := map[string]bool{}
+	for id := int64(100001); id < 100007; id++ {
+		key := kickoffCommentaryKey(id)
+		seen[key] = true
+		for _, loc := range narrative.Supported {
+			if _, ok := narrative.Default[loc][key]; !ok {
+				t.Fatalf("kickoff key %q missing from %s catalog", key, loc)
+			}
+		}
+	}
+	if len(seen) != 3 {
+		t.Fatalf("kickoff keys used = %v, want all 3 variants across fixtures", seen)
+	}
+}
+
+// Every commentary key the engine can emit for chances and goals must exist
+// in both catalogs, or the Console would render raw keys mid-match.
+func TestMatchCommentaryKeyListsExistInCatalogs(t *testing.T) {
+	types := []string{
+		chanceCrossHeader, chanceCutback, chanceThroughBall, chanceLongShot,
+		chanceSetPieceHeader, chanceCounter, chanceScramble,
+	}
+	keys := []string{}
+	for _, ct := range types {
+		keys = append(keys, missCommentKeys(ct)...)
+		keys = append(keys, goalCommentKeys(ct)...)
+	}
+	for _, key := range keys {
+		for _, loc := range narrative.Supported {
+			if _, ok := narrative.Default[loc][key]; !ok {
+				t.Fatalf("engine commentary key %q missing from %s catalog", key, loc)
+			}
+		}
+	}
+}

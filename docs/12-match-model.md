@@ -445,6 +445,15 @@ command for either side. Full-time distinguishes goalless, scoring-level,
 one-goal edge, two-goal win, and three-plus-goal emphatic win. Legacy generic
 keys remain renderable for saved matches.
 
+Goal commentary is score-aware on the same no-RNG basis: the opener, an
+equalizer, and any goal from the late-drama minute (85', tunable) that levels
+or wins the match swap the patterned call for a context call
+(`comment.goal.opener/equalizer/late.*`), with the variant rotated on public
+match state. Goals that pad an existing lead keep their chance-pattern call
+(cross header, cut-back, through ball, long shot, set piece, counter,
+scramble — four variants each). The kickoff whistle rotates three voices by
+fixture ID.
+
 The half-time whistle is its own queue event at exactly 45 minutes; it is no
 longer borrowed from the sampled 47' key moment. A match resumed from an older
 in-progress snapshot without that event records one 45' fallback line when the
