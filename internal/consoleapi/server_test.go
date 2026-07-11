@@ -400,7 +400,7 @@ func TestMatchdayResultsArticleRendersDetailedConsoleBody(t *testing.T) {
 		"AFC Castleden 2-1 Eastvale Town",
 		"Stanton Albion 0-0 Union Steindorf",
 		"순위표 흐름:",
-		"AFC Castleden, 승점 6로 선두",
+		"AFC Castleden, 승점 6점으로 선두",
 		"핵심 흐름:",
 		"무승부 1경기",
 		"다음 선발 회의와 훈련장 메시지",

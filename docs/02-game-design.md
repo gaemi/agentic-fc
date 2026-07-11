@@ -144,6 +144,12 @@ Three design rules, drawn from what made classic CM work ([90 §2, L1/L9/L10](90
 2. **Text carries diagnosable signal, not just flavour.** CM3 deliberately wrote commentary managers could *learn from* ("why are we losing?"). Our commentary and summaries must let both the spectator and the Agent read tactical cause from the text and accompanying stats — the Agent consumes the same narrative humans enjoy.
 3. **Variety is budgeted from day one.** FM's longest-running complaint is repetitive press conferences. Template variety per event type is a real quality bar, not post-launch polish. Match commentary uses event-family template pools (crosses, cut-backs, counters, set pieces, scrambles, long shots, quiet phases) so identical tactical situations do not read as the same line every time.
 
+Localization must preserve that polish for generated names. Korean templates do
+not attach a fixed batchim-sensitive particle directly to a person or club
+placeholder: use a stable role noun such as `선수`, `팀`, or `감독`, or rewrite
+the sentence so Latin and mixed-script names remain grammatical. For example,
+`{player}가 득점` is unsafe; `{player} 선수가 득점` is stable.
+
 ## 5. Time system
 
 ### 5.1 Game Speed (chosen at setup)
