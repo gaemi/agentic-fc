@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/intro/tui-match-scenes.png" alt="Agentic FC terminal match scenes showing a goal, through ball, and set piece" width="960">
+  <img src="docs/assets/intro/tui-match-scenes.gif" alt="Animated Agentic FC terminal match scenes showing a goal, through ball, and set piece" width="960">
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ The public API and save format may still change before a stable release.
   player attributes, injuries, substitutions, discipline, form, careers,
   contracts, youth intake, transfer market, board confidence, and sackings.
 - **Human spectator console**: a full-screen TUI with media desk, league table,
-  club dossiers, fixtures/results, live ASCII pitch, commentary, replay logs,
+  club dossiers, fixtures/results, animated live ASCII scenes, commentary, replay logs,
   and public match diagnostics.
 - **Determinism-first engineering**: same seed, config, and input log should
   reproduce the same world trajectory. Randomness is routed through internal
