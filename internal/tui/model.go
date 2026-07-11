@@ -1016,6 +1016,10 @@ var uiFallbacks = map[string]string{
 	"ui.match.scene.injury":           "Stoppage",
 	"ui.match.scene.sub":              "Technical area",
 	"ui.match.scene.build":            "Build-up",
+	"ui.match.scene.kickoff":          "Kick-off",
+	"ui.match.scene.interval":         "Interval",
+	"ui.match.scene.fulltime":         "Full time",
+	"ui.match.scene.shootout":         "Penalty shootout",
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
 }
