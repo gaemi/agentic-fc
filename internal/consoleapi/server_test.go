@@ -1124,16 +1124,20 @@ func TestLiveMatchPanes(t *testing.T) {
 	if lm.Momentum[1] != 3 || lm.Momentum[3] != -1 {
 		t.Fatalf("momentum = %v, want +3 in bucket 1 (12' goal) and −1 in bucket 3 (33' chance)", lm.Momentum)
 	}
-	// The pitch markers stay windowed — and the 12' goal has scrolled OFF that
-	// window (10 later chances follow it), yet its +3 is in the sparkline
-	// above: momentum reads the FULL stream, not the capped markers.
-	if len(lm.Markers) != liveMarkerWindow {
-		t.Fatalf("markers = %d, want the window cap %d", len(lm.Markers), liveMarkerWindow)
+	// Markers carry the FULL stream: the 12' goal must still be present even
+	// with ten later chances behind it, or the modal timeline would lose the
+	// early match story.
+	if len(lm.Markers) < 12 {
+		t.Fatalf("markers = %d, want the full uncapped stream", len(lm.Markers))
 	}
+	foundEarlyGoal := false
 	for _, mk := range lm.Markers {
-		if mk.Kind == "GOAL" {
-			t.Fatal("the early goal should have scrolled off the marker window")
+		if mk.Kind == "GOAL" && mk.Minute == 12 {
+			foundEarlyGoal = true
 		}
+	}
+	if !foundEarlyGoal {
+		t.Fatal("the early goal is missing from the uncapped marker stream")
 	}
 }
 

@@ -50,6 +50,14 @@ func TestTimelineRowsPlaceMarkersProportionally(t *testing.T) {
 	if rows := timelineRows(markers, 90, timelineMinWidth-1); rows != nil {
 		t.Fatalf("narrow timeline should be omitted, got %q", rows)
 	}
+
+	// A marker landing on the play-head cell keeps both visible: the event
+	// takes the cell and the head shifts one column right.
+	fresh := timelineRows([]LiveMarker{{Minute: 45, Kind: "GOAL", Side: "HOME"}}, 45, 61)
+	freshHome := []rune(fresh[0])
+	if freshHome[30] != 'G' || freshHome[31] != '┤' {
+		t.Fatalf("fresh goal should keep glyph and nudged play head: %q", fresh[0])
+	}
 }
 
 func TestMomentumRowsMirrorSides(t *testing.T) {

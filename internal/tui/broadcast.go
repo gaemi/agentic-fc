@@ -77,7 +77,13 @@ func timelineRows(markers []LiveMarker, minute, width int) []string {
 		if mk.Side == matchSideAway {
 			row = away
 		}
-		row[col(mk.Minute)] = timelineGlyph(mk.Kind)
+		at := col(mk.Minute)
+		if at == cursor && cursor+1 < width {
+			// A fresh event claims the play-head cell; nudge the head right
+			// so both the event and "now" stay visible.
+			row[cursor+1] = '┤'
+		}
+		row[at] = timelineGlyph(mk.Kind)
 	}
 	return []string{string(home), string(away)}
 }
