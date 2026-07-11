@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"math/rand/v2"
 	"strconv"
 	"testing"
 
@@ -364,5 +365,39 @@ func TestAdjustmentCommentaryCyclesPerClubWithoutRNG(t *testing.T) {
 	)
 	if got := adjustmentCommentaryKey(lm, 1); got != "comment.adj.push.1" {
 		t.Fatalf("club 1 wrapped adjustment key = %q, want first variant", got)
+	}
+}
+
+func TestQuietCommentaryDoesNotRepeatBeforePoolExhaustion(t *testing.T) {
+	lm := &worldgen.LiveMatch{Commentary: []worldgen.CommentaryLine{{Key: "comment.kickoff"}}}
+	r := rand.New(rand.NewPCG(11, 29))
+	seen := map[string]bool{}
+	for range quietCommentaryKeys {
+		key := pickUnusedCommentaryKey(r, lm, quietCommentaryKeys)
+		if seen[key] {
+			t.Fatalf("quiet key repeated before pool exhaustion: %q", key)
+		}
+		seen[key] = true
+		lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Key: key})
+	}
+	if len(seen) != len(quietCommentaryKeys) {
+		t.Fatalf("quiet pool used %d keys, want %d", len(seen), len(quietCommentaryKeys))
+	}
+	if key := pickUnusedCommentaryKey(r, lm, quietCommentaryKeys); !seen[key] {
+		t.Fatalf("exhausted pool returned unknown key %q", key)
+	}
+}
+
+func TestQuietCommentarySelectionPreservesRNGPosition(t *testing.T) {
+	selected := rand.New(rand.NewPCG(7, 31))
+	baseline := rand.New(rand.NewPCG(7, 31))
+	lm := &worldgen.LiveMatch{}
+	for range 20 {
+		key := pickUnusedCommentaryKey(selected, lm, quietCommentaryKeys)
+		lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Key: key})
+		baseline.IntN(len(quietCommentaryKeys))
+	}
+	if got, want := selected.Uint64(), baseline.Uint64(); got != want {
+		t.Fatalf("commentary selection moved RNG position: got %d want %d", got, want)
 	}
 }

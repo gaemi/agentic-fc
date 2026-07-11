@@ -212,11 +212,7 @@ func (e *Engine) rollMomentOutcome(lm *worldgen.LiveMatch, at sim.GameTime, r *r
 		e.resolveChance(lm, at, r, homeChance)
 	} else {
 		// Quiet passage — connective tissue so the feed never goes dead.
-		e.comment(lm, at, pickKey(r,
-			"comment.quiet.1", "comment.quiet.2", "comment.quiet.3", "comment.quiet.4",
-			"comment.quiet.5", "comment.quiet.6", "comment.quiet.7", "comment.quiet.8",
-			"comment.quiet.9", "comment.quiet.10", "comment.quiet.11", "comment.quiet.12",
-			"comment.quiet.13", "comment.quiet.14", "comment.quiet.15"), nil)
+		e.comment(lm, at, pickUnusedCommentaryKey(r, lm, quietCommentaryKeys), nil)
 	}
 	if r.Float64() < cardRatePerMoment {
 		e.bookOne(lm, at, r)
@@ -224,6 +220,32 @@ func (e *Engine) rollMomentOutcome(lm *worldgen.LiveMatch, at sim.GameTime, r *r
 	if r.Float64() < injuryRatePerMoment {
 		e.injureOne(lm, at, r)
 	}
+}
+
+var quietCommentaryKeys = []string{
+	"comment.quiet.1", "comment.quiet.2", "comment.quiet.3", "comment.quiet.4",
+	"comment.quiet.5", "comment.quiet.6", "comment.quiet.7", "comment.quiet.8",
+	"comment.quiet.9", "comment.quiet.10", "comment.quiet.11", "comment.quiet.12",
+	"comment.quiet.13", "comment.quiet.14", "comment.quiet.15",
+}
+
+// pickUnusedCommentaryKey preserves the original single IntN draw and bound,
+// then probes deterministically past keys already used in this match. Thus
+// presentation avoids repeats until the pool is exhausted without moving the
+// RNG stream seen by cards, injuries, or any other simulation outcome.
+func pickUnusedCommentaryKey(r *rand.Rand, lm *worldgen.LiveMatch, keys []string) string {
+	start := r.IntN(len(keys))
+	used := make(map[string]bool, len(lm.Commentary))
+	for _, line := range lm.Commentary {
+		used[line.Key] = true
+	}
+	for offset := range keys {
+		key := keys[(start+offset)%len(keys)]
+		if !used[key] {
+			return key
+		}
+	}
+	return keys[start]
 }
 
 // resolveChance chooses a chance type from the attacking side's tactical
