@@ -19,12 +19,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +47,7 @@ import (
 )
 
 func main() {
-	dataDir := flag.String("data", "./data", "world data directory")
+	dataFlag := flag.String("data", "", "world data directory (default: ./data if it already holds a world, otherwise the OS user data directory)")
 	consoleAddr := flag.String("console-addr", "127.0.0.1:7420", "Console API listen address")
 	mcpAddr := flag.String("mcp-addr", "127.0.0.1:7421", "MCP listen address (HTTP transport)")
 	preset := flag.String("preset", "classic", "world preset: compact|classic|deep|sprawling (new worlds only)")
@@ -82,12 +84,19 @@ func main() {
 	// a busy port must fail the launch while the generation flags are still
 	// unconsumed. Binding after generation would persist a fresh world during
 	// the failed launch, and the corrected relaunch would silently resume it
-	// with the creation flags ignored.
+	// with the creation flags ignored. Data-dir resolution comes after the
+	// bind for the same reason: the common second-daemon launch must surface
+	// the port hint, not whatever filesystem state that daemon happens to see.
 	consoleLn, err := listenTCP("console api", "-console-addr", *consoleAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	mcpLn, err := listenTCP("mcp gateway", "-mcp-addr", *mcpAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dataDir, err := resolveDataDir(*dataFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,7 +118,7 @@ func main() {
 		}
 	}()
 
-	adminToken, firstLaunch, err := ensureAdminToken(*dataDir)
+	adminToken, firstLaunch, err := ensureAdminToken(dataDir)
 	if err != nil {
 		log.Fatalf("admin token: %v", err)
 	}
@@ -121,8 +130,8 @@ func main() {
 		fmt.Println("Admin token loaded.")
 	}
 
-	fstore := &store.FileStore{Dir: *dataDir}
-	manifestPath := filepath.Join(*dataDir, "manifest.json")
+	fstore := &store.FileStore{Dir: dataDir}
+	manifestPath := filepath.Join(dataDir, "manifest.json")
 
 	loaded, err := loadOrGenerate(fstore, manifestPath, *preset, *seed, *worldName,
 		*clubNames, *clubNamesFile, *managerNames, *managerNamesFile, runProfile, *start)
@@ -132,10 +141,10 @@ func main() {
 	world := loaded.world
 
 	hub := consoleapi.NewHub(narrative.Default)
-	eng := engine.New(world, loaded.queue, store.NewFileAuditLog(*dataDir))
+	eng := engine.New(world, loaded.queue, store.NewFileAuditLog(dataDir))
 	eng.SetSink(hub)
 	eng.ResumeAt(loaded.now)
-	inputLog, err := store.NewFileInputLog(*dataDir)
+	inputLog, err := store.NewFileInputLog(dataDir)
 	if err != nil {
 		log.Fatalf("input log: %v", err)
 	}
@@ -232,6 +241,7 @@ func main() {
 	fmt.Printf("pacing: profile %s · match %dx · idle %dx · offseason %dx\n",
 		configRunProfile(world.Config), world.Config.GameSpeed,
 		world.Config.IdleAcceleration, world.Config.OffseasonAccel)
+	fmt.Printf("data: %s\n", dataDir)
 	fmt.Printf("manager tokens: %s (0600)\n", manifestPath)
 	// The listeners' addresses, not the flag values: with a ":0" flag this is
 	// where the picked port becomes visible.
@@ -249,7 +259,7 @@ func main() {
 		fmt.Println("the world clock is stopped until the world is started.")
 		fmt.Println("start it by relaunching with -start, or through the Console API:")
 		fmt.Printf("  curl -X POST %s/v1/admin/start -H \"Authorization: Bearer <token from %s>\"\n",
-			consoleURL, filepath.Join(*dataDir, "admin.token"))
+			consoleURL, filepath.Join(dataDir, "admin.token"))
 	}
 
 	api := &consoleapi.Server{
@@ -855,6 +865,134 @@ func dialableAddr(addr string) string {
 		return net.JoinHostPort("::1", port)
 	}
 	return addr
+}
+
+// resolveDataDir picks the world data directory when -data is not given.
+// A ./data that already holds a world keeps working (the source-checkout
+// layout used by the docs and Makefile); otherwise the per-user OS data
+// directory is used, so a packaged binary run from any working directory
+// always finds the same world.
+func resolveDataDir(flagValue string) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+	local, err := isWorldDataDir("data")
+	if err != nil {
+		// ./data may hold a world we cannot inspect (permissions broken by a
+		// sudo run, another user's checkout). Falling back would silently
+		// split the operator's state across two locations — fail instead.
+		return "", fmt.Errorf("resolving data directory: %w (fix permissions or pass -data)", err)
+	}
+	if local {
+		return "./data", nil
+	}
+	// Not adopted, but present: say so once, loudly. This covers both an
+	// unrelated project's data/ folder and the corner case of a first launch
+	// that died before its world snapshot (only admin.token written) — the
+	// latter is deliberately not adopted, because adopting snapshot-less
+	// directories would reopen generating a fresh world into a foreign dir.
+	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+		log.Printf("note: ./data exists but holds no world snapshot; " +
+			"using the per-user data directory (pass -data ./data to override)")
+	}
+	dir, err := userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	if err != nil {
+		// No resolvable per-user location (HOME/XDG/LocalAppData unset —
+		// service-style launches under systemd, cron, or minimal containers).
+		// Keep the historical ./data default there instead of refusing to
+		// start; the environments without a home directory are exactly the
+		// ones that ran from a fixed working directory before.
+		log.Printf("data directory: %v — falling back to ./data", err)
+		return "./data", nil
+	}
+	return dir, nil
+}
+
+// isWorldDataDir reports whether dir holds a resumable Agentic FC world: a
+// world.json snapshot accompanied by manifest.json or admin.token. A bare
+// directory named data is not evidence, and neither is a single generically
+// named file — an installed binary launched from an unrelated project must
+// not adopt (and chmod 0700, or worse, generate a fresh world over) that
+// project's data/. Requiring the snapshot means an adopted ./data is only
+// ever resumed, never written to from scratch.
+func isWorldDataDir(dir string) (bool, error) {
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, err
+	case !fi.IsDir():
+		return false, nil
+	}
+	world, err := hasFile(dir, "world.json")
+	if err != nil || !world {
+		return false, err
+	}
+	for _, companion := range []string{"manifest.json", "admin.token"} {
+		ok, err := hasFile(dir, companion)
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	return false, nil
+}
+
+func hasFile(dir, name string) (bool, error) {
+	fi, err := os.Stat(filepath.Join(dir, name))
+	switch {
+	case err == nil:
+		return !fi.IsDir(), nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// userDataDir is the per-OS conventional location for game saves. The data
+// directory holds world state, logs, and tokens — data, not configuration —
+// hence XDG_DATA_HOME rather than the config directory on Linux.
+func userDataDir(goos string, getenv func(string) string, home func() (string, error)) (string, error) {
+	switch goos {
+	case "darwin":
+		h, err := absHome(home)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(h, "Library", "Application Support", "agenticfc"), nil
+	case "windows":
+		if d := getenv("LocalAppData"); d != "" && filepath.IsAbs(d) {
+			return filepath.Join(d, "agenticfc"), nil
+		}
+		return "", errors.New("LocalAppData is not set to an absolute path")
+	default:
+		// The XDG spec requires XDG_DATA_HOME to be absolute; a relative
+		// value would make the world location depend on the working
+		// directory again, so it is ignored like other spec violations.
+		if d := getenv("XDG_DATA_HOME"); d != "" && filepath.IsAbs(d) {
+			return filepath.Join(d, "agenticfc"), nil
+		}
+		h, err := absHome(home)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(h, ".local", "share", "agenticfc"), nil
+	}
+}
+
+// absHome resolves the user home and rejects relative values: on Unix,
+// os.UserHomeDir returns $HOME verbatim, and a relative home would make the
+// "per-user" path depend on the working directory after all.
+func absHome(home func() (string, error)) (string, error) {
+	h, err := home()
+	if err != nil {
+		return "", fmt.Errorf("user home: %w", err)
+	}
+	if !filepath.IsAbs(h) {
+		return "", fmt.Errorf("user home %q is not an absolute path", h)
+	}
+	return h, nil
 }
 
 // listenTCP binds a daemon listen address, translating the launch failure a

@@ -40,7 +40,7 @@ Useful daemon flags:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `-data` | `./data` | Data directory for snapshot, manifest, logs, and tokens. |
+| `-data` | auto | Data directory for snapshot, manifest, logs, and tokens. Omitted: `./data` if it already holds a world, else the OS user data directory (see below). |
 | `-console-addr` | `127.0.0.1:7420` | Console API listen address. |
 | `-mcp-addr` | `127.0.0.1:7421` | MCP Streamable HTTP listen address. |
 | `-preset` | `classic` | New-world preset: `compact`, `classic`, `deep`, `sprawling`. |
@@ -119,6 +119,35 @@ Custom name rules:
   line rather than a literal name.
 
 ## Data Directory
+
+When `-data` is omitted, the daemon resolves the directory in this order:
+
+1. `./data`, if that directory in the current working directory already holds
+   a resumable world: a `world.json` snapshot accompanied by `manifest.json`
+   or `admin.token`. This keeps source checkouts and pre-existing local worlds
+   working unchanged, while an unrelated project's `data/` folder — even one
+   containing a single generically named file — is never adopted, and an
+   adopted `./data` is only ever resumed, never generated into.
+2. Otherwise, the per-user OS data directory:
+
+   | OS | Default data directory |
+   |----|------------------------|
+   | macOS | `~/Library/Application Support/agenticfc` |
+   | Linux / other | `$XDG_DATA_HOME/agenticfc`, default `~/.local/share/agenticfc` |
+   | Windows | `%LocalAppData%\agenticfc` |
+
+This is the natural layout for a packaged install (for example a future
+Homebrew formula): the binary can be launched from any working directory and
+always resumes the same world. The startup banner prints the resolved
+directory as `data: …`. Pass `-data` explicitly to run several worlds side by
+side or to pin a custom location.
+
+Two edge cases are handled deliberately: if `./data` exists but cannot be
+inspected (broken permissions after a `sudo` run), the launch fails loudly
+instead of silently using a different location; and if no per-user directory
+can be resolved at all (unset `HOME`/`XDG_DATA_HOME` in service-style
+environments), the daemon logs a warning and keeps the historical `./data`
+default.
 
 The data directory contains local operational state:
 
