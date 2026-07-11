@@ -676,6 +676,13 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 		"finish, noise", "rolls it home", "bundles it",
 		"득점", "골!", "골망", "들어갔", "꽂아 넣", "냉정한 마무리", "첫 터치, 슛",
 		"밀어 넣", "굴려 넣"):
+		// A scored move keeps its action scene — the flash banner already
+		// announces the goal — so cut-back, counter, and cross goals play
+		// their specific frames. Prose without an action shape gets the
+		// generic goal celebration.
+		if action := actionSceneKind(lower); action != "" {
+			return sceneByKind(action)
+		}
 		return sceneByKind("goal")
 	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
 		return sceneByKind("card")
@@ -693,25 +700,41 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 		"골키퍼가 크게 버티며", "손끝으로 밀어냅니다", "몸들 사이로 걷어냅니다",
 		"골키퍼가 어떻게든", "골키퍼가 읽고 나와"):
 		return sceneByKind("save")
-	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
-		return sceneByKind("cross")
-	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
-		return sceneByKind("cutback")
-	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투"):
-		return sceneByKind("through")
-	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
-		return sceneByKind("longshot")
-	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
-		return sceneByKind("setpiece")
-	case containsAny(lower, "counter", "on the break", "the break is", "burst forward", "races clear", "grass ahead", "역습", "공간", "빠른"):
-		return sceneByKind("counter")
-	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "혼전", "튕", "흐른 공", "걷어내지 못한"):
-		return sceneByKind("scramble")
-	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
-		return sceneByKind("dribble")
-	case containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "fizz wide", "skids wide", "dragged wide", "슛", "슈팅", "기회", "마무리"):
-		return sceneByKind("chance")
 	default:
+		if action := actionSceneKind(lower); action != "" {
+			return sceneByKind(action)
+		}
+		if containsAny(lower, "shoot", "shot", "chance", "effort", "finish", "fizz wide", "skids wide", "dragged wide", "슛", "슈팅", "기회", "마무리") {
+			return sceneByKind("chance")
+		}
 		return sceneByKind("build")
+	}
+}
+
+// actionSceneKind classifies attacking-move prose (crosses, cut-backs,
+// through balls, long shots, set pieces, counters, scrambles, dribbles).
+// It returns "" when the line has no recognizable action shape.
+func actionSceneKind(lower string) string {
+	switch {
+	// Set pieces outrank crosses: a dead-ball delivery headed home should
+	// play the set-piece frame even though the prose mentions the header.
+	case containsAny(lower, "set piece", "dead ball", "corner", "free kick", "세트피스", "데드볼", "코너", "프리킥"):
+		return "setpiece"
+	case containsAny(lower, "wide channel", "far post", "far-post", "delivery hangs", "rises above", "a header", "the header", "header loops", "powers the header", "teasing cross", "swing it in", "glancing it", "크로스", "측면", "먼 포스트", "헤더") || containsWordAny(lower, "cross", "crosses", "crossing", "crossed"):
+		return "cross"
+	case containsAny(lower, "cut-back", "cutback", "pull-back", "byline", "컷백", "골라인", "뒤로 내줍"):
+		return "cutback"
+	case containsAny(lower, "through ball", "threaded pass", "split the defence", "clean through", "slice through", "스루패스", "수비 라인", "일대일", "침투 각도"):
+		return "through"
+	case containsAny(lower, "from range", "from distance", "from long distance", "long-distance", "distance strike", "long-range", "long shot", "lets fly", "thunderous", "at range", "strike whistles", "crowd urges", "중거리", "먼 거리", "거리에서"):
+		return "longshot"
+	case containsAny(lower, "counter", "on the break", "the break is", "burst forward", "races clear", "grass ahead", "역습", "넓은 공간"):
+		return "counter"
+	case containsAny(lower, "scramble", "ricochet", "loose ball", "six-yard", "chaos", "nobody clears", "혼전", "튕", "흐른 공", "걷어내지 못한"):
+		return "scramble"
+	case containsAny(lower, "dribble", "darts between", "holds off", "파고", "돌파", "제쳐", "버텨"):
+		return "dribble"
+	default:
+		return ""
 	}
 }
