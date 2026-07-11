@@ -1159,7 +1159,11 @@ func (m Model) liveMatchModal(width, height int) string {
 			m.ui("ui.match.stat.cards"), mv.Stats.HomeCards, mv.Stats.AwayCards,
 			m.ui("ui.match.stat.subs"), mv.Stats.HomeSubs, mv.Stats.AwaySubs),
 	)
-	if mix := m.chanceMixLabel(mv.Stats.ChanceTypes, 3); mix != "" {
+	patternLimit := 2
+	if compact {
+		patternLimit = 1
+	}
+	if mix := m.chanceMixLabel(mv.Stats.ChanceTypes, mv.Stats.ChanceTypesBySide, patternLimit); mix != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
 	}
 	if !compact {
@@ -1222,7 +1226,11 @@ func (m Model) replayMatchModal(width, height int) string {
 		fmt.Sprintf("%s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help")),
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), md.HomeShots, md.AwayShots),
 	}
-	if mix := m.chanceMixLabel(md.ChanceTypes, 3); mix != "" {
+	patternLimit := 2
+	if compact {
+		patternLimit = 1
+	}
+	if mix := m.chanceMixLabel(md.ChanceTypes, md.ChanceTypesBySide, patternLimit); mix != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.stat.chance_mix"), mix))
 	}
 	if !compact {
@@ -2738,31 +2746,77 @@ func (m Model) sideLabel(counts map[string]int) string {
 	return fmt.Sprintf("H %d · A %d", home, away)
 }
 
-func (m Model) chanceMixLabel(types map[string]int, limit int) string {
+func (m Model) chanceMixLabel(types, bySide map[string]int, limit int) string {
 	type pair struct {
 		key string
 		val int
 	}
-	pairs := make([]pair, 0, len(types))
-	for k, v := range types {
-		if v > 0 {
-			pairs = append(pairs, pair{k, v})
+	format := func(counts map[string]int) string {
+		pairs := make([]pair, 0, len(counts))
+		for k, v := range counts {
+			if v > 0 {
+				pairs = append(pairs, pair{k, v})
+			}
+		}
+		sort.Slice(pairs, func(i, j int) bool {
+			if pairs[i].val != pairs[j].val {
+				return pairs[i].val > pairs[j].val
+			}
+			return pairs[i].key < pairs[j].key
+		})
+		if len(pairs) > limit {
+			pairs = pairs[:limit]
+		}
+		parts := make([]string, 0, len(pairs))
+		for _, p := range pairs {
+			parts = append(parts, fmt.Sprintf("%s %d", m.chanceTypeLabel(p.key), p.val))
+		}
+		return strings.Join(parts, " · ")
+	}
+	if len(bySide) == 0 {
+		if label := format(types); label != "" {
+			return "? " + label
+		}
+		return ""
+	}
+	home, away, known := map[string]int{}, map[string]int{}, map[string]int{}
+	for key, n := range bySide {
+		if n <= 0 {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(key, matchSideHome+"_"):
+			pattern := strings.TrimPrefix(key, matchSideHome+"_")
+			home[pattern] += n
+			known[pattern] += n
+		case strings.HasPrefix(key, matchSideAway+"_"):
+			pattern := strings.TrimPrefix(key, matchSideAway+"_")
+			away[pattern] += n
+			known[pattern] += n
 		}
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].val != pairs[j].val {
-			return pairs[i].val > pairs[j].val
+	sections := make([]string, 0, 3)
+	if label := format(home); label != "" {
+		sections = append(sections, "H "+label)
+	}
+	if label := format(away); label != "" {
+		sections = append(sections, "A "+label)
+	}
+	unknown := map[string]int{}
+	for pattern, total := range types {
+		if remainder := total - known[pattern]; remainder > 0 {
+			unknown[pattern] = remainder
 		}
-		return pairs[i].key < pairs[j].key
-	})
-	if len(pairs) > limit {
-		pairs = pairs[:limit]
 	}
-	parts := make([]string, 0, len(pairs))
-	for _, p := range pairs {
-		parts = append(parts, fmt.Sprintf("%s %d", m.chanceTypeLabel(p.key), p.val))
+	if label := format(unknown); label != "" {
+		sections = append(sections, "? "+label)
 	}
-	return strings.Join(parts, " · ")
+	if len(sections) == 0 {
+		if label := format(types); label != "" {
+			return "? " + label
+		}
+	}
+	return strings.Join(sections, " | ")
 }
 
 func (m Model) chanceTypeLabel(key string) string {

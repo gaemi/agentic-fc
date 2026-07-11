@@ -290,27 +290,28 @@ type MatchDiagnostics struct {
 }
 
 type MatchDetail struct {
-	Fixture     int64            `json:"fixture"`
-	Status      string           `json:"status"`
-	Archived    bool             `json:"archived"`
-	Season      int              `json:"season"`
-	Competition string           `json:"competition"`
-	Round       int              `json:"round"`
-	KickoffText string           `json:"kickoff_text"`
-	Home        string           `json:"home"`
-	Away        string           `json:"away"`
-	HomeGoals   int              `json:"home_goals"`
-	AwayGoals   int              `json:"away_goals"`
-	Winner      string           `json:"winner"`
-	HomeShots   int              `json:"home_shots"`
-	AwayShots   int              `json:"away_shots"`
-	ChanceTypes map[string]int   `json:"chance_types"`
-	Diagnostics MatchDiagnostics `json:"diagnostics"`
-	Scorers     []MatchEvent     `json:"scorers"`
-	Cards       []MatchEvent     `json:"cards"`
-	Subs        []MatchSub       `json:"subs"`
-	Ratings     []LiveRating     `json:"ratings"`
-	Commentary  []string         `json:"commentary"`
+	Fixture           int64            `json:"fixture"`
+	Status            string           `json:"status"`
+	Archived          bool             `json:"archived"`
+	Season            int              `json:"season"`
+	Competition       string           `json:"competition"`
+	Round             int              `json:"round"`
+	KickoffText       string           `json:"kickoff_text"`
+	Home              string           `json:"home"`
+	Away              string           `json:"away"`
+	HomeGoals         int              `json:"home_goals"`
+	AwayGoals         int              `json:"away_goals"`
+	Winner            string           `json:"winner"`
+	HomeShots         int              `json:"home_shots"`
+	AwayShots         int              `json:"away_shots"`
+	ChanceTypes       map[string]int   `json:"chance_types"`
+	ChanceTypesBySide map[string]int   `json:"chance_types_by_side"`
+	Diagnostics       MatchDiagnostics `json:"diagnostics"`
+	Scorers           []MatchEvent     `json:"scorers"`
+	Cards             []MatchEvent     `json:"cards"`
+	Subs              []MatchSub       `json:"subs"`
+	Ratings           []LiveRating     `json:"ratings"`
+	Commentary        []string         `json:"commentary"`
 }
 
 func (c *Client) Match(id int64) (MatchDetail, error) {
@@ -328,14 +329,15 @@ type LiveMarker struct {
 
 // LiveStats / LiveRating mirror the §4.1 side-pane blocks.
 type LiveStats struct {
-	HomeShots   int              `json:"home_shots"`
-	AwayShots   int              `json:"away_shots"`
-	HomeCards   int              `json:"home_cards"`
-	AwayCards   int              `json:"away_cards"`
-	HomeSubs    int              `json:"home_subs"`
-	AwaySubs    int              `json:"away_subs"`
-	ChanceTypes map[string]int   `json:"chance_types"`
-	Diagnostics MatchDiagnostics `json:"diagnostics"`
+	HomeShots         int              `json:"home_shots"`
+	AwayShots         int              `json:"away_shots"`
+	HomeCards         int              `json:"home_cards"`
+	AwayCards         int              `json:"away_cards"`
+	HomeSubs          int              `json:"home_subs"`
+	AwaySubs          int              `json:"away_subs"`
+	ChanceTypes       map[string]int   `json:"chance_types"`
+	ChanceTypesBySide map[string]int   `json:"chance_types_by_side"`
+	Diagnostics       MatchDiagnostics `json:"diagnostics"`
 }
 
 type LiveRating struct {

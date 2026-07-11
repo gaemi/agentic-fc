@@ -270,11 +270,14 @@ distribution. Each event then reads a different attribute mix. Examples:
 - Counters: press impact, Pace/Acceleration, Decisions, Finishing, Sweeping,
   and One on Ones.
 
-Finished and live matches persist `chance_types` internally plus public
+Finished and live matches persist aggregate `chance_types` plus optional
+side-attributed `chance_types_by_side` internally, alongside public
 `MatchDiagnostics` (shot-quality bands, aerial attempts/wins, press turnovers,
 set-piece threat, tactical tilt). MCP renders the chance mix as player-facing
 `match_patterns` and exposes only those observed diagnostic rows, while the
-Console/TUI uses the richer spectator chance-mix and diagnostics view. Both
+Console/TUI uses the richer spectator chance-mix and diagnostics view. The TUI
+labels each side's leading patterns as `H` and `A`; legacy or upgrade-straddled
+aggregate remainders are shown as `?` instead of being guessed. Both
 surfaces can show what kind of problems a tactic is creating without exposing
 resolution weights or private traits.
 
