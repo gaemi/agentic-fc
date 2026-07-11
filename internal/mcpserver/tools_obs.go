@@ -1445,6 +1445,9 @@ func (g *Gateway) targetsOwnClub(m *worldgen.Manager, requested int64) bool {
 }
 
 func (g *Gateway) renderMessage(key string, params map[string]any) map[string]any {
+	if params == nil {
+		params = map[string]any{}
+	}
 	return map[string]any{
 		"key":    key,
 		"params": params,

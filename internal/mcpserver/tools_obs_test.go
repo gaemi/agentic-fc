@@ -1193,6 +1193,22 @@ func TestGameTimeISORoundYear(t *testing.T) {
 	}
 }
 
+func TestRenderMessageUsesEmptyParamsObject(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	msg := g.renderMessage("comment.quiet.1", nil)
+	params, ok := msg["params"].(map[string]any)
+	if !ok || len(params) != 0 {
+		t.Fatalf("empty message params = %#v, want an empty object", msg["params"])
+	}
+	wire, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wire), `"params":{}`) {
+		t.Fatalf("message JSON did not preserve params object: %s", wire)
+	}
+}
+
 func gameTimeAtJan() sim.GameTime {
 	// Day offset of Jan 1 within the season (matches worldgen calendar).
 	return sim.GameTime(int64(184) * sim.MinutesPerDay) // ~Jan 1

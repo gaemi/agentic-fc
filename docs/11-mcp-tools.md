@@ -57,7 +57,7 @@ While the world is paused (Admin maintenance — FR-34b): tools still respond ag
 - **Player-facing visibility**: MCP is the game-playing surface. It exposes football-facing data, scouting uncertainty, and controls required to manage a club; it does **not** expose private engine internals, seeded randomness inputs, raw private traits, or exact resolution formulas.
 - **Attribute masking (FR-22a)**: visible attributes come as exact ints for fully-known players (own squad), else `[lo, hi]` ranges that narrow with knowledge. Qualitative reads appear as `descriptors[]` and `evidence[]` (prose with a `confidence` tag and source) instead of private raw values.
 - **Money**: integer minor units of Crowns plus display string (`{"amount": 2400000, "display": "cr2.4M"}`).
-- **Narrative fields**: `{"key": "news.transfer.completed", "params": {…}, "text": "…"}` — structured + text is rendered in **English** on the MCP surface; locale rendering belongs to the human Console surface (currently `en`/`ko` catalogs). Keys + params keep the contract language-neutral.
+- **Narrative fields**: `{"key": "news.transfer.completed", "params": {…}, "text": "…"}` — structured + text is rendered in **English** on the MCP surface; locale rendering belongs to the human Console surface (currently `en`/`ko` catalogs). Keys + params keep the contract language-neutral. `params` is always an object; messages with no substitutions use `{}`, never `null`.
 - **Time**: ISO-like game timestamps; `since` cursors are opaque strings from previous responses.
 
 ## 2. Focus economy — initial constants
