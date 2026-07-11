@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -873,7 +874,14 @@ func resolveDataDir(flagValue string) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
 	}
-	if isWorldDataDir("data") {
+	local, err := isWorldDataDir("data")
+	if err != nil {
+		// ./data may hold a world we cannot inspect (permissions broken by a
+		// sudo run, another user's checkout). Falling back would silently
+		// split the operator's state across two locations — fail instead.
+		return "", fmt.Errorf("resolving data directory: %w (fix permissions or pass -data)", err)
+	}
+	if local {
 		return "./data", nil
 	}
 	return userDataDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
@@ -884,13 +892,28 @@ func resolveDataDir(flagValue string) (string, error) {
 // unrelated project must not adopt (and chmod 0700) that project's data/.
 // admin.token counts because a first launch may crash after minting it but
 // before the world snapshot lands.
-func isWorldDataDir(dir string) bool {
+func isWorldDataDir(dir string) (bool, error) {
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, err
+	case !fi.IsDir():
+		return false, nil
+	}
 	for _, marker := range []string{"world.json", "manifest.json", "admin.token"} {
-		if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && !fi.IsDir() {
-			return true
+		fi, err := os.Stat(filepath.Join(dir, marker))
+		switch {
+		case err == nil:
+			if !fi.IsDir() {
+				return true, nil
+			}
+		case !errors.Is(err, fs.ErrNotExist):
+			return false, err
 		}
 	}
-	return false
+	return false, nil
 }
 
 // userDataDir is the per-OS conventional location for game saves. The data
@@ -910,7 +933,10 @@ func userDataDir(goos string, getenv func(string) string, home func() (string, e
 		}
 		return "", errors.New("resolving data directory: LocalAppData is not set (pass -data)")
 	default:
-		if d := getenv("XDG_DATA_HOME"); d != "" {
+		// The XDG spec requires XDG_DATA_HOME to be absolute; a relative
+		// value would make the world location depend on the working
+		// directory again, so it is ignored like other spec violations.
+		if d := getenv("XDG_DATA_HOME"); d != "" && filepath.IsAbs(d) {
 			return filepath.Join(d, "agenticfc"), nil
 		}
 		h, err := home()
