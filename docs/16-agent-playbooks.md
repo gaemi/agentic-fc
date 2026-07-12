@@ -132,12 +132,14 @@ January `scout` + `SIGN` directive for one defensive reinforcement rather
 than three luxuries. Aim `SIGN` at reachable targets: free agents complete
 readily, and a contracted player moves only when his club has explicitly
 SELL-listed him — surplus players feed the autonomous market, never an
-explicit `SIGN`. `search_players` plus the transfer news category tell you
-who is actually reachable before you spend the 12 FP scout.
+explicit `SIGN`. Filter the search before you spend the 12 FP scout:
+`search_players` with `contract_status: "listed"` or `"free_agent"`
+returns only players a `SIGN` can actually land ([11](11-mcp-tools.md)).
 
 **Adjust when** safe by six points with five rounds left: swap rank 3 to
-`BUILD_SQUAD_VALUE` and start giving minutes (`GIVE_MINUTES`, `LEAN`) to
-next season's squad.
+`BUILD_SQUAD_VALUE` and open the door for next season's squad the way the
+youth playbook does — thin a band by listing a veteran (`SELL`, `LEAN`) so
+selection starts the younger body on merit.
 
 ## 3. Youth Development
 
