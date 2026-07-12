@@ -139,8 +139,18 @@ paragraph prose so the press desk reads like a living newspaper rather than a
 raw event log. Long bodies preserve paragraph rhythm in the TUI and can be
 paged with the same wheel/PageUp/PageDown controls used by match replays.
 Full-time items are grouped into matchday round-up articles with result blocks,
-table notes, and a longer storyline, so the Media tab reads like a sports desk
-summary rather than a repetitive list of one-line score alerts. Each completed
+table notes, and a composed main-thread storyline, so the Media tab reads like
+a sports desk summary rather than a repetitive list of one-line score alerts.
+The storyline is built from public round facts the engine records with the
+round-up (widest win, highest-scoring match, win/draw/goal tallies): a lead
+sentence graded by the widest margin — rout, clear win, single-goal round, or
+full deadlock, framed for the side that won it — plus one secondary angle
+(goal fest, defensive gridlock, away day, home sweep, the neutrals' thriller,
+stalemates, or the win/draw balance) rotated deterministically by news ID.
+The composer lives in `internal/narrative` and is shared by the Console API
+and the MCP gateway, so both surfaces publish identical prose for the same
+article; round-ups persisted before the round facts existed keep rendering
+their original fragments. Each completed
 league matchday also files a **Team of the Week** feature per division: a
 fixed 1-4-3-3 best XI picked deterministically from the published ratings
 (rating, then goals, then id), with the round's top performer as the headline

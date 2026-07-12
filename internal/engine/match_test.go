@@ -121,6 +121,47 @@ func mapsParam(t *testing.T, raw any) []map[string]any {
 	return rows
 }
 
+// A cup tie level after ninety carries its shootout winner: the story
+// payload must count it as a decided match for the advancing side, never as
+// a draw, and the highest-scoring match must publish its margin so the
+// composer can tell a thriller from a one-sided goal fest.
+func TestResultStoryPayloadCountsCupWinnersAndTopMargin(t *testing.T) {
+	e, _ := newEngine(t, 42)
+	var c1, c2 int64
+	for id := range e.clubs {
+		if c1 == 0 {
+			c1 = id
+		} else if c2 == 0 && id != c1 {
+			c2 = id
+		}
+	}
+	results := []worldgen.MatchResult{
+		{Competition: worldgen.CompetitionCup, HomeID: c1, AwayID: c2, HomeGoals: 1, AwayGoals: 1, Winner: c2},
+		{Competition: worldgen.CompetitionCup, HomeID: c2, AwayID: c1, HomeGoals: 5, AwayGoals: 1, Winner: c2},
+	}
+	story := e.resultStoryPayload(results)
+	if story["draws"] != 0 || story["scoreless"] != 0 {
+		t.Fatalf("shootout tie counted as a draw: %+v", story)
+	}
+	if story["home_wins"] != 1 || story["away_wins"] != 1 {
+		t.Fatalf("cup winners not attributed to their sides: %+v", story)
+	}
+	if story["top_total"] != 6 || story["top_margin"] != 4 {
+		t.Fatalf("top match facts wrong: %+v", story)
+	}
+
+	// A goal-total tie prefers the closer fixture: a 3-3 outranks a 5-1 so
+	// the thriller angle can see the match that refused to settle.
+	tied := append(results, worldgen.MatchResult{
+		Competition: worldgen.CompetitionCup, HomeID: c1, AwayID: c2,
+		HomeGoals: 3, AwayGoals: 3, Winner: c1,
+	})
+	story = e.resultStoryPayload(tied)
+	if story["top_total"] != 6 || story["top_margin"] != 0 {
+		t.Fatalf("tie-break did not prefer the closer fixture: %+v", story)
+	}
+}
+
 func TestBodyProfileFeedsAerialAndStrength(t *testing.T) {
 	baseVisible := map[attr.Visible]int{
 		attr.JumpingReach: 10, attr.Strength: 10,
