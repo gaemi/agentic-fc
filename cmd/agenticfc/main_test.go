@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/sim"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
 
 func TestListenTCP(t *testing.T) {
@@ -384,5 +385,137 @@ func TestResolveRunProfileRejectsInvalidInput(t *testing.T) {
 	}
 	if _, err := resolveRunProfile("custom", 10, true, 0, false, 0, false); err == nil {
 		t.Fatal("invalid speed override accepted")
+	}
+}
+
+func TestMCPConfigText(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "manifest.json")
+	body := `{
+  "world_name": "Test League",
+  "seed": 7,
+  "start_state": "running",
+  "managers": [
+    {"manager_id": 1001, "manager_name": "Ada One", "club_id": 1, "club_name": "Alpha FC", "archetype": "The Idealist", "reputation": 5000, "token": "mgr_alpha"},
+    {"manager_id": 1002, "manager_name": "Bo Two", "club_id": 2, "club_name": "Beta United", "archetype": "The Professor", "reputation": 5100, "token": "mgr_beta"},
+    {"manager_id": 1003, "manager_name": "Cy Three", "club_id": 0, "archetype": "The Firefighter", "reputation": 4200, "token": "mgr_free"},
+    {"manager_id": 1004, "manager_name": "Del Four", "club_id": 4, "club_name": "Delta Town", "archetype": "The Idealist", "reputation": 3000, "token": "mgr_dead"},
+    {"manager_id": 1005, "manager_name": "Eve Five", "club_id": 5, "club_name": "Echo City", "archetype": "The Professor", "reputation": 3100, "token": "mgr_ghost"}
+  ]
+}`
+	world := &worldgen.World{
+		Clubs: []worldgen.Club{
+			{ID: 1, Name: "Alpha FC"},
+			{ID: 9, Name: "Gamma Rovers"},
+		},
+		Managers: []worldgen.Manager{
+			{ID: 1001, Name: "Ada One", ClubID: 1},
+			// Moved clubs since the token was issued; the manifest still
+			// says Beta United. The listing must show the snapshot's club.
+			{ID: 1002, Name: "Bo Two", ClubID: 9},
+			{ID: 1003, Name: "Cy Three"},
+			{ID: 1004, Name: "Del Four", Status: worldgen.ManagerRetired},
+			// 1005 is missing: an orphan credential the gateway prunes at load.
+		},
+	}
+	if err := os.WriteFile(manifest, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0, world)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"claude mcp add --transport http agentic-fc 'http://127.0.0.1:7421' --header 'Authorization: Bearer mgr_alpha'",
+		"\"url\": \"http://127.0.0.1:7421\"",
+		"\"Authorization\": \"Bearer mgr_alpha\"",
+		"Ada One", "Bo Two", "Cy Three",
+		"Gamma Rovers",
+		"(unemployed)",
+		"get_guide",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("default output missing %q\n%s", want, out)
+		}
+	}
+	// Only the picked manager's token may appear: the other tokens stay in
+	// the manifest so the listing never leaks every credential at once. The
+	// retired manager (1004) and the orphan credential (1005) must vanish
+	// entirely — their tokens are dead on arrival at the gateway.
+	for _, leak := range []string{"mgr_beta", "mgr_free", "mgr_dead", "mgr_ghost", "Del Four", "Eve Five", "Beta United"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("default output contains %q, want it omitted\n%s", leak, out)
+		}
+	}
+
+	out, err = mcpConfigText(manifest, "http://127.0.0.1:7421", 1002, world)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Bearer mgr_beta") {
+		t.Errorf("-mcp-manager 1002 output missing beta token\n%s", out)
+	}
+	if strings.Contains(out, "mgr_alpha") {
+		t.Errorf("-mcp-manager 1002 output leaks alpha token\n%s", out)
+	}
+
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 9999, world); err == nil {
+		t.Fatal("unknown manager id accepted")
+	}
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 1004, world); err == nil ||
+		!strings.Contains(err.Error(), "retired") {
+		t.Fatalf("retired manager error = %v, want retirement hint", err)
+	}
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 1005, world); err == nil ||
+		strings.Contains(err.Error(), "retired") {
+		t.Fatalf("orphan credential error = %v, want plain not-found", err)
+	}
+	if _, err := mcpConfigText(filepath.Join(dir, "missing.json"), "http://127.0.0.1:7421", 0, world); err == nil ||
+		!strings.Contains(err.Error(), "no world manifest") {
+		t.Fatalf("missing manifest error = %v, want friendly hint", err)
+	}
+
+	empty := filepath.Join(dir, "empty.json")
+	if err := os.WriteFile(empty, []byte(`{"world_name":"x","seed":1,"start_state":"ready","managers":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mcpConfigText(empty, "http://127.0.0.1:7421", 0, world); err == nil {
+		t.Fatal("empty manager list accepted")
+	}
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0,
+		&worldgen.World{Managers: []worldgen.Manager{{ID: 1001, Status: worldgen.ManagerRetired}}}); err == nil ||
+		!strings.Contains(err.Error(), "no playable managers") {
+		t.Fatal("all-retired world accepted")
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/plain/path":           "'/plain/path'",
+		"/with space/agenticfc": "'/with space/agenticfc'",
+		"/dollar/$HOME/`cmd`":   "'/dollar/$HOME/`cmd`'",
+		"/quote/it's here":      `'/quote/it'\''s here'`,
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+func TestMCPEndpointURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"127.0.0.1:7421": "http://127.0.0.1:7421",
+		"[::]:7421":      "http://[::1]:7421",
+	} {
+		got, err := mcpEndpointURL(in)
+		if err != nil || got != want {
+			t.Errorf("mcpEndpointURL(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"not-an-address", "127.0.0.1:0", ":0", ":7421", "127.0.0.1:http", "127.0.0.1:70000", ""} {
+		if got, err := mcpEndpointURL(bad); err == nil {
+			t.Errorf("mcpEndpointURL(%q) = %q, want error", bad, got)
+		}
 	}
 }

@@ -27,10 +27,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -65,6 +67,8 @@ func main() {
 	snapshotEvery := flag.Duration("snapshot-interval", time.Minute, "periodic snapshot cadence (real time)")
 	widgetMode := flag.String("widget-mode", "apps", "MCP UI mode: apps (official MCP Apps resource) | meta/content (compatibility fallbacks)")
 	widgetLocale := flag.String("widget-locale", "", "MCP UI locale override: supported language tag (en/ko, e.g. ko-KR); empty = client/system language")
+	mcpConfig := flag.Bool("mcp-config", false, "print ready-to-paste MCP client setup for this world and exit")
+	mcpManager := flag.Int64("mcp-manager", 0, "manager id whose token -mcp-config embeds (default: first manifest entry)")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *versionFlag {
@@ -73,6 +77,43 @@ func main() {
 	}
 	explicitFlags := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { explicitFlags[f.Name] = true })
+
+	if *mcpConfig {
+		dataDir, err := resolveDataDir(*dataFlag)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// The manifest alone cannot say whether a token still plays: managers
+		// retire (their tokens then fail every call with MANAGER_RETIRED) and
+		// a crash can leave the manifest a credential ahead of the snapshot.
+		// Load the world so the helper only offers tokens the gateway serves.
+		snap, err := (&store.FileStore{Dir: dataDir}).LoadSnapshot()
+		if err != nil {
+			log.Fatalf("loading snapshot: %v", err)
+		}
+		if snap == nil {
+			log.Fatalf("no world in %s — launch the daemon once to create one (agenticfc -start)", dataDir)
+		}
+		mcpURL, err := mcpEndpointURL(*mcpAddr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), mcpURL, *mcpManager, snap.World)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(out)
+		// A wildcard bind is mapped to loopback above (the banner convention:
+		// print a URL that is directly dialable). That URL only works on the
+		// daemon machine, and which host a remote client should use instead
+		// (LAN, VPN, container bridge) is unknowable here — say so.
+		if host, _, err := net.SplitHostPort(*mcpAddr); err == nil {
+			if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+				fmt.Printf("note: -mcp-addr %s binds every interface; the loopback URL above works on this machine — a remote agent must use a host it can reach instead\n", *mcpAddr)
+			}
+		}
+		return
+	}
 
 	runProfile, err := resolveRunProfile(*profile, sim.Speed(*speed), explicitFlags["speed"],
 		*idleAccel, explicitFlags["idle-accel"], *offseasonAccel, explicitFlags["offseason-accel"])
@@ -248,6 +289,22 @@ func main() {
 	consoleURL := "http://" + dialableAddr(consoleLn.Addr().String())
 	mcpURL := "http://" + dialableAddr(mcpLn.Addr().String())
 	fmt.Printf("Console API: %s  ·  MCP: %s\n", consoleURL, mcpURL)
+	// Repeat the flags that change what -mcp-config would print, so the
+	// suggested command works verbatim for this exact launch. The data dir is
+	// always pinned as an absolute path: a relative one (including the adopted
+	// ./data default) would resolve to a different world from another working
+	// directory, and the macOS per-user default contains a space, so quote it.
+	connectHint := "agenticfc -mcp-config"
+	hintData := dataDir
+	if abs, err := filepath.Abs(dataDir); err == nil {
+		hintData = abs
+	}
+	connectHint += " -data " + shellQuote(hintData)
+	// Always the resolved bound address, never the replayed flag: the flag can
+	// be hostless (:7421) or port 0, both of which the offline helper rejects
+	// by design because it cannot know what the OS would bind.
+	connectHint += " -mcp-addr " + shellQuote(dialableAddr(mcpLn.Addr().String()))
+	fmt.Printf("connect an AI agent: %s\n", connectHint)
 
 	if willRun {
 		if err := host.Start(); err != nil {
@@ -615,6 +672,134 @@ func readManifestCredentials(path string) ([]worldgen.ManagerCredential, error) 
 		return nil, err
 	}
 	return m.Managers, nil
+}
+
+// shellQuote renders s as one POSIX shell word: single quotes disable every
+// expansion, and an embedded single quote re-enters quoting as '\”.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// mcpEndpointURL turns the -mcp-addr flag into the dialable URL that
+// -mcp-config prints. Unlike a daemon launch, the helper never binds the
+// address, so it must reject values a paste could not use: unparseable
+// host:port, and port 0, where the OS would pick a port this offline helper
+// cannot know (a running daemon's banner prints the actually bound address).
+func mcpEndpointURL(addr string) (string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("-mcp-addr %q is not host:port: %v", addr, err)
+	}
+	if host == "" {
+		// A bare :port binds whichever family the OS picks; offline there is
+		// no listener to ask, so refusing beats printing an unreachable URL.
+		return "", fmt.Errorf("-mcp-addr %q needs an explicit host (IPv4 vs IPv6 is the daemon's choice for a bare :port) — a running daemon's startup banner shows the bound address", addr)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("-mcp-addr %q needs a fixed numeric port (1-65535) for a dialable URL — a running daemon's startup banner shows its actual address", addr)
+	}
+	return "http://" + dialableAddr(addr), nil
+}
+
+// mcpConfigText renders ready-to-paste MCP client setup for one Manager of
+// the world whose manifest lives at manifestPath. The endpoint comes from
+// the -mcp-addr flag value, so the daemon does not need to be running.
+// managerID 0 picks the first playable manifest entry. Credentials are
+// filtered against the world snapshot: a RETIRED manager's token fails every
+// call (FR-14e), and a credential whose manager is missing from the snapshot
+// is an orphan the gateway prunes at load — neither is worth pasting.
+func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen.World) (string, error) {
+	creds, err := readManifestCredentials(manifestPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("no world manifest at %s — launch the daemon once to create a world (agenticfc -start)", manifestPath)
+		}
+		return "", err
+	}
+	if len(creds) == 0 {
+		return "", fmt.Errorf("manifest %s lists no managers", manifestPath)
+	}
+	managers := make(map[int64]*worldgen.Manager, len(world.Managers))
+	for i := range world.Managers {
+		managers[world.Managers[i].ID] = &world.Managers[i]
+	}
+	playable := make([]worldgen.ManagerCredential, 0, len(creds))
+	for _, c := range creds {
+		if m, ok := managers[c.ManagerID]; ok && m.Status != worldgen.ManagerRetired {
+			playable = append(playable, c)
+		}
+	}
+	if len(playable) == 0 {
+		return "", fmt.Errorf("no playable managers in %s — every credential is retired or no longer in the world", manifestPath)
+	}
+	pick := playable[0]
+	if managerID != 0 {
+		found := false
+		for _, c := range playable {
+			if c.ManagerID == managerID {
+				pick, found = c, true
+				break
+			}
+		}
+		if !found {
+			if m, ok := managers[managerID]; ok && m.Status == worldgen.ManagerRetired {
+				return "", fmt.Errorf("manager %d has retired — a retired manager's token no longer plays (MANAGER_RETIRED)", managerID)
+			}
+			return "", fmt.Errorf("manager %d is not in %s — run -mcp-config without -mcp-manager to list ids", managerID, manifestPath)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "manager tokens: %s\n\n", manifestPath)
+	fmt.Fprintf(&b, "Managers in this world (the token binds the agent to one Manager):\n")
+	tw := tabwriter.NewWriter(&b, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "\tID\tMANAGER\tCLUB\n")
+	clubNames := make(map[int64]string, len(world.Clubs))
+	for i := range world.Clubs {
+		clubNames[world.Clubs[i].ID] = world.Clubs[i].Name
+	}
+	for _, c := range playable {
+		mark := ""
+		if c.ManagerID == pick.ManagerID {
+			mark = "*"
+		}
+		// Employment from the snapshot, not the credential: the manifest
+		// freezes ClubID/ClubName at token issuance, and managers move.
+		m := managers[c.ManagerID]
+		club := "(unemployed)"
+		if m.ClubID != 0 {
+			club = clubNames[m.ClubID]
+		}
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", mark, c.ManagerID, m.Name, club)
+	}
+	tw.Flush()
+	fmt.Fprintf(&b, "* = used below; choose another with -mcp-config -mcp-manager <id>\n")
+	// The snapshot can trail a running daemon by up to the snapshot interval,
+	// so a just-retired or just-spawned manager may be listed wrong briefly.
+	fmt.Fprintf(&b, "(list follows the last saved snapshot — if a pasted token is rejected, re-run this command)\n\n")
+	fmt.Fprintf(&b, "MCP endpoint (the daemon must be running): %s\n\n", mcpURL)
+	fmt.Fprintf(&b, "Claude Code:\n")
+	// Quote both shell words: an IPv6 URL's brackets glob in zsh.
+	fmt.Fprintf(&b, "  claude mcp add --transport http agentic-fc %s --header %s\n\n",
+		shellQuote(mcpURL), shellQuote("Authorization: Bearer "+pick.Token))
+	type serverEntry struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+	}
+	cfgJSON, err := json.MarshalIndent(map[string]map[string]serverEntry{
+		"mcpServers": {"agentic-fc": {
+			Type:    "http",
+			URL:     mcpURL,
+			Headers: map[string]string{"Authorization": "Bearer " + pick.Token},
+		}},
+	}, "  ", "  ")
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&b, "Any MCP client (JSON config):\n  %s\n\n", cfgJSON)
+	fmt.Fprintf(&b, "First tool calls for a fresh agent: get_guide, get_settings, get_time, get_situation, get_mindset\n")
+	return b.String(), nil
 }
 
 // worldHost owns the running world: the runner goroutine is the single

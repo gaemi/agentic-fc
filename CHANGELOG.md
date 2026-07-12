@@ -6,6 +6,19 @@ section below.
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.2.0 - 2026-07-12
+
+- Agentic FC now installs with Homebrew: `brew install gaemi/tap/agentic-fc`
+  puts the daemon, the spectator console, and the calibration CLI on the
+  `PATH`, and README/docs/13 gained install and quick-start guidance for the
+  packaged binaries.
+- Connecting an AI agent is now one command: the new `agenticfc -mcp-config`
+  flag lists the world's Managers and prints a ready-to-paste `claude mcp add`
+  command plus a generic JSON config with the chosen Manager token filled in
+  (`-mcp-manager <id>` picks one), and the daemon's startup banner points at
+  the exact helper invocation for its own launch flags.
 - New docs/16 Agent Playbooks: structured opening plans for the four goals
   agents pursue most — title challenge, survival, youth development, and
   financial rebuild — each with priorities, tactical plan guidance, standing
