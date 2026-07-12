@@ -504,6 +504,80 @@ func TestMatchdayResultsArticleRendersAllWinnersStory(t *testing.T) {
 	}
 }
 
+// A payload carrying the round facts renders the composed main-thread prose:
+// a graded lead about the widest win plus one secondary angle, shared with
+// the MCP surface via narrative.MatchdayStoryLine.
+func TestMatchdayResultsArticleRendersRoundFactsStory(t *testing.T) {
+	s, host := newTestServer(t)
+	host.world.AddNews(worldgen.NewsItem{
+		GameTime: 125,
+		Category: "match",
+		Key:      "feed.matchday.results",
+		Params: map[string]any{
+			"count":        2,
+			"month":        8,
+			"day":          16,
+			"kickoff_time": "15:00",
+			"results": []map[string]any{
+				{"home": "AFC Castleden", "away": "Eastvale Town", "home_goals": 5, "away_goals": 1, "winner": "AFC Castleden"},
+				{"home": "Stanton Albion", "away": "Union Steindorf", "home_goals": 1, "away_goals": 1},
+			},
+			"table": []map[string]any{
+				{"division": 1, "club": "AFC Castleden", "points": 6},
+			},
+			"story": map[string]any{
+				"best_margin": 4,
+				"best_home":   "AFC Castleden",
+				"best_away":   "Eastvale Town",
+				"home_goals":  5,
+				"away_goals":  1,
+				"draws":       1,
+				"count":       2,
+				"goals":       8,
+				"home_wins":   1,
+				"away_wins":   0,
+				"scoreless":   0,
+				"top_total":   6,
+				"top_home":    "AFC Castleden",
+				"top_away":    "Eastvale Town",
+			},
+		},
+	})
+
+	code, body := get(t, s, "/v1/news?limit=10")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	var out struct {
+		Items []newsArticleDTO `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("news items = %d, body = %s", len(out.Items), body)
+	}
+	bodyText := out.Items[0].Body
+	// The rout lead names the widest win with its real score.
+	for _, want := range []string{"loudest statement", "5-1", "AFC Castleden"} {
+		if !strings.Contains(bodyText, want) {
+			t.Fatalf("round-facts story missing %q in body: %q", want, bodyText)
+		}
+	}
+	// goals=8 in 2 matches gates exactly the goal-fest angle (the top match is
+	// the lead match, so the thriller angle must not double up).
+	if !strings.Contains(bodyText, "8 goals across 2 matches") {
+		t.Fatalf("expected goal-fest angle in body: %q", bodyText)
+	}
+	if strings.Contains(bodyText, "refused to settle") {
+		t.Fatalf("thriller angle repeated the lead fixture: %q", bodyText)
+	}
+	// Legacy fragments must not leak into the rich rendering.
+	if strings.Contains(bodyText, "Biggest margin:") {
+		t.Fatalf("legacy fragment leaked into rich story: %q", bodyText)
+	}
+}
+
 // TestHiddenNeverLeaks is the FR-22 guardrail: no viewer endpoint may emit
 // hidden attributes, trajectory values, reputation, raw tendencies, wages,
 // balances, tokens, or the world seed.

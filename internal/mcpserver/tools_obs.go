@@ -306,7 +306,7 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 	if key == "feed.matchday.results" {
 		articleClass = "matchday.results"
 		title = g.tr2(loc, narrative.ArticleTemplateKey("title", articleClass, newsID), params)
-		articleParams = g.matchdayResultsArticleParams(loc, params, title)
+		articleParams = g.matchdayResultsArticleParams(loc, params, title, newsID)
 	}
 	if key == "feed.matchday.totw" {
 		articleClass = "matchday.totw"
@@ -378,11 +378,11 @@ func totwInt(v any) (int64, bool) {
 	return 0, false
 }
 
-func (g *Gateway) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+func (g *Gateway) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string, newsID int64) map[string]any {
 	out := copyArticleParams(params, title)
 	out["results"] = g.matchdayResultLines(loc, params["results"])
 	out["table"] = g.matchdayTableLines(loc, params["table"])
-	out["story"] = g.matchdayStoryLine(loc, params["story"])
+	out["story"] = g.matchdayStoryLine(loc, params["story"], newsID)
 	return out
 }
 
@@ -420,30 +420,14 @@ func (g *Gateway) matchdayTableLines(loc narrative.Locale, raw any) string {
 	return joinNonEmpty(lines)
 }
 
-func (g *Gateway) matchdayStoryLine(loc narrative.Locale, raw any) string {
+// matchdayStoryLine delegates to the shared composer so the MCP gateway and
+// the Console publish the same main-thread prose for the same article.
+func (g *Gateway) matchdayStoryLine(loc narrative.Locale, raw any, newsID int64) string {
 	rows := mapsFromAny(raw)
 	if len(rows) == 0 {
 		return ""
 	}
-	story := rows[0]
-	lines := []string{}
-	margin, hasMargin := numericParam(story["best_margin"])
-	draws, hasDraws := numericParam(story["draws"])
-	if hasMargin && margin > 0 {
-		lines = append(lines, g.tr2(loc, "term.matchday.story_margin", story))
-	}
-	if hasDraws && draws > 0 {
-		lines = append(lines, g.tr2(loc, "term.matchday.story_draws", story))
-	}
-	if hasDraws && draws == 0 && hasMargin && margin > 0 {
-		lines = append(lines, g.tr(loc, "term.matchday.story_all_winners"))
-	}
-	if len(lines) == 0 {
-		// Defensive fallback for malformed persisted params; normal engine
-		// payloads always contain draws and best_margin.
-		lines = append(lines, g.tr(loc, "term.matchday.story_unavailable"))
-	}
-	return joinNonEmpty(lines)
+	return narrative.MatchdayStoryLine(g.Catalogs, loc, rows[0], newsID)
 }
 
 func mapsFromAny(raw any) []map[string]any {
@@ -464,22 +448,6 @@ func mapsFromAny(raw any) []map[string]any {
 		return out
 	default:
 		return nil
-	}
-}
-
-func numericParam(raw any) (float64, bool) {
-	switch v := raw.(type) {
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case float64:
-		return v, true
-	case json.Number:
-		got, err := v.Float64()
-		return got, err == nil
-	default:
-		return 0, false
 	}
 }
 
