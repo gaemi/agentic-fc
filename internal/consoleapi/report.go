@@ -1,6 +1,8 @@
 package consoleapi
 
 import (
+	"sort"
+
 	"github.com/gaemi/agentic-fc/internal/narrative"
 	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
@@ -36,11 +38,21 @@ func (s *Server) matchStoryLines(loc narrative.Locale, names map[int64]string, p
 		return base + ".1"
 	}
 	home, away := names[r.HomeID], names[r.AwayID]
-	winner, loser := home, away
-	winnerID := r.HomeID
-	if r.AwayGoals > r.HomeGoals {
-		winner, loser = away, home
+	// winnerID is zero only for a genuine draw: on level cup ties the
+	// shootout victor recorded in r.Winner takes it, keeping the story in
+	// agreement with the winner field the API already serves.
+	winnerID := int64(0)
+	switch {
+	case r.HomeGoals > r.AwayGoals:
+		winnerID = r.HomeID
+	case r.AwayGoals > r.HomeGoals:
 		winnerID = r.AwayID
+	default:
+		winnerID = r.Winner
+	}
+	winner, loser := home, away
+	if winnerID == r.AwayID {
+		winner, loser = away, home
 	}
 	params := map[string]any{
 		"home": home, "away": away, "winner": winner, "loser": loser,
@@ -52,6 +64,8 @@ func (s *Server) matchStoryLines(loc narrative.Locale, names map[int64]string, p
 	}
 	frame := ""
 	switch {
+	case margin == 0 && winnerID != 0:
+		frame = variant("report.win.shootout")
 	case margin == 0 && r.HomeGoals == 0:
 		frame = variant("report.draw.blank")
 	case margin == 0:
@@ -109,11 +123,18 @@ func matchEdge(r *worldgen.MatchResult, home, away, winner string, margin int) (
 		if winner == away {
 			winnerSide = matchSideAway
 		}
+		// Sorted key walk: Go map order is random, and a tie between two
+		// patterns must render the same line on every request.
+		keys := make([]string, 0, len(r.ChanceTypesBySide))
+		for chanceType := range r.ChanceTypesBySide {
+			keys = append(keys, chanceType)
+		}
+		sort.Strings(keys)
 		bestType, bestN := "", 0
-		for chanceType, n := range r.ChanceTypesBySide {
+		for _, chanceType := range keys {
 			side, kind, ok := splitSideKey(chanceType)
-			if ok && side == winnerSide && n > bestN {
-				bestType, bestN = kind, n
+			if ok && side == winnerSide && r.ChanceTypesBySide[chanceType] > bestN {
+				bestType, bestN = kind, r.ChanceTypesBySide[chanceType]
 			}
 		}
 		if bestN >= reportPatternMin {
@@ -141,7 +162,9 @@ func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser strin
 			return "report.beat.hattrick", map[string]any{"player": name, "count": bestGoals}
 		}
 	}
-	if margin > 0 {
+	if winnerID != 0 {
+		// Covers shootout victors too: recovering from two down to force
+		// penalties and winning them is still winning the hard way.
 		if deficit := worstDeficit(r, winnerID); deficit >= 2 {
 			return "report.beat.comeback_win", map[string]any{"club": winner, "deficit": deficit}
 		}
@@ -149,8 +172,8 @@ func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser strin
 		for _, clubID := range []int64{r.HomeID, r.AwayID} {
 			if deficit := worstDeficit(r, clubID); deficit >= 2 {
 				name := loser
-				if clubID == winnerID {
-					name = winner
+				if clubID == r.HomeID {
+					name = winner // a draw's winner/loser default to home/away
 				}
 				return "report.beat.comeback_draw", map[string]any{"club": name, "deficit": deficit}
 			}

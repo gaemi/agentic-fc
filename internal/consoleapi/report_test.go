@@ -94,6 +94,35 @@ func TestMatchStoryLinesFramesEdgesAndBeats(t *testing.T) {
 		t.Fatalf("a goalless match without diagnostics is frame-only: %v", lines)
 	}
 
+	// A level cup tie decided on penalties is a win, not a draw — the story
+	// must agree with the winner field the API already serves, and a side
+	// that forced the shootout from two down still gets the comeback beat.
+	shootout := storyFixture(105, 2, 2)
+	shootout.Winner = 2
+	shootout.Scorers = []worldgen.MatchEvent{
+		{Minute: 10, PlayerID: 9, ClubID: 1}, {Minute: 20, PlayerID: 5, ClubID: 1},
+		{Minute: 60, PlayerID: 21, ClubID: 2}, {Minute: 80, PlayerID: 22, ClubID: 2},
+	}
+	lines = renderStory(t, s, shootout)
+	if len(lines) != 2 || !strings.Contains(lines[0], "Beta") ||
+		!strings.Contains(strings.ToLower(lines[0]), "penalt") && !strings.Contains(lines[0], "shootout") {
+		t.Fatalf("penalties-decided tie should read as Beta's shootout win: %v", lines)
+	}
+	if !strings.Contains(lines[1], "Beta") || !strings.Contains(lines[1], "2") {
+		t.Fatalf("shootout winner from two down should keep the comeback beat: %v", lines)
+	}
+
+	// A tied top chance pattern must render identically on every request
+	// (Go map iteration order must not leak into the report).
+	tied := storyFixture(107, 1, 0)
+	tied.ChanceTypesBySide = map[string]int{"HOME_CUTBACK": 3, "HOME_COUNTER": 3}
+	first := renderStory(t, s, tied)
+	for range 20 {
+		if again := renderStory(t, s, tied); again[1] != first[1] {
+			t.Fatalf("pattern tie-break is unstable: %q vs %q", first[1], again[1])
+		}
+	}
+
 	// Variant rotation: fixture parity flips the voice.
 	a := renderStory(t, s, storyFixture(201, 3, 0))
 	b := renderStory(t, s, storyFixture(202, 3, 0))
