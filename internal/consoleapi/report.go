@@ -77,52 +77,63 @@ func (s *Server) matchStoryLines(loc narrative.Locale, names map[int64]string, p
 	default:
 		frame = variant("report.win.narrow")
 	}
+	winnerSide := ""
+	switch winnerID {
+	case r.HomeID:
+		winnerSide = matchSideHome
+	case r.AwayID:
+		winnerSide = matchSideAway
+	}
 	lines := []string{s.Catalogs.Render(loc, frame, params)}
-	if key, edgeParams := matchEdge(r, home, away, winner, margin); key != "" {
+	if key, edgeParams := matchEdge(r, home, away, winnerSide); key != "" {
 		if edgeParams["pattern_key"] != nil {
 			edgeParams["pattern"] = s.Catalogs.Render(loc, edgeParams["pattern_key"].(string), nil)
 			delete(edgeParams, "pattern_key")
 		}
 		lines = append(lines, s.Catalogs.Render(loc, variant(key), edgeParams))
 	}
-	if key, beatParams := matchStoryBeat(r, winnerID, winner, loser, margin, playerName); key != "" {
+	if key, beatParams := matchStoryBeat(r, winnerID, winner, loser, playerName); key != "" {
 		lines = append(lines, s.Catalogs.Render(loc, variant(key), beatParams))
 	}
 	return lines
 }
 
 // matchEdge picks the loudest diagnostic skew — pressing, the air, set-piece
-// pressure, chance quality, then (for the winner only) a chance-pattern
-// identity. One line at most: the report is a verdict, not a stat dump.
-func matchEdge(r *worldgen.MatchResult, home, away, winner string, margin int) (string, map[string]any) {
+// pressure, chance quality, then a chance-pattern identity. Every edge is
+// "how it was won", so outside a genuine draw only the winning side's
+// dominance narrates: a side that pressed everyone off the park and still
+// lost did not define the result. One line at most — the report is a
+// verdict, not a stat dump.
+func matchEdge(r *worldgen.MatchResult, home, away, winnerSide string) (string, map[string]any) {
 	sideOf := func(side string) string {
 		if side == matchSideHome {
 			return home
 		}
 		return away
 	}
+	credits := func(side string) bool {
+		return winnerSide == "" || side == winnerSide
+	}
 	d := r.Diagnostics
-	if side, hi, lo := dominantSide(d.PressTurnovers); hi >= reportPressEdgeMin && hi >= lo*reportPressEdgeRatio {
+	if side, hi, lo := dominantSide(d.PressTurnovers); credits(side) && hi >= reportPressEdgeMin && hi >= lo*reportPressEdgeRatio {
 		return "report.edge.press", map[string]any{"club": sideOf(side), "a": hi, "b": lo}
 	}
-	if side, hi, lo := dominantSide(d.AerialWins); hi >= reportAerialEdgeMin && hi >= lo*reportPressEdgeRatio {
+	if side, hi, lo := dominantSide(d.AerialWins); credits(side) && hi >= reportAerialEdgeMin && hi >= lo*reportPressEdgeRatio {
 		return "report.edge.aerial", map[string]any{"club": sideOf(side), "a": hi, "b": lo}
 	}
-	if side, hi, lo := dominantSide(d.SetPieceThreat); hi >= reportSetPieceEdgeMin && hi >= lo*reportPressEdgeRatio {
+	if side, hi, lo := dominantSide(d.SetPieceThreat); credits(side) && hi >= reportSetPieceEdgeMin && hi >= lo*reportPressEdgeRatio {
 		return "report.edge.setpiece", map[string]any{"club": sideOf(side), "a": hi, "b": lo}
 	}
 	hiHome, hiAway := d.ShotQualityBySide["HOME_HIGH"], d.ShotQualityBySide["AWAY_HIGH"]
-	if hiHome-hiAway >= reportQualityEdgeMin {
+	if credits(matchSideHome) && hiHome-hiAway >= reportQualityEdgeMin {
 		return "report.edge.quality", map[string]any{"club": home, "a": hiHome, "b": hiAway}
 	}
-	if hiAway-hiHome >= reportQualityEdgeMin {
+	if credits(matchSideAway) && hiAway-hiHome >= reportQualityEdgeMin {
 		return "report.edge.quality", map[string]any{"club": away, "a": hiAway, "b": hiHome}
 	}
-	if margin > 0 {
-		winnerSide := matchSideHome
-		if winner == away {
-			winnerSide = matchSideAway
-		}
+	// The pattern identity needs a winner (shootout victors included): a
+	// draw has no side whose attacking signature "won it".
+	if winnerSide != "" {
 		// Sorted key walk: Go map order is random, and a tie between two
 		// patterns must render the same line on every request.
 		keys := make([]string, 0, len(r.ChanceTypesBySide))
@@ -139,7 +150,7 @@ func matchEdge(r *worldgen.MatchResult, home, away, winner string, margin int) (
 		}
 		if bestN >= reportPatternMin {
 			return "report.edge.pattern", map[string]any{
-				"club": winner, "a": bestN, "pattern_key": "term.chance_type." + bestType,
+				"club": sideOf(winnerSide), "a": bestN, "pattern_key": "term.chance_type." + bestType,
 			}
 		}
 	}
@@ -148,7 +159,7 @@ func matchEdge(r *worldgen.MatchResult, home, away, winner string, margin int) (
 
 // matchStoryBeat reads the scorer ledger for the retellable arc: a
 // hat-trick, a two-goal comeback (win or salvaged draw), or a late winner.
-func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser string, margin int, playerName func(int64) string) (string, map[string]any) {
+func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser string, playerName func(int64) string) (string, map[string]any) {
 	goalsByPlayer := map[int64]int{}
 	bestScorer, bestGoals := int64(0), 0
 	for _, e := range r.Scorers {
@@ -179,7 +190,9 @@ func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser strin
 			}
 		}
 	}
-	if margin == 1 {
+	// Gate on the decisive goal, not the final margin: insurance goals in
+	// stoppage time do not un-write a late winner.
+	if winnerID != 0 {
 		if minute, ok := decisiveGoalMinute(r, winnerID); ok && minute >= reportLateGoalMinute {
 			return "report.beat.late_winner", map[string]any{"club": winner, "minute": minute}
 		}

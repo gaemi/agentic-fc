@@ -123,6 +123,52 @@ func TestMatchStoryLinesFramesEdgesAndBeats(t *testing.T) {
 		}
 	}
 
+	// A losing side's diagnostic dominance is not "how it was won": the
+	// away side wins 0-1 while the home side leads the press 5-1 — no press
+	// line may credit Alpha, and with no away-side edge the report is
+	// frame-only.
+	upset := storyFixture(109, 0, 1)
+	upset.Scorers = []worldgen.MatchEvent{{Minute: 30, PlayerID: 21, ClubID: 2}}
+	upset.Diagnostics.PressTurnovers = map[string]int{"HOME": 5, "AWAY": 1}
+	lines = renderStory(t, s, upset)
+	if len(lines) != 1 {
+		t.Fatalf("losing side's press should not narrate the result: %v", lines)
+	}
+
+	// In a genuine draw either side's dominance is a fair story.
+	drawEdge := storyFixture(111, 1, 1)
+	drawEdge.Scorers = []worldgen.MatchEvent{
+		{Minute: 10, PlayerID: 9, ClubID: 1}, {Minute: 60, PlayerID: 21, ClubID: 2},
+	}
+	drawEdge.Diagnostics.PressTurnovers = map[string]int{"HOME": 5, "AWAY": 1}
+	lines = renderStory(t, s, drawEdge)
+	if len(lines) != 2 || !strings.Contains(lines[1], "Alpha") {
+		t.Fatalf("draws may credit either side's edge: %v", lines)
+	}
+
+	// An insurance goal does not un-write a late winner: 0-0 until 86',
+	// 2-0 at the whistle still reads as decided late.
+	insurance := storyFixture(113, 2, 0)
+	insurance.Scorers = []worldgen.MatchEvent{
+		{Minute: 86, PlayerID: 9, ClubID: 1}, {Minute: 90, PlayerID: 5, ClubID: 1},
+	}
+	lines = renderStory(t, s, insurance)
+	if len(lines) != 2 || !strings.Contains(lines[1], "86") {
+		t.Fatalf("late-decided win with insurance goal should keep the beat: %v", lines)
+	}
+
+	// A shootout winner's chance-pattern identity may narrate the edge.
+	pens := storyFixture(115, 1, 1)
+	pens.Winner = 2
+	pens.Scorers = []worldgen.MatchEvent{
+		{Minute: 10, PlayerID: 9, ClubID: 1}, {Minute: 60, PlayerID: 21, ClubID: 2},
+	}
+	pens.ChanceTypesBySide = map[string]int{"AWAY_COUNTER": 4, "HOME_CUTBACK": 5}
+	lines = renderStory(t, s, pens)
+	if len(lines) != 2 || !strings.Contains(lines[1], "Beta") || !strings.Contains(lines[1], "4") {
+		t.Fatalf("shootout winner's pattern identity should narrate: %v", lines)
+	}
+
 	// Variant rotation: fixture parity flips the voice.
 	a := renderStory(t, s, storyFixture(201, 3, 0))
 	b := renderStory(t, s, storyFixture(202, 3, 0))
