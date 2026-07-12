@@ -1087,6 +1087,7 @@ var uiFallbacks = map[string]string{
 	"ui.match.scene.shootout":         "Penalty shootout",
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
+	"ui.player.suspended":             "Suspended — matches left:",
 	"ui.match.report":                 "The story of the match",
 	"ui.match.modal.lineups":          "L lineups",
 	"ui.match.modal.lineups_back":     "L broadcast",
@@ -2414,7 +2415,13 @@ func (m Model) squadTable(width, height int, squad []Player, selected int) strin
 		if p.ContractExpirySeason != 0 {
 			contract = fmt.Sprint(p.ContractExpirySeason)
 		}
-		rows = append(rows, []string{mark, p.Position, p.Name, intCell(p.Age), m.playerAttrSummary(p), contract})
+		name := p.Name
+		if p.SuspendedMatches > 0 {
+			// x is the card glyph of the timeline legend; the count is the
+			// matches left to serve.
+			name = fmt.Sprintf("%s [x%d]", p.Name, p.SuspendedMatches)
+		}
+		rows = append(rows, []string{mark, p.Position, name, intCell(p.Age), m.playerAttrSummary(p), contract})
 	}
 	return renderTextTable(width, cols, rows)
 }
@@ -2446,6 +2453,9 @@ func (m Model) playerDetail(width, height int, squad []Player) string {
 	}
 	for _, part := range m.playerAttrLines(p, width) {
 		lines = append(lines, part)
+	}
+	if p.SuspendedMatches > 0 {
+		lines = append(lines, truncate(fmt.Sprintf("%s %d", m.ui("ui.player.suspended"), p.SuspendedMatches), width))
 	}
 	if p.Youth {
 		lines = append(lines, styleDim.Render(truncate(m.ui("ui.player.youth"), width)))

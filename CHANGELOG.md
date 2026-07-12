@@ -6,6 +6,13 @@ section below.
 
 ## Unreleased
 
+- Red cards now carry consequences beyond the final whistle: the player is
+  banned for the club's next fixture (straight red or second yellow, tunable
+  count), squad selection skips banned players exactly like injured ones,
+  and the ban counts down as the club's fixtures complete. The ban is
+  announced as news in both languages, the agent dashboard lists suspensions
+  under urgent items and `get_person` shows the remaining matches, and the
+  console's squad table marks banned players.
 - Finished matches now carry a story-of-the-match report: the replay pop-up
   (and `/v1/matches/{id}` as `story`) opens with a result frame, at most one
   "how it was won" edge read from the public diagnostics and credited to the

@@ -221,6 +221,7 @@ type Player struct {
 	FamiliarityLabel     string         `json:"familiarity_label"`
 	Attributes           map[string]int `json:"attributes"`
 	ContractExpirySeason int            `json:"contract_expiry_season"`
+	SuspendedMatches     int            `json:"suspended_matches"`
 }
 
 type ClubDetail struct {
