@@ -142,6 +142,8 @@ Never certainty — even `ABSOLUTE` loses to a red-card-and-two-injuries kind of
 ```
 TacticalPlan {
   formation:   from catalog (~12 shapes: 4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 5-3-2, …)
+               — drives matchday selection: the shape's bands set the XI's
+               defender/midfielder/forward slot counts (docs/12 §6)
   mentality:   VERY_DEFENSIVE | DEFENSIVE | BALANCED | ATTACKING | VERY_ATTACKING
   pressing:    LOW | MID | HIGH
   tempo:       SLOW | MIXED | FAST

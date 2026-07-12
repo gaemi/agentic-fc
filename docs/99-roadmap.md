@@ -11,8 +11,8 @@ establishing the core loop.
 
 ## Simulation Depth
 
-- More position-aware squad selection, bench construction, and replacement
-  logic.
+- Concrete-position slots inside formation bands (a right back in the DR
+  slot, not just four defenders) and position-aware replacement logic.
 - Accumulated-yellow suspensions and richer disciplinary consequences
   (multi-match bans by offence, appeals) on top of the one-match red-card
   ban.

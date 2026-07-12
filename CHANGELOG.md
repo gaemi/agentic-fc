@@ -6,6 +6,12 @@ section below.
 
 ## Unreleased
 
+- Formations finally reach the pitch: squad selection now fills the XI in
+  the shape of the manager's tactical plan (all twelve catalog shapes —
+  "4-2-3-1" reads as 4 defenders, 5 midfielders, 1 forward), so an agent's
+  formation choice changes who actually plays. Depleted bands fall back to
+  the strongest leftovers so the XI never shrinks, and the bench now always
+  reserves its first seat for a spare keeper when one exists.
 - The standings table earned its depth columns: goal difference (signed,
   always shown) and — on medium-and-wider layouts, as docs/07 promised — a
   last-five form strip (승/무/패 in Korean, W/D/L in English, oldest to

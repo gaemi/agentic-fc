@@ -414,6 +414,15 @@ different profiles for direct/wide, short/narrow, pressing, or counter plans.
 Chance actor weighting also receives bounded role bonuses. These roles are an
 engine interpretation, not a new hidden stat sheet.
 
+The tactical plan's formation also shapes the XI itself: the shape's bands
+("4-2-3-1" reads as 4 defenders, 5 midfielders, 1 forward — first band the
+back line, last the front, midfield between) set the position-group slot
+counts filled by selection score, with an unset or unparseable shape reading
+as 4-4-2. A band depleted by injuries and bans falls back to the strongest
+leftover outfielders so the XI never shrinks while fit bodies remain, and
+the bench reserves its first seat for the best remaining keeper. Selection
+stays deterministic: same squad, same plan, same XI.
+
 ## 7. Probability Pipeline
 
 Each key moment should follow this shape:

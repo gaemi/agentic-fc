@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
@@ -1493,14 +1494,46 @@ func (e *Engine) ratings(lm *worldgen.LiveMatch) map[int64]int {
 	return worldgen.LiveRatingsX10(lm, func(id int64) *worldgen.Player { return e.players[id] })
 }
 
-// selectSquad picks a club's matchday squad at kickoff: the strongest FIT
-// goalkeeper plus the ten strongest fit outfielders by Ability Pool (id
-// tie-breaks — replay-identical) as the XI, and the next benchSize fit players
-// by the same ranking as the bench. Fit = senior, not injured at kickoff
-// (the InjuredUntil timestamp comparison IS the whole recovery model — no
-// recovery event exists), and not serving a disciplinary ban.
+// formationBands parses a FormationCatalog shape ("4-3-3", "4-2-3-1") into
+// defender/midfielder/forward slot counts: the first band is the back line,
+// the last is the front, and everything between is midfield. An empty or
+// unparseable shape reads as 4-4-2, the neutral default (docs/98).
+func formationBands(formation string) (df, mf, fw int) {
+	parts := strings.Split(formation, "-")
+	nums := make([]int, 0, len(parts))
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n <= 0 {
+			nums = nil
+			break
+		}
+		nums = append(nums, n)
+	}
+	total := 0
+	for _, n := range nums {
+		total += n
+	}
+	if len(nums) < 3 || total != 11-1 {
+		return 4, 4, 2
+	}
+	df, fw = nums[0], nums[len(nums)-1]
+	return df, 10 - df - fw, fw
+}
+
+// selectSquad picks a club's matchday squad at kickoff in the shape of the
+// manager's tactical plan: the strongest FIT goalkeeper, then the formation's
+// defender/midfielder/forward slot counts filled from each position group by
+// selection score (id tie-breaks — replay-identical). When injuries and bans
+// leave a group short, the remaining XI slots fall back to the strongest
+// leftover outfielders regardless of group — a shaped XI when possible, a
+// full XI always. The bench reserves its first seat for the best remaining
+// keeper (a matchday squad never travels without one while a spare exists)
+// and fills the rest with the best leftovers re-ranked. Fit = senior, not
+// injured at kickoff (the InjuredUntil timestamp comparison IS the whole
+// recovery model — no recovery event exists), and not serving a ban.
 func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.TacticalPlan) (xi, bench []int64) {
-	var gks, out []*worldgen.Player
+	var gks []*worldgen.Player
+	groups := map[attr.PositionGroup][]*worldgen.Player{}
 	for i := range e.world.Players {
 		p := &e.world.Players[i]
 		if p.ClubID != clubID || p.Youth || p.InjuredUntil > at || p.SuspendedMatches > 0 {
@@ -1509,7 +1542,7 @@ func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.Tactica
 		if p.Group == attr.GK {
 			gks = append(gks, p)
 		} else {
-			out = append(out, p)
+			groups[p.Group] = append(groups[p.Group], p)
 		}
 	}
 	byStrength := func(s []*worldgen.Player) {
@@ -1523,23 +1556,48 @@ func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.Tactica
 		})
 	}
 	byStrength(gks)
-	byStrength(out)
+	for g := range groups {
+		byStrength(groups[g])
+	}
+
 	xi = make([]int64, 0, 11)
 	if len(gks) > 0 {
 		xi = append(xi, gks[0].ID)
 	}
-	n := 0
-	for ; n < len(out) && len(xi) < 11; n++ {
-		xi = append(xi, out[n].ID)
+	df, mf, fw := formationBands(plan.Formation)
+	var leftovers []*worldgen.Player
+	take := func(group attr.PositionGroup, want int) {
+		pool := groups[group]
+		n := want
+		if n > len(pool) {
+			n = len(pool)
+		}
+		for _, p := range pool[:n] {
+			xi = append(xi, p.ID)
+		}
+		leftovers = append(leftovers, pool[n:]...)
 	}
-	// Bench: the best of everyone left over (spare keepers included), re-ranked.
+	take(attr.DF, df)
+	take(attr.MF, mf)
+	take(attr.FW, fw)
+	// Shortfall fallback: a depleted group must not shrink the XI while fit
+	// bodies remain elsewhere.
+	byStrength(leftovers)
+	n := 0
+	for ; n < len(leftovers) && len(xi) < 11; n++ {
+		xi = append(xi, leftovers[n].ID)
+	}
+
+	// Bench: the best remaining keeper first, then the best of everyone
+	// left over, re-ranked.
 	var spare []*worldgen.Player
-	spare = append(spare, out[n:]...)
+	spare = append(spare, leftovers[n:]...)
 	if len(gks) > 1 {
-		spare = append(spare, gks[1:]...)
+		bench = append(bench, gks[1].ID)
+		spare = append(spare, gks[2:]...)
 	}
 	byStrength(spare)
-	for i := 0; i < len(spare) && i < benchSize; i++ {
+	for i := 0; i < len(spare) && len(bench) < benchSize; i++ {
 		bench = append(bench, spare[i].ID)
 	}
 	return xi, bench
