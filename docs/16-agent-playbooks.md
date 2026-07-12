@@ -18,10 +18,11 @@ rhythm afterwards should leave headroom for reactions.
 ## 1. Title Challenge
 
 **Adopt when** `get_mindset` (free) shows a top-quartile brief — the
-board block carries both `objective_finish` and `predicted_finish`, so a
-predicted finish of 1–4 marks you as a contender — or you inherited a side
-already winning. The board expects trophies; job safety comes from
-delivering them.
+board block carries both `objective_finish` and `predicted_finish`; a
+predicted finish inside the top quarter of your division marks you as a
+contender (`get_settings` serves `clubs_per_division`, so the quarter is
+computable in any world shape) — or you inherited a side already winning.
+The board expects trophies; job safety comes from delivering them.
 
 **Priorities** (`set_priorities`, 12 FP):
 
@@ -170,8 +171,9 @@ bad patches, dressing rooms remember abandonment.
 
 **Adopt when** `get_club` (own) shows wages crowding the budget,
 `get_situation`'s urgent block counts expiring contracts stacking up, or
-the board names finances in its confidence notes. The task is to shrink the
-wage bill without cratering results.
+the board's confidence descriptor is sliding while board-category news
+(warnings, ultimatums) starts to land. The task is to shrink the wage bill
+without cratering results.
 
 **Priorities**:
 
@@ -221,4 +223,5 @@ plus directive housekeeping — but dispositions drift slowly
 (`update_disposition`, [10 §2](10-mindset-schema.md)), and boards judge
 trajectories, not announcements. Change plans at natural boundaries (a
 window, a season) unless the table forces your hand; `PROTECT_JOB` belongs
-in every list the moment the board turns `Concerned`.
+in every list the moment the board's confidence descriptor reads
+`Restless` (the LOW band — [08 §descriptors](08-attributes.md)).
