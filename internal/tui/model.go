@@ -1460,7 +1460,9 @@ func (m Model) replayMatchModal(width, height int) string {
 	if md.Winner != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
 	}
-	if !compact && len(md.Story) > 0 {
+	// The report block costs 3-5 rows; below this box height it would push
+	// the replay log — the content the pop-up exists for — off the bottom.
+	if !compact && height >= 24 && len(md.Story) > 0 {
 		lines = append(lines, "", m.ui("ui.match.report"))
 		lines = append(lines, md.Story...)
 	}

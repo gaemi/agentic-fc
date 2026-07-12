@@ -2163,4 +2163,7 @@ func TestReplayModalShowsMatchReportProse(t *testing.T) {
 	if compactView := m.replayMatchModal(80, 18); strings.Contains(compactView, "STORY OF THE MATCH") {
 		t.Fatalf("compact replay should keep prioritizing score and events:\n%s", compactView)
 	}
+	if tight := m.replayMatchModal(120, 20); strings.Contains(tight, "STORY OF THE MATCH") {
+		t.Fatalf("short non-compact replay should keep its replay log over the report:\n%s", tight)
+	}
 }

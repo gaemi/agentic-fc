@@ -214,4 +214,22 @@ func TestMatchDetailServesStory(t *testing.T) {
 			t.Fatalf("story line not rendered: %q", line)
 		}
 	}
+
+	// Archived seasons stay the no-prose factual ledger: no synthesized
+	// report there.
+	w.History = append(w.History, worldgen.SeasonSummary{
+		SeasonYear: 1, Results: []worldgen.MatchResult{w.Results[len(w.Results)-1]},
+	})
+	w.Results = w.Results[:len(w.Results)-1]
+	code, body = get(t, s, fmt.Sprintf("/v1/matches/%d", f.ID))
+	if code != http.StatusOK {
+		t.Fatalf("archived status %d: %s", code, body)
+	}
+	var archived matchDetailDTO
+	if err := json.Unmarshal([]byte(body), &archived); err != nil {
+		t.Fatal(err)
+	}
+	if !archived.Archived || len(archived.Story) != 0 {
+		t.Fatalf("archived detail must stay prose-free: %+v", archived.Story)
+	}
 }

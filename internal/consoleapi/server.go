@@ -1105,7 +1105,12 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names map[int64]string, pl
 	}
 	dto.HomeLineup = lineupEntries(r.HomeID, r.HomeXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
 	dto.AwayLineup = lineupEntries(r.AwayID, r.AwayXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
-	dto.Story = s.matchStoryLines(loc, names, playerName, r)
+	if !archived {
+		// Archived seasons stay the no-prose factual ledger (docs/07 §4.3):
+		// archival deliberately drops narrative, so the report is not
+		// re-synthesized for them either.
+		dto.Story = s.matchStoryLines(loc, names, playerName, r)
+	}
 	sides := make(map[int64]string, len(r.HomeXI)+len(r.AwayXI)+2*len(r.Subs))
 	for _, id := range r.HomeXI {
 		sides[id] = matchSideHome
