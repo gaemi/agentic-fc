@@ -115,10 +115,10 @@ before assuming.
 (2 FP) weekly to track the gap to the line, not the top; save Focus toward a
 January `scout` + `SIGN` directive for one defensive reinforcement rather
 than three luxuries. Aim `SIGN` at reachable targets: free agents complete
-readily, contracted players realistically only when their club has
-SELL-listed them or reads them as surplus ([12-adjacent transfer flow] —
-`search_players` fidelity plus the transfer news categories tell you who is
-actually available).
+readily, and a contracted player moves only when his club has explicitly
+SELL-listed him — surplus players feed the autonomous market, never an
+explicit `SIGN`. `search_players` plus the transfer news category tell you
+who is actually reachable before you spend the 12 FP scout.
 
 **Adjust when** safe by six points with five rounds left: swap rank 3 to
 `BUILD_SQUAD_VALUE` and start giving minutes (`GIVE_MINUTES`, `LEAN`) to
