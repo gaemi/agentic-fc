@@ -384,7 +384,11 @@ type tableRowDTO struct {
 	Lost   int    `json:"lost"`
 	GF     int    `json:"gf"`
 	GA     int    `json:"ga"`
+	GD     int    `json:"gd"`
 	Points int    `json:"points"`
+	// Form is the club's last five league results in this division, oldest
+	// first, as stable enums (W | D | L) the console localizes.
+	Form []string `json:"form,omitempty"`
 }
 
 func (s *Server) handleTables(w http.ResponseWriter, r *http.Request) {
@@ -413,12 +417,14 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request) {
 		for i := range wd.Clubs {
 			names[wd.Clubs[i].ID] = &wd.Clubs[i]
 		}
+		form := leagueFormByClub(wd, tier, tableFormWindow)
 		for _, row := range wd.Table[tier-1] {
 			c := names[row.ClubID]
 			out.Rows = append(out.Rows, tableRowDTO{
 				Pos: row.Pos, ClubID: row.ClubID, Club: c.Name, Short: c.ShortName,
 				Played: row.Played, Won: row.Won, Drawn: row.Drawn, Lost: row.Lost,
-				GF: row.GoalsFor, GA: row.GoalsAgainst, Points: row.Points,
+				GF: row.GoalsFor, GA: row.GoalsAgainst, GD: row.GoalsFor - row.GoalsAgainst,
+				Points: row.Points, Form: form[row.ClubID],
 			})
 		}
 	})
@@ -427,6 +433,39 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, out)
+}
+
+// tableFormWindow is how many recent league results the form column shows.
+const tableFormWindow = 5
+
+// leagueFormByClub folds the current season's league results of one division
+// into a per-club last-N form strip (oldest first, W/D/L enums). Results are
+// already in completion order, so one forward pass suffices.
+func leagueFormByClub(wd *worldgen.World, tier, window int) map[int64][]string {
+	form := map[int64][]string{}
+	push := func(clubID int64, scored, conceded int) {
+		letter := "D"
+		switch {
+		case scored > conceded:
+			letter = "W"
+		case scored < conceded:
+			letter = "L"
+		}
+		strip := append(form[clubID], letter)
+		if len(strip) > window {
+			strip = strip[len(strip)-window:]
+		}
+		form[clubID] = strip
+	}
+	for i := range wd.Results {
+		r := &wd.Results[i]
+		if r.Competition != worldgen.CompetitionLeague || r.DivisionTier != tier {
+			continue
+		}
+		push(r.HomeID, r.HomeGoals, r.AwayGoals)
+		push(r.AwayID, r.AwayGoals, r.HomeGoals)
+	}
+	return form
 }
 
 // ---- Viewer: clubs ----

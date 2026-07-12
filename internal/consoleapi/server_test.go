@@ -1364,3 +1364,51 @@ func TestMatchLineupsServeTeamSheets(t *testing.T) {
 		t.Fatalf("unused bench row wrong: %+v", lineup[2])
 	}
 }
+
+// TestTablesServeGoalDifferenceAndForm locks the standings depth columns:
+// gd = GF-GA, and form is the club's last five league results in this
+// division, oldest first, as W/D/L enums.
+func TestTablesServeGoalDifferenceAndForm(t *testing.T) {
+	s, host := newTestServer(t)
+	w := host.world
+	clubA, clubB := w.Table[0][0].ClubID, w.Table[0][1].ClubID
+	w.Table[0][0].GoalsFor, w.Table[0][0].GoalsAgainst = 30, 12
+	// Six league results for clubA: W L W D W L -> form keeps the last 5.
+	scores := [][2]int{{2, 0}, {0, 1}, {3, 1}, {2, 2}, {1, 0}, {0, 2}}
+	for i, sc := range scores {
+		w.Results = append(w.Results, worldgen.MatchResult{
+			FixtureID: int64(800000 + i), Competition: worldgen.CompetitionLeague,
+			DivisionTier: 1, HomeID: clubA, AwayID: clubB,
+			HomeGoals: sc[0], AwayGoals: sc[1],
+		})
+	}
+
+	_, body := get(t, s, "/v1/tables?tier=1")
+	var out struct {
+		Rows []tableRowDTO `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	var rowA *tableRowDTO
+	for i := range out.Rows {
+		if out.Rows[i].ClubID == clubA {
+			rowA = &out.Rows[i]
+		}
+	}
+	if rowA == nil {
+		t.Fatal("club A missing from the table")
+	}
+	if rowA.GD != rowA.GF-rowA.GA || rowA.GD != 18 {
+		t.Fatalf("gd = %d (gf %d ga %d), want 18", rowA.GD, rowA.GF, rowA.GA)
+	}
+	want := []string{"L", "W", "D", "W", "L"}
+	if len(rowA.Form) != len(want) {
+		t.Fatalf("form = %v, want last five %v", rowA.Form, want)
+	}
+	for i := range want {
+		if rowA.Form[i] != want[i] {
+			t.Fatalf("form = %v, want %v", rowA.Form, want)
+		}
+	}
+}

@@ -2182,3 +2182,33 @@ func TestReplayModalShowsMatchReportProse(t *testing.T) {
 		t.Fatalf("tall crowded replay still has room for the report:\n%s", v)
 	}
 }
+
+func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
+	m := testModel()
+	m.UI["ui.col.gd"] = "GD"
+	m.UI["ui.col.form"] = "Form"
+	m.UI["ui.form.win"] = "W"
+	m.UI["ui.form.draw"] = "D"
+	m.UI["ui.form.loss"] = "L"
+	m.Table = Table{Label: "Live", Rows: []TableRow{
+		{Pos: 1, Club: "Alpha", Played: 6, Won: 4, GF: 12, GA: 4, GD: 8, Points: 12,
+			Form: []string{"L", "W", "D", "W", "W"}},
+		{Pos: 2, Club: "Beta", Played: 6, Won: 1, GF: 3, GA: 9, GD: -6, Points: 3,
+			Form: []string{"L", "L", "D", "L", "W"}},
+	}}
+
+	wide := m.viewTable(120, 24)
+	for _, want := range []string{"GD", "+8", "-6", "Form", "L W D W W"} {
+		if !strings.Contains(wide, want) {
+			t.Fatalf("wide standings missing %q:\n%s", want, wide)
+		}
+	}
+
+	narrow := m.viewTable(90, 24)
+	if !strings.Contains(narrow, "+8") {
+		t.Fatalf("narrow standings should keep goal difference:\n%s", narrow)
+	}
+	if strings.Contains(narrow, "L W D W W") {
+		t.Fatalf("narrow standings should drop the form strip:\n%s", narrow)
+	}
+}

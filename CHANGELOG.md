@@ -6,6 +6,10 @@ section below.
 
 ## Unreleased
 
+- The standings table earned its depth columns: goal difference (signed,
+  always shown) and — on medium-and-wider layouts, as docs/07 promised — a
+  last-five form strip (승/무/패 in Korean, W/D/L in English, oldest to
+  newest). `/v1/tables` rows now carry `gd` and `form` (stable W/D/L enums).
 - Red cards now carry consequences beyond the final whistle: the player is
   banned for the club's next fixture (straight red or second yellow, tunable
   count), squad selection skips banned players exactly like injured ones,

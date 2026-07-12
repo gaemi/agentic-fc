@@ -176,7 +176,10 @@ type TableRow struct {
 	Lost   int    `json:"lost"`
 	GF     int    `json:"gf"`
 	GA     int    `json:"ga"`
+	GD     int    `json:"gd"`
 	Points int    `json:"points"`
+	// Form is the last five league results, oldest first (W | D | L enums).
+	Form []string `json:"form"`
 }
 
 type Table struct {
