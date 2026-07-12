@@ -489,3 +489,33 @@ func TestMCPConfigText(t *testing.T) {
 		t.Fatal("all-retired world accepted")
 	}
 }
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/plain/path":           "'/plain/path'",
+		"/with space/agenticfc": "'/with space/agenticfc'",
+		"/dollar/$HOME/`cmd`":   "'/dollar/$HOME/`cmd`'",
+		"/quote/it's here":      `'/quote/it'\''s here'`,
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+func TestMCPEndpointURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"127.0.0.1:7421": "http://127.0.0.1:7421",
+		":7421":          "http://127.0.0.1:7421",
+	} {
+		got, err := mcpEndpointURL(in)
+		if err != nil || got != want {
+			t.Errorf("mcpEndpointURL(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"not-an-address", "127.0.0.1:0", ":0", "127.0.0.1:http", "127.0.0.1:70000", ""} {
+		if got, err := mcpEndpointURL(bad); err == nil {
+			t.Errorf("mcpEndpointURL(%q) = %q, want error", bad, got)
+		}
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -93,7 +94,11 @@ func main() {
 		if snap == nil {
 			log.Fatalf("no world in %s — launch the daemon once to create one (agenticfc -start)", dataDir)
 		}
-		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), "http://"+dialableAddr(*mcpAddr), *mcpManager, snap.World)
+		mcpURL, err := mcpEndpointURL(*mcpAddr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), mcpURL, *mcpManager, snap.World)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -285,7 +290,7 @@ func main() {
 	if abs, err := filepath.Abs(dataDir); err == nil {
 		hintData = abs
 	}
-	connectHint += fmt.Sprintf(" -data %q", hintData)
+	connectHint += " -data " + shellQuote(hintData)
 	if mcpURL != "http://"+dialableAddr(*mcpAddr) {
 		// A ":0" flag landed on an OS-picked port -mcp-config cannot re-derive.
 		connectHint += " -mcp-addr " + dialableAddr(mcpLn.Addr().String())
@@ -660,6 +665,28 @@ func readManifestCredentials(path string) ([]worldgen.ManagerCredential, error) 
 		return nil, err
 	}
 	return m.Managers, nil
+}
+
+// shellQuote renders s as one POSIX shell word: single quotes disable every
+// expansion, and an embedded single quote re-enters quoting as '\”.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// mcpEndpointURL turns the -mcp-addr flag into the dialable URL that
+// -mcp-config prints. Unlike a daemon launch, the helper never binds the
+// address, so it must reject values a paste could not use: unparseable
+// host:port, and port 0, where the OS would pick a port this offline helper
+// cannot know (a running daemon's banner prints the actually bound address).
+func mcpEndpointURL(addr string) (string, error) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("-mcp-addr %q is not host:port: %v", addr, err)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("-mcp-addr %q needs a fixed numeric port (1-65535) for a dialable URL — a running daemon's startup banner shows its actual address", addr)
+	}
+	return "http://" + dialableAddr(addr), nil
 }
 
 // mcpConfigText renders ready-to-paste MCP client setup for one Manager of
