@@ -6,6 +6,15 @@ section below.
 
 ## Unreleased
 
+- Match commentary reads the story, not just the scoreline: a scorer's third
+  goal headlines as a hat-trick call (with a late-drama variant), leveling or
+  going ahead after trailing by two narrates as a comeback, re-taking the
+  lead within five minutes of conceding reads as an instant response, and a
+  fourth goal at a three-goal margin narrates as a rout. Quiet passages are
+  state-aware too — close games from 75' speak in nervy tension lines, and
+  one-sided games from 60' in cruise-control lines — in both English and
+  Korean. All of it is presentation-only: the RNG stream and every match
+  outcome are byte-identical to before (docs/12 §7).
 - The live and replay match pop-ups gained a team-sheet panel on the `l` key:
   home/away lineups read keeper-to-front with position, name, substitution
   minutes (`▲`/`▼`), goal/card markers, and the public rating; players who
