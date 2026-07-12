@@ -26,4 +26,5 @@ func ArticleTemplateKey(section, class string, newsID int64) string {
 var articleVariantCounts = map[string]int{
 	"injury":           3,
 	"matchday.results": 3,
+	"matchday.totw":    3,
 }

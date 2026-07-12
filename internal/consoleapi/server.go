@@ -207,6 +207,11 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 		title = s.Catalogs.Render(loc, narrative.ArticleTemplateKey("title", class, n.ID), params)
 		articleParams = s.matchdayResultsArticleParams(loc, params, title)
 	}
+	if n.Key == "feed.matchday.totw" {
+		class = "matchday.totw"
+		title = s.Catalogs.Render(loc, narrative.ArticleTemplateKey("title", class, n.ID), params)
+		articleParams = s.totwArticleParams(loc, params, title)
+	}
 	return newsArticleDTO{
 		ID:            n.ID,
 		GameTime:      int64(n.GameTime),
@@ -227,6 +232,47 @@ func (s *Server) matchdayResultsArticleParams(loc narrative.Locale, params map[s
 	out["table"] = s.matchdayTableLines(loc, params["table"])
 	out["story"] = s.matchdayStoryLine(loc, params["story"])
 	return out
+}
+
+// totwArticleParams renders the Team of the Week payload for the article
+// templates: one localized sheet row per player ({team}) and a Player of the
+// Round line ({star_line}), rating ×10 ints turned into display text here.
+func (s *Server) totwArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+	out := copyConsoleArticleParams(params, title)
+	rows := mapsFromAny(params["team"])
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		rp := map[string]any{
+			"position": row["position"], "name": row["name"], "club": row["club"],
+			"rating": ratingText(row["rating_x10"]), "goals": row["goals"],
+		}
+		key := "term.totw.row"
+		if goals, ok := numericParam(row["goals"]); ok && goals > 0 {
+			key = "term.totw.row.goals"
+		}
+		lines = append(lines, s.Catalogs.Render(loc, key, rp))
+	}
+	out["team"] = joinNonEmpty(lines)
+	starParams := map[string]any{
+		"star": params["star"], "star_club": params["star_club"],
+		"star_rating": ratingText(params["star_rating_x10"]), "star_goals": params["star_goals"],
+	}
+	starKey := "term.totw.star_line"
+	if goals, ok := numericParam(params["star_goals"]); ok && goals > 0 {
+		starKey = "term.totw.star_line.goals"
+	}
+	out["star_line"] = s.Catalogs.Render(loc, starKey, starParams)
+	return out
+}
+
+// ratingText renders a ×10 integer rating for prose ("81" -> "8.1").
+func ratingText(v any) string {
+	f, ok := numericParam(v)
+	if !ok {
+		return ""
+	}
+	n := int(f)
+	return fmt.Sprintf("%d.%d", n/10, n%10)
 }
 
 func copyConsoleArticleParams(params map[string]any, title string) map[string]any {

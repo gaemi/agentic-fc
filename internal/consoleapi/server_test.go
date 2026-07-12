@@ -1412,3 +1412,57 @@ func TestTablesServeGoalDifferenceAndForm(t *testing.T) {
 		}
 	}
 }
+
+// TestTeamOfTheWeekArticleRenders locks the TOTW article surface: the sheet
+// rows and the Player of the Round line render localized with display
+// ratings, and no raw keys or params leak into the prose.
+func TestTeamOfTheWeekArticleRenders(t *testing.T) {
+	s, host := newTestServer(t)
+	w := host.world
+	team := []map[string]any{
+		{"name": "Kim Min-jae", "club": "Alpha", "position": "GK", "rating_x10": 81, "goals": 0},
+		{"name": "Lee Kang-in", "club": "Beta", "position": "ST", "rating_x10": 92, "goals": 3},
+	}
+	w.News = append(w.News, worldgen.NewsItem{
+		ID: 424242, GameTime: 1000, Category: "match", Key: "feed.matchday.totw",
+		Params: map[string]any{
+			"kickoff": int64(1000), "competition": "LEAGUE", "division": 1,
+			"count": 8, "season": 1, "month": 8, "day": 16, "kickoff_time": "15:00",
+			"team": team, "star": "Lee Kang-in", "star_club": "Beta",
+			"star_rating_x10": 92, "star_goals": 3,
+		},
+		ClubIDs: []int64{w.Clubs[0].ID},
+	})
+
+	for _, loc := range []string{"en", "ko"} {
+		_, body := get(t, s, "/v1/news?locale="+loc)
+		var out struct {
+			Items []newsArticleDTO `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(body), &out); err != nil {
+			t.Fatal(err)
+		}
+		var totw *newsArticleDTO
+		for i := range out.Items {
+			if out.Items[i].ID == 424242 {
+				totw = &out.Items[i]
+			}
+		}
+		if totw == nil {
+			t.Fatalf("%s: TOTW article missing from the news feed", loc)
+		}
+		if !strings.Contains(totw.Title, "Lee Kang-in") {
+			t.Fatalf("%s: title should name the star: %q", loc, totw.Title)
+		}
+		for _, want := range []string{"Kim Min-jae", "8.1", "9.2", "Lee Kang-in", "Beta"} {
+			if !strings.Contains(totw.Body, want) {
+				t.Fatalf("%s: body missing %q:\n%s", loc, want, totw.Body)
+			}
+		}
+		for _, leak := range []string{"{", "news.article", "term.totw"} {
+			if strings.Contains(totw.Body, leak) || strings.Contains(totw.Deck, leak) {
+				t.Fatalf("%s: unrendered content leaked:\n%s", loc, totw.Body)
+			}
+		}
+	}
+}
