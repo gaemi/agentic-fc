@@ -161,3 +161,30 @@ func TestInjuryReplacementRespectsRoles(t *testing.T) {
 		t.Fatalf("exhausted outfield bench should fall back to the keeper, got %v", rep)
 	}
 }
+
+// After a keeper red card the goal stands empty; the next injury window must
+// restore a keeper rather than replacing like-for-like.
+func TestInjuryWindowRestoresMissingKeeper(t *testing.T) {
+	e, _ := newEngine(t, 17)
+	club := e.world.Clubs[0].ID
+	opp := e.world.Clubs[1].ID
+	at := firstKickoff(e)
+	xi, bench := e.selectSquad(club, at, mindset.TacticalPlan{Formation: "4-4-2"})
+	gk := xi[0]
+	if e.players[gk].Group != attr.GK {
+		t.Fatal("selection sanity: XI slot 0 should be the keeper")
+	}
+	lm := &worldgen.LiveMatch{
+		FixtureID: 920001, Competition: worldgen.CompetitionLeague,
+		HomeID: club, AwayID: opp, Kickoff: at, Clock: 50,
+		HomeXI: xi, HomeBench: bench,
+		Cards: []worldgen.MatchEvent{{Minute: 40, PlayerID: gk, ClubID: club, Detail: "RED"}},
+	}
+
+	hurt := xi[7] // an outfielder
+	e.withdrawInjured(lm, club, hurt, at)
+	last := lm.Subs[len(lm.Subs)-1]
+	if last.On == 0 || e.players[last.On].Group != attr.GK {
+		t.Fatalf("keeperless side should restore a keeper at the injury window, got %+v", last)
+	}
+}

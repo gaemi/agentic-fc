@@ -856,6 +856,11 @@ func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, 
 		if p := e.players[pid]; p != nil {
 			wantGK = p.Group == attr.GK
 		}
+		if !wantGK && !e.hasOnPitchKeeper(lm, club, pid) {
+			// The side already plays without a keeper (a red card leaves
+			// the slot empty): any replacement window restores one first.
+			wantGK = true
+		}
 		if rep := e.bestFitOnBench(lm, club, at, wantGK); rep != 0 {
 			sub.On = rep
 		}
@@ -870,6 +875,20 @@ func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, 
 	e.comment(lm, at, "comment.sub.short", map[string]any{
 		"player": e.playerName(pid), "club": e.clubName(club),
 	})
+}
+
+// hasOnPitchKeeper reports whether the side still has a natural keeper on
+// the pitch, ignoring the player about to leave.
+func (e *Engine) hasOnPitchKeeper(lm *worldgen.LiveMatch, club, excluding int64) bool {
+	for _, id := range lm.OnPitch(club) {
+		if id == excluding {
+			continue
+		}
+		if p := e.players[id]; p != nil && p.Group == attr.GK {
+			return true
+		}
+	}
+	return false
 }
 
 // bestFitOnBench picks the injury replacement role-aware and in bench
