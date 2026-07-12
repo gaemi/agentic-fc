@@ -113,21 +113,32 @@ type Model struct {
 	matchAnimationPaused   bool
 	Matches                []LiveMatchView
 	MatchIdx               int
-	Notice                 string
-	NoticeTTL              int
-	LatestNewsID           int64
-	LiveCount              int
-	AdminMode              bool
-	Settings               AdminSettings
-	SettingsIdx            int
-	SettingsDirty          bool
-	SettingsRev            int
-	Tab                    int
-	Tier                   int
-	Width                  int
-	Height                 int
-	Err                    string
-	ConnErr                string // last /v1/ui fetch failure; "" once the catalog arrives
+	// HonoursView flips the standings tab to the archived honours board
+	// ("h"); History caches the fetched seasons.
+	HonoursView   bool
+	HonoursOffset int
+	// HistoryLoaded separates "no seasons archived" from "still fetching" —
+	// the empty state must never render as authoritative before data lands.
+	HistoryLoaded bool
+	History       []HonoursSeason
+	// historySeq orders in-flight archive fetches: only the newest
+	// request's response may land (an open-then-rollover pair can race).
+	historySeq    int
+	Notice        string
+	NoticeTTL     int
+	LatestNewsID  int64
+	LiveCount     int
+	AdminMode     bool
+	Settings      AdminSettings
+	SettingsIdx   int
+	SettingsDirty bool
+	SettingsRev   int
+	Tab           int
+	Tier          int
+	Width         int
+	Height        int
+	Err           string
+	ConnErr       string // last /v1/ui fetch failure; "" once the catalog arrives
 
 	uiRefreshCountdown int
 }
@@ -147,6 +158,14 @@ type (
 	FixturesMsg []Fixture
 	MatchMsg    MatchDetail
 	MatchesMsg  []LiveMatchView
+	HistoryMsg  struct {
+		Seq     int
+		Seasons []HonoursSeason
+	}
+	HistoryErrMsg struct {
+		Seq int
+		Err error
+	}
 	SettingsMsg struct {
 		Settings AdminSettings
 		Updated  bool
@@ -263,6 +282,20 @@ func (m Model) fetchClub() tea.Cmd {
 			return ErrMsg{err}
 		}
 		return ClubMsg(club)
+	}
+}
+
+func (m Model) fetchHistory(seq int) tea.Cmd {
+	if m.Client == nil {
+		return nil
+	}
+	c := m.Client
+	return func() tea.Msg {
+		seasons, err := c.History()
+		if err != nil {
+			return HistoryErrMsg{Seq: seq, Err: err}
+		}
+		return HistoryMsg{Seq: seq, Seasons: seasons}
 	}
 }
 
@@ -397,6 +430,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollBack(m.HonoursOffset, 1)
+				}
 			case tabMedia:
 				if m.NewsIdx > 0 {
 					m.NewsIdx--
@@ -425,6 +462,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollForward(m.HonoursOffset, m.honoursRowCount(), 1)
+				}
 			case tabMedia:
 				if m.NewsIdx+1 < len(m.News) {
 					m.NewsIdx++
@@ -449,6 +490,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.MatchModal == modalLive || m.MatchModal == modalReplay {
 				m.LineupView = !m.LineupView
 			}
+		case "h":
+			if m.Tab == tabTable && m.MatchModal == modalNone {
+				m.HonoursView = !m.HonoursView
+				m.HonoursOffset = 0
+				if m.HonoursView {
+					// A cached archive keeps showing while the reopen
+					// refresh runs; only a cold open shows the loader.
+					m.HistoryLoaded = len(m.History) > 0
+					m.historySeq++
+					return m, m.fetchHistory(m.historySeq)
+				}
+			}
 		case "tab":
 			if m.Tab == tabClubs && len(m.Club.Squad) > 0 {
 				m.PlayerIdx = (m.PlayerIdx + 1) % len(m.Club.Squad)
@@ -463,6 +516,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollBack(m.HonoursOffset, scrollPageLines)
+				}
 			case tabMedia:
 				m.ArticleOffset = scrollBack(m.ArticleOffset, scrollPageLines)
 			}
@@ -472,6 +529,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollForward(m.HonoursOffset, m.honoursRowCount(), scrollPageLines)
+				}
 			case tabMedia:
 				m.ArticleOffset = scrollForward(m.ArticleOffset, m.articleScrollLineCount(), scrollPageLines)
 			}
@@ -541,8 +602,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case WorldMsg:
+		prevSeason := m.World.Date.Season
 		m.World = WorldInfo(msg)
 		m.Err = ""
+		// The archive only changes at rollover: refresh the open honours
+		// board exactly then, never on the regular poll.
+		if m.HonoursView && prevSeason != 0 && m.World.Date.Season != prevSeason {
+			m.historySeq++
+			return m, m.fetchHistory(m.historySeq)
+		}
 	case UIMsg:
 		m.UI = msg
 		m.ConnErr = ""
@@ -577,6 +645,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(m.Clubs) > 0 && m.Club.ID != m.Clubs[m.ClubIdx].ID {
 			return m, m.fetchClub()
+		}
+	case HistoryMsg:
+		if msg.Seq == m.historySeq {
+			m.History = msg.Seasons
+			m.HistoryLoaded = true
+		}
+	case HistoryErrMsg:
+		// Only the newest request's failure counts, and only a cold open
+		// (nothing cached — likely an older daemon without /v1/history)
+		// bounces back with a notice. A failed refresh keeps the last
+		// successful archive on screen.
+		if msg.Seq == m.historySeq && m.HonoursView && !m.HistoryLoaded {
+			m.HonoursView = false
+			m.setNotice(m.ui("ui.honours.unavailable"))
 		}
 	case ClubMsg:
 		m.Club = ClubDetail(msg)
@@ -855,6 +937,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.ArticleOffset = 0
 		}
 	case tabTable:
+		if m.HonoursView {
+			break // honours rows are history, not click targets into live clubs
+		}
 		row := msg.Y - bodyY - 4
 		if row >= 0 && row < len(m.Table.Rows) {
 			id := m.Table.Rows[row].ClubID
@@ -1053,7 +1138,7 @@ var uiFallbacks = map[string]string{
 	"ui.disconnected.hint_server":     "If it listens at another address, relaunch with -server <url>.",
 	"ui.disconnected.retrying":        "Retrying:",
 	"ui.help.media":                   "↑/↓ story · PgUp/PgDn article",
-	"ui.help.table":                   "←/→ division",
+	"ui.help.table":                   "←/→ division · h honours",
 	"ui.help.clubs":                   "↑/↓ club · Tab player",
 	"ui.help.fixtures":                "↑/↓ fixture · Enter/Space open · ←/→ division",
 	"ui.help.settings":                "↑/↓ setting · +/- or [/] adjust",
@@ -1089,6 +1174,15 @@ var uiFallbacks = map[string]string{
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
 	"ui.col.gd":                       "GD",
+	"ui.table.honours":                "Honours board",
+	"ui.honours.season":               "Season",
+	"ui.honours.champion":             "Champions",
+	"ui.honours.runner_up":            "Runners-up",
+	"ui.honours.cup":                  "Cup",
+	"ui.honours.empty":                "No completed seasons yet — the honours board fills at the first rollover.",
+	"ui.honours.more":                 "↑/↓ · PgUp/PgDn — older seasons below",
+	"ui.honours.loading":              "Fetching the archive...",
+	"ui.honours.unavailable":          "Could not fetch the archive — the daemon may predate this console.",
 	"ui.col.form":                     "Form",
 	"ui.form.win":                     "W",
 	"ui.form.draw":                    "D",
@@ -2217,6 +2311,9 @@ func articleRule(width int) string {
 }
 
 func (m Model) viewTable(width, height int) string {
+	if m.HonoursView {
+		return m.viewHonours(width, height)
+	}
 	var b strings.Builder
 	b.WriteString(styleDim.Render(truncate(m.Table.Label, width)) + "\n")
 	cols := []tableColumn{
@@ -2309,6 +2406,74 @@ func signedCell(v int) string {
 		return "+" + strconv.Itoa(v)
 	}
 	return strconv.Itoa(v)
+}
+
+// viewHonours is the standings tab's archived view ("h"): every completed
+// season's champion and runner-up per division, plus the cup winner on the
+// season's first row. Public final-table facts only, newest season first.
+func (m Model) viewHonours(width, height int) string {
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(truncate(m.ui("ui.table.honours"), width)) + "\n")
+	if !m.HistoryLoaded {
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.honours.loading"), width)))
+		return b.String()
+	}
+	if len(m.History) == 0 {
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.honours.empty"), width)))
+		return b.String()
+	}
+	cols := []tableColumn{
+		{Header: m.ui("ui.honours.season"), Width: colWidth(m.ui("ui.honours.season"), 4), Align: alignRight},
+		{Header: m.ui("ui.col.div"), Width: colWidth(m.ui("ui.col.div"), 3), Align: alignRight},
+		{Header: m.ui("ui.honours.champion"), MinWidth: 14, Flex: true, Align: alignLeft},
+		{Header: m.ui("ui.honours.runner_up"), MinWidth: 14, Flex: true, Align: alignLeft},
+		{Header: m.ui("ui.honours.cup"), MinWidth: 10, Flex: true, Align: alignLeft},
+	}
+	maxRows := height - 6 // header + table chrome + the more-below hint row
+	if maxRows < 1 {
+		maxRows = 1
+	}
+	all := m.honoursRows()
+	start := m.HonoursOffset
+	if start > len(all)-maxRows {
+		start = len(all) - maxRows
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxRows
+	if end > len(all) {
+		end = len(all)
+	}
+	b.WriteString(renderTextTable(width, cols, all[start:end]))
+	if end < len(all) {
+		b.WriteString("\n" + styleDim.Render(truncate(m.ui("ui.honours.more"), width)))
+	}
+	return b.String()
+}
+
+// honoursRows flattens the archive into display rows, one per division.
+// Season and cup cells repeat on every row: the board scrolls by row, so a
+// viewport starting mid-season must still say which season it shows.
+func (m Model) honoursRows() [][]string {
+	rows := [][]string{}
+	for _, season := range m.History {
+		for _, div := range season.Divisions {
+			rows = append(rows, []string{
+				intCell(season.SeasonYear), intCell(div.Tier),
+				div.Champion, div.RunnerUp, season.CupWinner,
+			})
+		}
+	}
+	return rows
+}
+
+func (m Model) honoursRowCount() int {
+	n := 0
+	for _, season := range m.History {
+		n += len(season.Divisions)
+	}
+	return n
 }
 
 func (m Model) viewClubs(width, height int) string {

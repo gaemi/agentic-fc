@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -2229,5 +2230,132 @@ func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
 	}
 	if blank := m.viewTable(120, 24); strings.Contains(blank, "Form") {
 		t.Fatalf("empty form data should suppress the column:\n%s", blank)
+	}
+}
+
+func TestHonoursBoardToggleOnTableTab(t *testing.T) {
+	m := testModel()
+	m.Tab = tabTable
+	m.UI["ui.table.honours"] = "HONOURS"
+	m.UI["ui.honours.season"] = "Season"
+	m.UI["ui.honours.champion"] = "Champions"
+	m.UI["ui.honours.runner_up"] = "Runners-up"
+	m.UI["ui.honours.cup"] = "Cup"
+	m.UI["ui.honours.empty"] = "No completed seasons yet."
+	m = update(m, key("h"))
+	if !m.HonoursView {
+		t.Fatal("h on the table tab should open the honours board")
+	}
+	m.UI["ui.honours.loading"] = "FETCHING"
+	if v := m.viewTable(100, 24); !strings.Contains(v, "FETCHING") {
+		t.Fatalf("a cold open should show a loading state before data lands:\n%s", v)
+	}
+	m = update(m, HistoryMsg{Seq: m.historySeq, Seasons: []HonoursSeason{{
+		SeasonYear: 1,
+		Divisions: []HonoursRow{
+			{Tier: 1, Champion: "Alpha", RunnerUp: "Beta"},
+			{Tier: 2, Champion: "Gamma", RunnerUp: "Delta"},
+		},
+		CupWinner: "Alpha",
+	}}})
+	v := m.viewTable(100, 24)
+	for _, want := range []string{"HONOURS", "Alpha", "Beta", "Gamma", "Delta"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("honours board missing %q:\n%s", want, v)
+		}
+	}
+
+	m = update(m, key("h"))
+	if m.HonoursView {
+		t.Fatal("h should toggle back to the standings")
+	}
+
+	m.History = nil
+	m.HonoursView = true
+	m.HistoryLoaded = true
+	if v := m.viewTable(100, 24); !strings.Contains(v, "No completed seasons yet.") {
+		t.Fatalf("empty history should explain itself:\n%s", v)
+	}
+
+	m.Tab = tabMedia
+	m.HonoursView = false
+	m = update(m, key("h"))
+	if m.HonoursView {
+		t.Fatal("h outside the table tab must not toggle the board")
+	}
+
+	// An older daemon without /v1/history bounces back to the standings
+	// with a notice instead of a stuck loading loop.
+	m.Tab = tabTable
+	m.HonoursView = true
+	m.HistoryLoaded = false
+	m.UI["ui.honours.unavailable"] = "ARCHIVE UNAVAILABLE"
+	m = update(m, HistoryErrMsg{Seq: m.historySeq, Err: errors.New("404")})
+	if m.HonoursView {
+		t.Fatal("a first-open failure should close the board")
+	}
+	if !strings.Contains(m.Notice, "ARCHIVE UNAVAILABLE") {
+		t.Fatalf("the failure should explain itself: %q", m.Notice)
+	}
+
+	// A failed refresh with data already loaded keeps the archive open.
+	m.HonoursView = true
+	m.HistoryLoaded = true
+	m = update(m, HistoryErrMsg{Seq: m.historySeq, Err: errors.New("500")})
+	if !m.HonoursView {
+		t.Fatal("a transient refresh failure must not close a loaded board")
+	}
+
+	// A stale in-flight response never overwrites a newer one.
+	m.historySeq = 5
+	m.History = []HonoursSeason{{SeasonYear: 2}}
+	m = update(m, HistoryMsg{Seq: 4, Seasons: []HonoursSeason{{SeasonYear: 1}}})
+	if len(m.History) != 1 || m.History[0].SeasonYear != 2 {
+		t.Fatalf("stale archive response overwrote the newer one: %+v", m.History)
+	}
+	m = update(m, HistoryMsg{Seq: 5, Seasons: []HonoursSeason{{SeasonYear: 3}}})
+	if m.History[0].SeasonYear != 3 {
+		t.Fatalf("the newest response should land: %+v", m.History)
+	}
+
+	// The archive refreshes exactly at season rollover, not on every poll.
+	m.Client = &Client{} // command construction only; never invoked here
+	world := m.World
+	world.Date.Season = 1
+	m = update(m, WorldMsg(world))
+	world.Date.Season = 2
+	um, cmd := m.Update(WorldMsg(world))
+	m = um.(Model)
+	if cmd == nil {
+		t.Fatal("a season rollover with the board open should refetch the archive")
+	}
+	um, cmd = m.Update(WorldMsg(world))
+	m = um.(Model)
+	if cmd != nil {
+		t.Fatal("an unchanged season must not refetch the archive")
+	}
+
+	// A long archive scrolls: with a tiny viewport the oldest season is
+	// reachable via the down key and a more-below hint shows until then.
+	m.Tab = tabTable
+	m.HonoursView = true
+	m.HistoryLoaded = true
+	m.UI["ui.honours.more"] = "MORE BELOW"
+	m.History = nil
+	for year := 20; year >= 1; year-- {
+		m.History = append(m.History, HonoursSeason{
+			SeasonYear: year,
+			Divisions:  []HonoursRow{{Tier: 1, Champion: fmt.Sprintf("Champ%02d", year), RunnerUp: "X"}},
+		})
+	}
+	v = m.viewTable(100, 12)
+	if !strings.Contains(v, "Champ20") || strings.Contains(v, "Champ01") || !strings.Contains(v, "MORE BELOW") {
+		t.Fatalf("short honours viewport should page from the newest with a hint:\n%s", v)
+	}
+	for range 30 {
+		m = update(m, key("down"))
+	}
+	if v = m.viewTable(100, 12); !strings.Contains(v, "Champ01") {
+		t.Fatalf("scrolling should reach the oldest season:\n%s", v)
 	}
 }

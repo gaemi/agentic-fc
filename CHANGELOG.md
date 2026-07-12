@@ -6,6 +6,9 @@ section below.
 
 ## Unreleased
 
+- The standings tab gained an honours board on the `h` key: every completed
+  season's champion and runner-up per division plus the cup winner, newest
+  first, served by the new `GET /v1/history` endpoint.
 - Goalkeepers no longer poach open-play goals: the scorer draw gives keepers
   zero weight for every open-play pattern and an eighth of their weight at
   set-piece headers, so the beloved stoppage-time keeper header stays

@@ -56,6 +56,7 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/clubs", s.handleClubs)
 	mux.HandleFunc("GET /v1/clubs/{id}", s.handleClub)
 	mux.HandleFunc("GET /v1/fixtures", s.handleFixtures)
+	mux.HandleFunc("GET /v1/history", s.handleHistory)
 	mux.HandleFunc("GET /v1/matches/{id}", s.handleMatch)
 	mux.HandleFunc("GET /v1/matches/live", s.handleLiveMatches)
 	mux.HandleFunc("GET /v1/feed", s.handleFeed)
@@ -513,6 +514,55 @@ func leagueFormByClub(wd *worldgen.World, tier, window int) map[int64][]string {
 		push(r.AwayID, r.AwayGoals, r.HomeGoals)
 	}
 	return form
+}
+
+// ---- Viewer: season history (the honours board, docs/07 §4.3) ----
+
+type honoursRowDTO struct {
+	Tier     int    `json:"tier"`
+	Champion string `json:"champion"`
+	RunnerUp string `json:"runner_up,omitempty"`
+}
+
+type honoursSeasonDTO struct {
+	SeasonYear int             `json:"season_year"`
+	Divisions  []honoursRowDTO `json:"divisions"`
+	CupWinner  string          `json:"cup_winner,omitempty"`
+}
+
+// handleHistory serves the archived seasons' honours: champion and runner-up
+// per division plus the cup winner — public final-table facts only, newest
+// season first.
+func (s *Server) handleHistory(w http.ResponseWriter, _ *http.Request) {
+	out := struct {
+		Seasons []honoursSeasonDTO `json:"seasons"`
+	}{Seasons: []honoursSeasonDTO{}}
+	s.Host.Locked(func() {
+		wd := s.Host.World()
+		names := map[int64]string{}
+		for i := range wd.Clubs {
+			names[wd.Clubs[i].ID] = wd.Clubs[i].Name
+		}
+		for i := len(wd.History) - 1; i >= 0; i-- {
+			season := &wd.History[i]
+			dto := honoursSeasonDTO{SeasonYear: season.SeasonYear}
+			for tier, table := range season.FinalTables {
+				row := honoursRowDTO{Tier: tier + 1}
+				if len(table) > 0 {
+					row.Champion = names[table[0].ClubID]
+				}
+				if len(table) > 1 {
+					row.RunnerUp = names[table[1].ClubID]
+				}
+				dto.Divisions = append(dto.Divisions, row)
+			}
+			if season.CupWinnerID != 0 {
+				dto.CupWinner = names[season.CupWinnerID]
+			}
+			out.Seasons = append(out.Seasons, dto)
+		}
+	})
+	writeJSON(w, out)
 }
 
 // ---- Viewer: clubs ----

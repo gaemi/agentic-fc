@@ -93,6 +93,11 @@ type WorldInfo struct {
 	TempoLabel string `json:"tempo_label"`
 	ClockText  string `json:"clock_text"`
 	Divisions  int    `json:"divisions"`
+	// Date carries the in-game season so views tied to season boundaries
+	// (the honours board) can refresh exactly at rollover.
+	Date struct {
+		Season int `json:"season"`
+	} `json:"date"`
 }
 
 func (c *Client) World() (WorldInfo, error) {
@@ -395,6 +400,27 @@ type LiveMatchView struct {
 	HomeLineup  []LineupEntry    `json:"home_lineup"`
 	AwayLineup  []LineupEntry    `json:"away_lineup"`
 	Momentum    []int            `json:"momentum"`
+}
+
+// HonoursRow / HonoursSeason mirror GET /v1/history (the honours board).
+type HonoursRow struct {
+	Tier     int    `json:"tier"`
+	Champion string `json:"champion"`
+	RunnerUp string `json:"runner_up"`
+}
+
+type HonoursSeason struct {
+	SeasonYear int          `json:"season_year"`
+	Divisions  []HonoursRow `json:"divisions"`
+	CupWinner  string       `json:"cup_winner"`
+}
+
+func (c *Client) History() ([]HonoursSeason, error) {
+	var out struct {
+		Seasons []HonoursSeason `json:"seasons"`
+	}
+	err := c.get("/v1/history", &out)
+	return out.Seasons, err
 }
 
 func (c *Client) LiveMatches() ([]LiveMatchView, error) {
