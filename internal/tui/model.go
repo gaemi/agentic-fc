@@ -383,6 +383,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = msg.Width, msg.Height
+		// A resize can move a match pop-up across the compact threshold. Arm a
+		// fresh tick chain when a scene can now animate (an old chain may have
+		// been gated away on the smaller layout); the run bump keeps a live
+		// chain from doubling.
+		if m.MatchModal == modalLive || m.MatchModal == modalReplay {
+			m.matchAnimationRun++
+			if !m.matchAnimationPaused && m.matchSceneAnimates() {
+				return m, matchAnimationTick(m.matchAnimationRun)
+			}
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -416,7 +426,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.fetchAdminSettings()
 			}
 		case "enter", " ":
-			if msg.String() == " " && m.MatchModal == modalLive {
+			if msg.String() == " " && (m.MatchModal == modalLive || m.MatchModal == modalReplay) {
 				return m, m.toggleMatchAnimation()
 			}
 			if m.Tab == tabFixtures && m.MatchModal == modalNone {
@@ -426,6 +436,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.MatchModal != modalNone {
 				if m.MatchModal == modalReplay {
 					m.ReplayOffset = scrollBack(m.ReplayOffset, scrollWheelLines)
+					m.syncMatchAnimationScene()
 				}
 				break
 			}
@@ -458,6 +469,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.MatchModal != modalNone {
 				if m.MatchModal == modalReplay {
 					m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollWheelLines)
+					m.syncMatchAnimationScene()
 				}
 				break
 			}
@@ -489,6 +501,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "l":
 			if m.MatchModal == modalLive || m.MatchModal == modalReplay {
 				m.LineupView = !m.LineupView
+				// The lineup panel replaces the scene, so the tick chain is
+				// gated off behind it; re-arm it when the broadcast body
+				// returns. The run bump retires the old chain either way.
+				m.matchAnimationRun++
+				if !m.LineupView && !m.matchAnimationPaused && m.matchSceneAnimates() {
+					return m, matchAnimationTick(m.matchAnimationRun)
+				}
 			}
 		case "h":
 			if m.Tab == tabTable && m.MatchModal == modalNone {
@@ -513,6 +532,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgup":
 			if m.MatchModal == modalReplay {
 				m.ReplayOffset = scrollBack(m.ReplayOffset, scrollPageLines)
+				m.syncMatchAnimationScene()
 				break
 			}
 			switch m.Tab {
@@ -526,6 +546,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.MatchModal == modalReplay {
 				m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollPageLines)
+				m.syncMatchAnimationScene()
 				break
 			}
 			switch m.Tab {
@@ -569,6 +590,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.MatchModal == modalReplay {
 				m.ReplayOffset = scrollBack(m.ReplayOffset, scrollPageLines)
+				m.syncMatchAnimationScene()
 				break
 			}
 			if (m.Tab == tabTable || m.Tab == tabFixtures) && m.Tier > 1 {
@@ -592,6 +614,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.MatchModal == modalReplay {
 				m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollPageLines)
+				m.syncMatchAnimationScene()
 				break
 			}
 			if (m.Tab == tabTable || m.Tab == tabFixtures) && (m.World.Divisions == 0 || m.Tier < m.World.Divisions) {
@@ -682,7 +705,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.MatchModal = modalReplay
 					m.MatchDetail = MatchDetail{}
 					m.ReplayOffset = 0
-					return m, m.fetchMatch()
+					m.startMatchAnimation()
+					return m, tea.Batch(m.fetchMatch(), matchAnimationTick(m.matchAnimationRun))
 				}
 			} else {
 				m.closeMatchModal()
@@ -698,6 +722,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ReplayOffset >= len(m.MatchDetail.Commentary) {
 			m.ReplayOffset = 0
 		}
+		m.syncMatchAnimationScene()
 	case MatchesMsg:
 		if m.LiveCount >= 0 && len(msg) > m.LiveCount {
 			m.setNotice(strings.ReplaceAll(m.ui("ui.notice.match"), "{count}", fmt.Sprint(len(msg))))
@@ -750,7 +775,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		m.Err = msg.Err.Error()
 	case matchAnimationMsg:
-		if msg.Run != m.matchAnimationRun || m.MatchModal != modalLive || m.matchAnimationPaused {
+		if msg.Run != m.matchAnimationRun || m.matchAnimationPaused ||
+			(m.MatchModal != modalLive && m.MatchModal != modalReplay) {
+			break
+		}
+		if !m.matchSceneAnimates() {
+			// Nothing on screen reads the frame counter (compact layout or
+			// lineup panel): let the chain die instead of redrawing a static
+			// body every 180ms. Resize and the lineup toggle re-arm it.
 			break
 		}
 		m.matchAnimationFrame++
@@ -837,6 +869,17 @@ func (m *Model) toggleMatchAnimation() tea.Cmd {
 	return matchAnimationTick(m.matchAnimationRun)
 }
 
+// matchSceneAnimates reports whether the open match pop-up can actually show
+// animated scene art: compact boxes and the lineup panel never render the
+// frame counter, so their tick chains are pure redraw noise and get gated.
+func (m Model) matchSceneAnimates() bool {
+	if m.LineupView {
+		return false
+	}
+	w, h := matchModalSize(m.Width, m.Height)
+	return !matchModalCompact(w, h)
+}
+
 func (m Model) matchAnimationHelp() string {
 	if m.matchAnimationPaused {
 		return m.ui("ui.match.modal.animation_resume")
@@ -851,15 +894,29 @@ func (m *Model) resetMatchAnimationScene() {
 }
 
 func (m *Model) syncMatchAnimationScene() {
-	if m.MatchModal != modalLive || m.MatchIdx < 0 || m.MatchIdx >= len(m.Matches) {
+	signature := ""
+	switch m.MatchModal {
+	case modalLive:
+		if m.MatchIdx < 0 || m.MatchIdx >= len(m.Matches) {
+			return
+		}
+		mv := m.Matches[m.MatchIdx]
+		current := ""
+		if len(mv.Commentary) > 0 {
+			current = mv.Commentary[len(mv.Commentary)-1]
+		}
+		signature = fmt.Sprintf("%d:%d:%s", mv.Fixture, len(mv.Commentary), current)
+	case modalReplay:
+		// Replays animate the browsed beat: the scene changes with the
+		// replay cursor, not with fresh data.
+		current := ""
+		if m.ReplayOffset >= 0 && m.ReplayOffset < len(m.MatchDetail.Commentary) {
+			current = m.MatchDetail.Commentary[m.ReplayOffset]
+		}
+		signature = fmt.Sprintf("replay:%d:%d:%s", m.MatchDetail.Fixture, m.ReplayOffset, current)
+	default:
 		return
 	}
-	mv := m.Matches[m.MatchIdx]
-	current := ""
-	if len(mv.Commentary) > 0 {
-		current = mv.Commentary[len(mv.Commentary)-1]
-	}
-	signature := fmt.Sprintf("%d:%d:%s", mv.Fixture, len(mv.Commentary), current)
 	if signature != m.matchAnimationSceneSig {
 		m.matchAnimationSceneSig = signature
 		m.matchAnimationFrame = 0
@@ -873,6 +930,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseButtonWheelUp {
 		if m.MatchModal == modalReplay {
 			m.ReplayOffset = scrollBack(m.ReplayOffset, scrollWheelLines)
+			m.syncMatchAnimationScene()
 			return m, nil
 		}
 		switch m.Tab {
@@ -884,6 +942,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseButtonWheelDown {
 		if m.MatchModal == modalReplay {
 			m.ReplayOffset = scrollForward(m.ReplayOffset, len(m.MatchDetail.Commentary), scrollWheelLines)
+			m.syncMatchAnimationScene()
 			return m, nil
 		}
 		switch m.Tab {
@@ -1545,7 +1604,7 @@ func (m Model) replayMatchModal(width, height int) string {
 		return modalBox(width, height, title, lines)
 	}
 	lines := []string{
-		fmt.Sprintf("%s · %s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help"), m.ui("ui.match.modal.lineups")),
+		fmt.Sprintf("%s · %s · %s · %s · %s", md.KickoffText, md.Competition, m.ui("ui.match.modal.replay_help"), m.matchAnimationHelp(), m.ui("ui.match.modal.lineups")),
 		fmt.Sprintf("%s H %d · A %d", m.ui("ui.match.stat.shots"), md.HomeShots, md.AwayShots),
 	}
 	patternLimit := 2
@@ -1647,7 +1706,7 @@ func (m Model) replayMatchModal(width, height int) string {
 		lines = append(lines, preformattedLinePrefix+m.plainGoalBanner(width-2))
 	}
 	if !compact && height-2-len(lines) >= 14 {
-		if frame := sceneFrameDirAt(m, sc, width-2, sceneFrameRows, 0, replayGoalAway(md, start)); len(frame) > 0 {
+		if frame := sceneFrameDirAt(m, sc, width-2, sceneFrameRows, m.matchAnimationFrame, replayGoalAway(md, start)); len(frame) > 0 {
 			lines = append(lines, "")
 			lines = append(lines, frame...)
 		}
@@ -2989,12 +3048,13 @@ func (m Model) openSelectedFixture() (tea.Model, tea.Cmd) {
 		m.MatchModal = modalReplay
 		m.MatchModalID = f.ID
 		m.ReplayOffset = 0
+		m.startMatchAnimation()
 		if m.MatchDetail.Fixture == f.ID {
 			// Refresh on reopen: facts are immutable, prose/localization can change.
-			return m, m.fetchMatch()
+			return m, tea.Batch(m.fetchMatch(), matchAnimationTick(m.matchAnimationRun))
 		}
 		m.MatchDetail = MatchDetail{}
-		return m, m.fetchMatch()
+		return m, tea.Batch(m.fetchMatch(), matchAnimationTick(m.matchAnimationRun))
 	}
 	if f.Status == "LIVE" {
 		m.MatchModal = modalWaiting
@@ -3019,7 +3079,8 @@ func (m Model) liveModalFinished() (tea.Model, tea.Cmd) {
 			m.MatchModalID = f.ID
 			m.MatchDetail = MatchDetail{}
 			m.ReplayOffset = 0
-			return m, m.fetchMatch()
+			m.startMatchAnimation()
+			return m, tea.Batch(m.fetchMatch(), matchAnimationTick(m.matchAnimationRun))
 		}
 	}
 	m.MatchModal = modalWaiting

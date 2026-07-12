@@ -6,6 +6,11 @@ section below.
 
 ## Unreleased
 
+- Replay pop-ups now animate their match scenes: browsing a finished match
+  plays each beat's terminal animation (goals, saves, counters, ceremonies)
+  exactly like the live broadcast instead of freezing on the first frame,
+  restarting cleanly when you step between beats, with the same `Space`
+  pause/resume and no extra polling while the pop-up is closed.
 - Match commentary for bookings, injuries, and the kickoff whistle no longer
   repeats a single line: yellow cards rotate six localized voices, straight
   reds four, second yellows up to three, and the opening whistle six — all
