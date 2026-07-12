@@ -6,6 +6,10 @@ section below.
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.3.0 - 2026-07-12
+
 - Replay pop-ups now animate their match scenes: browsing a finished match
   plays each beat's terminal animation (goals, saves, counters, ceremonies)
   exactly like the live broadcast instead of freezing on the first frame,
