@@ -310,6 +310,7 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 	}
 	if key == "feed.matchday.totw" {
 		articleClass = "matchday.totw"
+		sourceClass = articleClass // the feature desk, not the results desk
 		title = g.tr2(loc, narrative.ArticleTemplateKey("title", articleClass, newsID), params)
 		articleParams = g.totwArticleParams(loc, params, title)
 	}

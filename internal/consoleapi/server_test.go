@@ -1454,6 +1454,9 @@ func TestTeamOfTheWeekArticleRenders(t *testing.T) {
 		if !strings.Contains(totw.Title, "Lee Kang-in") {
 			t.Fatalf("%s: title should name the star: %q", loc, totw.Title)
 		}
+		if wantSource := map[string]string{"en": "Form Desk", "ko": "폼 데스크"}[loc]; totw.Source != wantSource {
+			t.Fatalf("%s: TOTW byline = %q, want the feature desk %q", loc, totw.Source, wantSource)
+		}
 		for _, want := range []string{"Kim Min-jae", "8.1", "9.2", "Lee Kang-in", "Beta"} {
 			if !strings.Contains(totw.Body, want) {
 				t.Fatalf("%s: body missing %q:\n%s", loc, want, totw.Body)

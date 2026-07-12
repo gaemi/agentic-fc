@@ -209,6 +209,7 @@ func (s *Server) newsArticleDTO(loc narrative.Locale, n *worldgen.NewsItem) news
 	}
 	if n.Key == "feed.matchday.totw" {
 		class = "matchday.totw"
+		sourceClass = class // the feature desk, not the results desk
 		title = s.Catalogs.Render(loc, narrative.ArticleTemplateKey("title", class, n.ID), params)
 		articleParams = s.totwArticleParams(loc, params, title)
 	}
