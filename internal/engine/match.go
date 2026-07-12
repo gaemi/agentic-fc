@@ -1208,6 +1208,7 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 		e.issueMatchAlerts(ev.Due, f, "OWN_FULL_TIME")
 	}
 	matchdayNews := e.addMatchdayResultsNews(ev.Due, lm.Kickoff, lm.Competition, lm.DivisionTier)
+	e.addMatchdayTeamNews(ev.Due, lm.Kickoff, lm.Competition, lm.DivisionTier)
 	factors := map[string]any{
 		"result": []int{lm.HomeGoals, lm.AwayGoals}, "fixture": lm.FixtureID,
 	}

@@ -36,6 +36,7 @@ const (
 	FeedCupResult       = "feed.cup.result"
 	FeedMatchdayPreview = "feed.matchday.preview"
 	FeedMatchdayResults = "feed.matchday.results"
+	FeedMatchdayTeam    = "feed.matchday.totw"
 	FeedCupChampion     = "feed.cup.champion"
 )
 

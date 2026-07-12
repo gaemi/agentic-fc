@@ -9,6 +9,7 @@ import (
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/mindset"
 	"github.com/gaemi/agentic-fc/internal/narrative"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
 
 // TestWriteCardsRenderFromEnvelope covers the shaping-write cards: each renders
@@ -382,5 +383,57 @@ func TestEnumVocabulariesComplete(t *testing.T) {
 		for _, v := range values {
 			check(dial, v)
 		}
+	}
+}
+
+// The MCP news surface renders the Team of the Week article with its own
+// prose class — sheet rows, display ratings, and the star line — in both
+// locales, with no raw keys leaking.
+func TestTeamOfTheWeekNewsArticleRendersOnMCP(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	params := map[string]any{
+		"count": 8, "month": 8, "day": 16, "kickoff_time": "15:00",
+		"team": []map[string]any{
+			{"name": "Kim Min-jae", "club": "Alpha", "position": "GK", "rating_x10": 81, "goals": 0},
+			{"name": "Lee Kang-in", "club": "Beta", "position": "ST", "rating_x10": 92, "goals": 3},
+		},
+		"star": "Lee Kang-in", "star_club": "Beta", "star_rating_x10": 92, "star_goals": 3,
+	}
+	for _, loc := range []narrative.Locale{narrative.LocaleEN, narrative.LocaleKO} {
+		article := g.newsArticle("match", "feed.matchday.totw", params, loc, 7)
+		blob := fmt.Sprint(article["title"]) + "\n" + fmt.Sprint(article["deck"]) + "\n" + fmt.Sprint(article["body"])
+		for _, want := range []string{"Lee Kang-in", "Kim Min-jae", "8.1", "9.2", "Beta"} {
+			if !strings.Contains(blob, want) {
+				t.Fatalf("%s TOTW article missing %q: %+v", loc, want, article)
+			}
+		}
+		for _, leak := range []string{"news.article.deck.match\n", "term.totw", "{team}", "{star"} {
+			if strings.Contains(blob, leak) {
+				t.Fatalf("%s TOTW article leaked %q:\n%s", loc, leak, blob)
+			}
+		}
+	}
+}
+
+// Dashboard headlines stay wide-and-shallow: the TOTW sheet never rides
+// along in get_situation headline params.
+func TestHeadlineStripsTeamOfTheWeekSheet(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	n := &worldgen.NewsItem{
+		ID: 7, GameTime: 100, Category: "match", Key: "feed.matchday.totw",
+		Params: map[string]any{
+			"team": []map[string]any{{"name": "Kim", "club": "Alpha", "position": "GK", "rating_x10": 80, "goals": 0}},
+			"star": "Kim", "star_club": "Alpha", "star_rating_x10": 80, "star_goals": 0,
+			"kickoff_time": "15:00", "count": 8, "month": 8, "day": 16,
+		},
+	}
+	out := g.renderHeadline(n)
+	headline, _ := out["headline"].(map[string]any)
+	params, _ := headline["params"].(map[string]any)
+	if _, leaked := params["team"]; leaked {
+		t.Fatalf("headline params must strip the TOTW sheet: %+v", params)
+	}
+	if params["star"] != "Kim" {
+		t.Fatalf("light star params should survive for the preview: %+v", params)
 	}
 }

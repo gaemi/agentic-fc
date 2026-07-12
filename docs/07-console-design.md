@@ -137,7 +137,12 @@ raw event log. Long bodies preserve paragraph rhythm in the TUI and can be
 paged with the same wheel/PageUp/PageDown controls used by match replays.
 Full-time items are grouped into matchday round-up articles with result blocks,
 table notes, and a longer storyline, so the Media tab reads like a sports desk
-summary rather than a repetitive list of one-line score alerts. Kick-off and
+summary rather than a repetitive list of one-line score alerts. Each completed
+league matchday also files a **Team of the Week** feature per division: a
+fixed 1-4-3-3 best XI picked deterministically from the published ratings
+(rating, then goals, then id), with the round's top performer as the headline
+Player of the Round — three title/deck/body voices rotate per article, in
+both languages. Kick-off and
 fixture-start signals remain available through live match surfaces, `MATCH`
 alerts, and the fixture list, but they are not filed as standalone media
 articles or `NEWS` alert items.

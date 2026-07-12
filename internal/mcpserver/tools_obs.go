@@ -308,12 +308,74 @@ func (g *Gateway) newsArticle(category, key string, params map[string]any, loc n
 		title = g.tr2(loc, narrative.ArticleTemplateKey("title", articleClass, newsID), params)
 		articleParams = g.matchdayResultsArticleParams(loc, params, title)
 	}
+	if key == "feed.matchday.totw" {
+		articleClass = "matchday.totw"
+		sourceClass = articleClass // the feature desk, not the results desk
+		title = g.tr2(loc, narrative.ArticleTemplateKey("title", articleClass, newsID), params)
+		articleParams = g.totwArticleParams(loc, params, title)
+	}
 	return map[string]any{
 		"source": g.tr(loc, "news.article.source."+sourceClass),
 		"title":  title,
 		"deck":   g.tr2(loc, narrative.ArticleTemplateKey("deck", articleClass, newsID), articleParams),
 		"body":   g.tr2(loc, narrative.ArticleTemplateKey("body", articleClass, newsID), articleParams),
 	}
+}
+
+// totwArticleParams mirrors the Console renderer: localized sheet rows and
+// the Player of the Round line, ratings turned into display text.
+func (g *Gateway) totwArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
+	out := copyArticleParams(params, title)
+	rows := mapsFromAny(params["team"])
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		rp := map[string]any{
+			"position": row["position"], "name": row["name"], "club": row["club"],
+			"rating": ratingDisplay(row["rating_x10"]), "goals": row["goals"],
+		}
+		key := "term.totw.row"
+		if goals, ok := totwInt(row["goals"]); ok && goals > 0 {
+			key = "term.totw.row.goals"
+		}
+		lines = append(lines, g.tr2(loc, key, rp))
+	}
+	out["team"] = joinNonEmpty(lines)
+	starParams := map[string]any{
+		"star": params["star"], "star_club": params["star_club"],
+		"star_rating": ratingDisplay(params["star_rating_x10"]), "star_goals": params["star_goals"],
+	}
+	starKey := "term.totw.star_line"
+	if goals, ok := totwInt(params["star_goals"]); ok && goals > 0 {
+		starKey = "term.totw.star_line.goals"
+	}
+	out["star_line"] = g.tr2(loc, starKey, starParams)
+	return out
+}
+
+// ratingDisplay renders a ×10 integer rating for prose ("81" -> "8.1").
+func ratingDisplay(v any) string {
+	n, ok := totwInt(v)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d", n/10, n%10)
+}
+
+// totwInt reads a numeric news param that may arrive as int or, after a
+// JSON round-trip, float64 or json.Number.
+func totwInt(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		return int64(n), n == float64(int64(n))
+	case json.Number:
+		got, err := n.Int64()
+		return got, err == nil
+	}
+	return 0, false
 }
 
 func (g *Gateway) matchdayResultsArticleParams(loc narrative.Locale, params map[string]any, title string) map[string]any {
@@ -459,7 +521,7 @@ func (g *Gateway) renderHeadline(n *worldgen.NewsItem) map[string]any {
 	}
 	if headline, ok := out["headline"].(map[string]any); ok {
 		if params, ok := headline["params"].(map[string]any); ok {
-			for _, key := range []string{"fixtures", "results", "story", "table"} {
+			for _, key := range []string{"fixtures", "results", "story", "table", "team"} {
 				delete(params, key)
 			}
 		}

@@ -6,6 +6,10 @@ section below.
 
 ## Unreleased
 
+- The media desk now files a Team of the Week after every completed league
+  matchday: a per-division 1-4-3-3 best XI picked deterministically from the
+  published ratings, with the round's top performer headlined as Player of
+  the Round — full article with rotating voices in English and Korean.
 - Formations finally reach the pitch: squad selection now fills the XI in
   the shape of the manager's tactical plan (all twelve catalog shapes —
   "4-2-3-1" reads as 4 defenders, 5 midfielders, 1 forward), so an agent's
