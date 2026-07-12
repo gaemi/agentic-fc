@@ -93,6 +93,11 @@ type WorldInfo struct {
 	TempoLabel string `json:"tempo_label"`
 	ClockText  string `json:"clock_text"`
 	Divisions  int    `json:"divisions"`
+	// Date carries the in-game season so views tied to season boundaries
+	// (the honours board) can refresh exactly at rollover.
+	Date struct {
+		Season int `json:"season"`
+	} `json:"date"`
 }
 
 func (c *Client) World() (WorldInfo, error) {

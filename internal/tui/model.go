@@ -590,8 +590,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case WorldMsg:
+		prevSeason := m.World.Date.Season
 		m.World = WorldInfo(msg)
 		m.Err = ""
+		// The archive only changes at rollover: refresh the open honours
+		// board exactly then, never on the regular poll.
+		if m.HonoursView && prevSeason != 0 && m.World.Date.Season != prevSeason {
+			return m, m.fetchHistory()
+		}
 	case UIMsg:
 		m.UI = msg
 		m.ConnErr = ""
@@ -631,9 +637,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.History = msg
 		m.HistoryLoaded = true
 	case HistoryErrMsg:
-		// An older daemon has no /v1/history: bounce back to the standings
-		// with a notice instead of looping a loading screen and retries.
-		if m.HonoursView {
+		// Only a first-open failure (nothing loaded yet — likely an older
+		// daemon without /v1/history) bounces back with a notice. A failed
+		// rollover refresh keeps the last successful archive on screen.
+		if m.HonoursView && !m.HistoryLoaded {
 			m.HonoursView = false
 			m.setNotice(m.ui("ui.honours.unavailable"))
 		}
@@ -735,12 +742,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.ageNotice()
 		cmds := []tea.Cmd{m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick()}
-		if m.HonoursView && m.Tab == tabTable {
-			// The board is a live surface too: a rollover that lands while
-			// it is VISIBLE must surface the new champion on the next poll.
-			// Other tabs do not pay for it.
-			cmds = append(cmds, m.fetchHistory())
-		}
 		if cmd := m.refreshUIIfDue(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}

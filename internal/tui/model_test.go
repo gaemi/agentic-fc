@@ -2294,10 +2294,35 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	m.UI["ui.honours.unavailable"] = "ARCHIVE UNAVAILABLE"
 	m = update(m, HistoryErrMsg{errors.New("404")})
 	if m.HonoursView {
-		t.Fatal("a failed history fetch should close the board")
+		t.Fatal("a first-open failure should close the board")
 	}
 	if !strings.Contains(m.Notice, "ARCHIVE UNAVAILABLE") {
 		t.Fatalf("the failure should explain itself: %q", m.Notice)
+	}
+
+	// A failed refresh with data already loaded keeps the archive open.
+	m.HonoursView = true
+	m.HistoryLoaded = true
+	m = update(m, HistoryErrMsg{errors.New("500")})
+	if !m.HonoursView {
+		t.Fatal("a transient refresh failure must not close a loaded board")
+	}
+
+	// The archive refreshes exactly at season rollover, not on every poll.
+	m.Client = &Client{} // command construction only; never invoked here
+	world := m.World
+	world.Date.Season = 1
+	m = update(m, WorldMsg(world))
+	world.Date.Season = 2
+	um, cmd := m.Update(WorldMsg(world))
+	m = um.(Model)
+	if cmd == nil {
+		t.Fatal("a season rollover with the board open should refetch the archive")
+	}
+	um, cmd = m.Update(WorldMsg(world))
+	m = um.(Model)
+	if cmd != nil {
+		t.Fatal("an unchanged season must not refetch the archive")
 	}
 
 	// A long archive scrolls: with a tiny viewport the oldest season is
