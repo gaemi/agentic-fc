@@ -852,7 +852,11 @@ func fulltimeCommentaryKey(homeGoals, awayGoals int) string {
 func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, at sim.GameTime) {
 	sub := worldgen.SubEvent{Minute: lm.Clock, ClubID: club, Off: pid, Reason: subReasonInjury}
 	if lm.SubsUsed(club) < subsMax {
-		if rep := e.bestFitOnBench(lm, club, at); rep != 0 {
+		wantGK := false
+		if p := e.players[pid]; p != nil {
+			wantGK = p.Group == attr.GK
+		}
+		if rep := e.bestFitOnBench(lm, club, at, wantGK); rep != 0 {
 			sub.On = rep
 		}
 	}
@@ -868,9 +872,13 @@ func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, 
 	})
 }
 
-// bestFitOnBench picks the strongest bench player who hasn't already come on,
-// been withdrawn, or picked up this match's injury.
-func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameTime) int64 {
+// bestFitOnBench picks the injury replacement role-aware: an injured keeper
+// takes the best unused bench keeper, an injured outfielder the best unused
+// bench outfielder — the reserved backup keeper is not burned as an outfield
+// body. Only when the matching role is exhausted does the other kind come on
+// as an emergency replacement (a full XI beats role purity; the true
+// play-short case is SubEvent.On == 0 when nothing usable remains).
+func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameTime, wantGK bool) int64 {
 	bench := lm.HomeBench
 	if club == lm.AwayID {
 		bench = lm.AwayBench
@@ -885,16 +893,26 @@ func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameT
 			used[s.On] = true
 		}
 	}
-	var best *worldgen.Player
+	var best, emergency *worldgen.Player
+	stronger := func(p, cur *worldgen.Player) bool {
+		return cur == nil || p.AbilityPool > cur.AbilityPool ||
+			(p.AbilityPool == cur.AbilityPool && p.ID < cur.ID)
+	}
 	for _, id := range bench {
 		p := e.players[id]
 		if p == nil || used[id] || p.InjuredUntil > at || p.SuspendedMatches > 0 {
 			continue
 		}
-		if best == nil || p.AbilityPool > best.AbilityPool ||
-			(p.AbilityPool == best.AbilityPool && p.ID < best.ID) {
-			best = p
+		if (p.Group == attr.GK) == wantGK {
+			if stronger(p, best) {
+				best = p
+			}
+		} else if stronger(p, emergency) {
+			emergency = p
 		}
+	}
+	if best == nil {
+		best = emergency
 	}
 	if best == nil {
 		return 0

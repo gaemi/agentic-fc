@@ -5,6 +5,7 @@ import (
 
 	"github.com/gaemi/agentic-fc/internal/attr"
 	"github.com/gaemi/agentic-fc/internal/mindset"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
 
 func TestFormationBands(t *testing.T) {
@@ -91,5 +92,45 @@ func TestSelectSquadHonoursFormationShape(t *testing.T) {
 	got := countGroups(xi)
 	if got[attr.DF] != 2 || got[attr.GK] != 1 {
 		t.Fatalf("depleted back line: shape %v, want both fit defenders kept", got)
+	}
+}
+
+// Injury replacements are role-aware: an injured keeper takes the bench
+// keeper, an injured outfielder never burns the reserved backup keeper while
+// an outfield body remains, and the keeper comes on only as the last body.
+func TestInjuryReplacementRespectsRoles(t *testing.T) {
+	e, _ := newEngine(t, 13)
+	club := e.world.Clubs[0].ID
+	opp := e.world.Clubs[1].ID
+	at := firstKickoff(e)
+	xi, bench := e.selectSquad(club, at, mindset.TacticalPlan{Formation: "4-4-2"})
+	if len(bench) == 0 || e.players[bench[0]].Group != attr.GK {
+		t.Fatalf("bench sanity: want reserved keeper first, got %v", bench)
+	}
+	lm := &worldgen.LiveMatch{
+		FixtureID: 910001, Competition: worldgen.CompetitionLeague,
+		HomeID: club, AwayID: opp, Kickoff: at, Clock: 30,
+		HomeXI: xi, HomeBench: bench,
+	}
+
+	// Injured outfielder: the replacement must be an outfielder.
+	if rep := e.bestFitOnBench(lm, club, at, false); rep == 0 || e.players[rep].Group == attr.GK {
+		t.Fatalf("outfield injury should bring on an outfielder, got %v", rep)
+	}
+	// Injured keeper: the replacement must be the bench keeper.
+	if rep := e.bestFitOnBench(lm, club, at, true); rep == 0 || e.players[rep].Group != attr.GK {
+		t.Fatalf("keeper injury should bring on the bench keeper, got %v", rep)
+	}
+
+	// With every bench outfielder already used, the keeper is the emergency
+	// body rather than playing short.
+	for _, id := range bench {
+		if e.players[id].Group != attr.GK {
+			lm.Subs = append(lm.Subs, worldgen.SubEvent{Minute: 40, ClubID: club, Off: xi[5], On: id})
+			xi = append(xi, id) // keep Off ids unique enough for the used map
+		}
+	}
+	if rep := e.bestFitOnBench(lm, club, at, false); rep == 0 || e.players[rep].Group != attr.GK {
+		t.Fatalf("exhausted outfield bench should fall back to the keeper, got %v", rep)
 	}
 }
