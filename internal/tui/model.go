@@ -116,6 +116,7 @@ type Model struct {
 	// HonoursView flips the standings tab to the archived honours board
 	// ("h"); History caches the fetched seasons.
 	HonoursView   bool
+	HonoursOffset int
 	History       []HonoursSeason
 	Notice        string
 	NoticeTTL     int
@@ -416,6 +417,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollBack(m.HonoursOffset, 1)
+				}
 			case tabMedia:
 				if m.NewsIdx > 0 {
 					m.NewsIdx--
@@ -444,6 +449,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollForward(m.HonoursOffset, m.honoursRowCount(), 1)
+				}
 			case tabMedia:
 				if m.NewsIdx+1 < len(m.News) {
 					m.NewsIdx++
@@ -471,6 +480,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "h":
 			if m.Tab == tabTable && m.MatchModal == modalNone {
 				m.HonoursView = !m.HonoursView
+				m.HonoursOffset = 0
 				if m.HonoursView {
 					return m, m.fetchHistory()
 				}
@@ -489,6 +499,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollBack(m.HonoursOffset, scrollPageLines)
+				}
 			case tabMedia:
 				m.ArticleOffset = scrollBack(m.ArticleOffset, scrollPageLines)
 			}
@@ -498,6 +512,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch m.Tab {
+			case tabTable:
+				if m.HonoursView {
+					m.HonoursOffset = scrollForward(m.HonoursOffset, m.honoursRowCount(), scrollPageLines)
+				}
 			case tabMedia:
 				m.ArticleOffset = scrollForward(m.ArticleOffset, m.articleScrollLineCount(), scrollPageLines)
 			}
@@ -704,6 +722,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.ageNotice()
 		cmds := []tea.Cmd{m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick()}
+		if m.HonoursView {
+			// The board is a live surface too: a rollover that lands while
+			// it is open must surface the new champion on the next poll.
+			cmds = append(cmds, m.fetchHistory())
+		}
 		if cmd := m.refreshUIIfDue(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -883,6 +906,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.ArticleOffset = 0
 		}
 	case tabTable:
+		if m.HonoursView {
+			break // honours rows are history, not click targets into live clubs
+		}
 		row := msg.Y - bodyY - 4
 		if row >= 0 && row < len(m.Table.Rows) {
 			id := m.Table.Rows[row].ClubID
@@ -1123,6 +1149,7 @@ var uiFallbacks = map[string]string{
 	"ui.honours.runner_up":            "Runners-up",
 	"ui.honours.cup":                  "Cup",
 	"ui.honours.empty":                "No completed seasons yet — the honours board fills at the first rollover.",
+	"ui.honours.more":                 "↑/↓ · PgUp/PgDn — older seasons below",
 	"ui.col.form":                     "Form",
 	"ui.form.win":                     "W",
 	"ui.form.draw":                    "D",
@@ -2365,16 +2392,35 @@ func (m Model) viewHonours(width, height int) string {
 		{Header: m.ui("ui.honours.runner_up"), MinWidth: 14, Flex: true, Align: alignLeft},
 		{Header: m.ui("ui.honours.cup"), MinWidth: 10, Flex: true, Align: alignLeft},
 	}
-	maxRows := height - 5
-	if maxRows < 0 {
-		maxRows = 0
+	maxRows := height - 6 // header + table chrome + the more-below hint row
+	if maxRows < 1 {
+		maxRows = 1
 	}
-	rows := make([][]string, 0, maxRows)
+	all := m.honoursRows()
+	start := m.HonoursOffset
+	if start > len(all)-maxRows {
+		start = len(all) - maxRows
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxRows
+	if end > len(all) {
+		end = len(all)
+	}
+	b.WriteString(renderTextTable(width, cols, all[start:end]))
+	if end < len(all) {
+		b.WriteString("\n" + styleDim.Render(truncate(m.ui("ui.honours.more"), width)))
+	}
+	return b.String()
+}
+
+// honoursRows flattens the archive into display rows (one per division,
+// season header cells on each season's first row).
+func (m Model) honoursRows() [][]string {
+	rows := [][]string{}
 	for _, season := range m.History {
 		for i, div := range season.Divisions {
-			if len(rows) >= maxRows {
-				break
-			}
 			year, cup := "", ""
 			if i == 0 {
 				year = intCell(season.SeasonYear)
@@ -2383,8 +2429,15 @@ func (m Model) viewHonours(width, height int) string {
 			rows = append(rows, []string{year, intCell(div.Tier), div.Champion, div.RunnerUp, cup})
 		}
 	}
-	b.WriteString(renderTextTable(width, cols, rows))
-	return b.String()
+	return rows
+}
+
+func (m Model) honoursRowCount() int {
+	n := 0
+	for _, season := range m.History {
+		n += len(season.Divisions)
+	}
+	return n
 }
 
 func (m Model) viewClubs(width, height int) string {

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -2277,5 +2278,28 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	m = update(m, key("h"))
 	if m.HonoursView {
 		t.Fatal("h outside the table tab must not toggle the board")
+	}
+
+	// A long archive scrolls: with a tiny viewport the oldest season is
+	// reachable via the down key and a more-below hint shows until then.
+	m.Tab = tabTable
+	m.HonoursView = true
+	m.UI["ui.honours.more"] = "MORE BELOW"
+	m.History = nil
+	for year := 20; year >= 1; year-- {
+		m.History = append(m.History, HonoursSeason{
+			SeasonYear: year,
+			Divisions:  []HonoursRow{{Tier: 1, Champion: fmt.Sprintf("Champ%02d", year), RunnerUp: "X"}},
+		})
+	}
+	v = m.viewTable(100, 12)
+	if !strings.Contains(v, "Champ20") || strings.Contains(v, "Champ01") || !strings.Contains(v, "MORE BELOW") {
+		t.Fatalf("short honours viewport should page from the newest with a hint:\n%s", v)
+	}
+	for range 30 {
+		m = update(m, key("down"))
+	}
+	if v = m.viewTable(100, 12); !strings.Contains(v, "Champ01") {
+		t.Fatalf("scrolling should reach the oldest season:\n%s", v)
 	}
 }
