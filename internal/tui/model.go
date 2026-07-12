@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1087,6 +1088,11 @@ var uiFallbacks = map[string]string{
 	"ui.match.scene.shootout":         "Penalty shootout",
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
+	"ui.col.gd":                       "GD",
+	"ui.col.form":                     "Form",
+	"ui.form.win":                     "W",
+	"ui.form.draw":                    "D",
+	"ui.form.loss":                    "L",
 	"ui.player.suspended":             "Suspended — matches left:",
 	"ui.match.report":                 "The story of the match",
 	"ui.match.modal.lineups":          "L lineups",
@@ -2222,7 +2228,31 @@ func (m Model) viewTable(width, height int) string {
 		{Header: m.ui("ui.col.lost"), Width: colWidth(m.ui("ui.col.lost"), 3), Align: alignRight},
 		{Header: m.ui("ui.col.gf"), Width: colWidth(m.ui("ui.col.gf"), 4), Align: alignRight},
 		{Header: m.ui("ui.col.ga"), Width: colWidth(m.ui("ui.col.ga"), 4), Align: alignRight},
+		{Header: m.ui("ui.col.gd"), Width: colWidth(m.ui("ui.col.gd"), 4), Align: alignRight},
 		{Header: m.ui("ui.col.pts"), Width: colWidth(m.ui("ui.col.pts"), 4), Align: alignRight},
+	}
+	// Form joins on medium-and-wider layouts (docs/07 §4.3) — gated on the
+	// terminal's layout tier, not the pane width, so tier S keeps its club
+	// column; and only once any row actually carries form data, so an older
+	// daemon's payload or an unplayed season doesn't reserve a blank column.
+	// The column is sized from the rendered glyph (Hangul 승/무/패 are two
+	// cells wide, W/D/L one) so neither locale truncates the strip.
+	showForm := false
+	if layout.Compute(m.Width, m.Height) >= layout.TierM {
+		for _, r := range m.Table.Rows {
+			if len(r.Form) > 0 {
+				showForm = true
+				break
+			}
+		}
+	}
+	if showForm {
+		glyph := lipgloss.Width(m.ui("ui.form.win"))
+		cols = append(cols, tableColumn{
+			Header: m.ui("ui.col.form"),
+			Width:  colWidth(m.ui("ui.col.form"), tableFormGlyphs*glyph+tableFormGlyphs-1),
+			Align:  alignLeft,
+		})
 	}
 	maxRows := height - 5 // label + table top/header/separator/bottom
 	if maxRows < 0 {
@@ -2233,13 +2263,52 @@ func (m Model) viewTable(width, height int) string {
 		if i >= maxRows {
 			break
 		}
-		rows = append(rows, []string{
+		row := []string{
 			intCell(r.Pos), r.Club, intCell(r.Played), intCell(r.Won), intCell(r.Drawn),
-			intCell(r.Lost), intCell(r.GF), intCell(r.GA), intCell(r.Points),
-		})
+			intCell(r.Lost), intCell(r.GF), intCell(r.GA),
+			// Derived locally: an older daemon's payload has no gd field,
+			// and GF/GA are always present.
+			signedCell(r.GF - r.GA), intCell(r.Points),
+		}
+		if showForm {
+			row = append(row, m.formStrip(r.Form))
+		}
+		rows = append(rows, row)
 	}
 	b.WriteString(renderTextTable(width, cols, rows))
 	return b.String()
+}
+
+// tableFormGlyphs is the form strip length the standings column renders.
+const tableFormGlyphs = 5
+
+// formStrip renders the served W/D/L enums as localized glyphs, oldest to
+// newest, so the rightmost letter is the latest result.
+func (m Model) formStrip(form []string) string {
+	if len(form) == 0 {
+		return ""
+	}
+	glyphs := make([]string, 0, len(form))
+	for _, f := range form {
+		switch f {
+		case "W":
+			glyphs = append(glyphs, m.ui("ui.form.win"))
+		case "D":
+			glyphs = append(glyphs, m.ui("ui.form.draw"))
+		case "L":
+			glyphs = append(glyphs, m.ui("ui.form.loss"))
+		}
+	}
+	return strings.Join(glyphs, " ")
+}
+
+// signedCell renders a goal difference with its sign, the way standings
+// pages print it (+12, 0, -7).
+func signedCell(v int) string {
+	if v > 0 {
+		return "+" + strconv.Itoa(v)
+	}
+	return strconv.Itoa(v)
 }
 
 func (m Model) viewClubs(width, height int) string {
