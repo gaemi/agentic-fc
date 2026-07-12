@@ -103,6 +103,15 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Print(out)
+		// A wildcard bind is mapped to loopback above (the banner convention:
+		// print a URL that is directly dialable). That URL only works on the
+		// daemon machine, and which host a remote client should use instead
+		// (LAN, VPN, container bridge) is unknowable here — say so.
+		if host, _, err := net.SplitHostPort(*mcpAddr); err == nil {
+			if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+				fmt.Printf("note: -mcp-addr %s binds every interface; the loopback URL above works on this machine — a remote agent must use a host it can reach instead\n", *mcpAddr)
+			}
+		}
 		return
 	}
 
