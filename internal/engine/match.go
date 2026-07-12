@@ -52,6 +52,9 @@ const (
 	// suspensionMatchesRed is the ban a red card earns (straight or second
 	// yellow): the player sits out this many of the club's next fixtures.
 	suspensionMatchesRed = 1
+	// gkSetPieceScorerDivisor discounts a keeper's scorer weight at
+	// set-piece headers — the only pattern where a keeper may score at all.
+	gkSetPieceScorerDivisor = 8
 	injuryRatePerMoment  = 0.010 // per-moment P(an injury knock)
 	injuryConditionHit   = 35    // condition lost to an in-match knock
 
@@ -1703,7 +1706,11 @@ func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) 
 	return attack, defense
 }
 
-// pickScorerForChance weights actors by the event they are actually receiving.
+// pickScorerForChance weights actors by the event they are actually
+// receiving. Keepers are not open-play finishers: their scorer weight is
+// zero for every pattern except a set-piece header, where a heavily
+// discounted weight keeps the famous last-corner keeper goal possible but
+// vanishingly rare (docs/98).
 func (e *Engine) pickScorerForChance(xi []int64, chanceType string, r *rand.Rand) int64 {
 	weights := make([]int, len(xi))
 	for i, pid := range xi {
@@ -1717,8 +1724,27 @@ func (e *Engine) pickScorerForChance(xi []int64, chanceType string, r *rand.Rand
 			w = w * 4 / 2
 		case attr.MF:
 			w = w * 3 / 2
+		case attr.GK:
+			if chanceType == chanceSetPieceHeader {
+				w /= gkSetPieceScorerDivisor
+			} else {
+				w = 0
+			}
 		}
 		weights[i] = w
+	}
+	// A pathological all-keeper attack (deep crisis XI) still names a
+	// scorer and consumes its usual single draw.
+	total := 0
+	for _, w := range weights {
+		if w > 0 {
+			total += w
+		}
+	}
+	if total == 0 {
+		for i := range weights {
+			weights[i] = 1
+		}
 	}
 	return pickWeighted(xi, weights, r)
 }
