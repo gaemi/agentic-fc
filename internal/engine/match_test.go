@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
+	"github.com/gaemi/agentic-fc/internal/mindset"
 	"github.com/gaemi/agentic-fc/internal/narrative"
 	"github.com/gaemi/agentic-fc/internal/sim"
 	"github.com/gaemi/agentic-fc/internal/store"
@@ -770,5 +771,59 @@ func TestQuietDrawKeepsLegacyBoundAndCoversPool(t *testing.T) {
 	}
 	if len(seen) < len(quietCommentaryKeys)-2 {
 		t.Fatalf("rotation covered only %d of %d quiet lines", len(seen), len(quietCommentaryKeys))
+	}
+}
+
+// Keepers are not open-play finishers: across many draws a GK is never
+// picked as the scorer for any open-play pattern, remains possible (but
+// heavily discounted) at set-piece headers, and an all-keeper attack still
+// names a scorer.
+func TestKeepersAreNotOpenPlayScorers(t *testing.T) {
+	e, _ := newEngine(t, 23)
+	club := e.world.Clubs[0].ID
+	at := firstKickoff(e)
+	xi, _ := e.selectSquad(club, at, mindset.TacticalPlan{Formation: "4-4-2"})
+	gk := xi[0]
+	if e.players[gk].Group != attr.GK {
+		t.Fatal("selection sanity: slot 0 should be the keeper")
+	}
+	r := rand.New(rand.NewPCG(5, 55))
+	openPlay := []string{
+		chanceCrossHeader, chanceCutback, chanceThroughBall,
+		chanceLongShot, chanceScramble, chanceCounter,
+	}
+	for _, chanceType := range openPlay {
+		for range 400 {
+			if e.pickScorerForChance(xi, chanceType, r) == gk {
+				t.Fatalf("keeper picked as an open-play %s scorer", chanceType)
+			}
+		}
+	}
+	gkSetPiece := 0
+	for range 4000 {
+		if e.pickScorerForChance(xi, chanceSetPieceHeader, r) == gk {
+			gkSetPiece++
+		}
+	}
+	if gkSetPiece == 0 {
+		t.Log("no keeper set-piece goal in 4000 draws — acceptable, the weight is heavily discounted")
+	}
+	if gkSetPiece > 200 { // 5% of set-piece picks is already far too many
+		t.Fatalf("keeper picked for %d/4000 set-piece headers — discount not applied", gkSetPiece)
+	}
+
+	// An all-keeper attacking set still names a scorer.
+	var gks []int64
+	for i := range e.world.Players {
+		p := &e.world.Players[i]
+		if p.ClubID == club && !p.Youth && p.Group == attr.GK {
+			gks = append(gks, p.ID)
+		}
+	}
+	if len(gks) < 2 {
+		t.Fatal("test world should carry spare keepers")
+	}
+	if scorer := e.pickScorerForChance(gks, chanceCounter, r); scorer == 0 {
+		t.Fatal("an all-keeper set must still name a scorer")
 	}
 }

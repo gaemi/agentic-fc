@@ -6,6 +6,10 @@ section below.
 
 ## Unreleased
 
+- Goalkeepers no longer poach open-play goals: the scorer draw gives keepers
+  zero weight for every open-play pattern and an eighth of their weight at
+  set-piece headers, so the beloved stoppage-time keeper header stays
+  possible but drops from ~2% of all goals to a genuine rarity.
 - The media desk now files a Team of the Week after every completed league
   matchday: a per-division 1-4-3-3 best XI picked deterministically from the
   published ratings, with the round's top performer headlined as Player of
