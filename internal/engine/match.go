@@ -55,8 +55,8 @@ const (
 	// gkSetPieceScorerDivisor discounts a keeper's scorer weight at
 	// set-piece headers — the only pattern where a keeper may score at all.
 	gkSetPieceScorerDivisor = 8
-	injuryRatePerMoment  = 0.010 // per-moment P(an injury knock)
-	injuryConditionHit   = 35    // condition lost to an in-match knock
+	injuryRatePerMoment     = 0.010 // per-moment P(an injury knock)
+	injuryConditionHit      = 35    // condition lost to an in-match knock
 
 	// Real injuries + substitutions (tunable docs/98). Lay-off =
 	// base + IntN(span) days, shifted by hidden InjuryProne (longer) and
