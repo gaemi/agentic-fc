@@ -15,6 +15,16 @@ game-hour (~48/game-day, ~336/game-week — [11 §3](11-mcp-tools.md)). A
 playbook's opening setup deliberately spends most of one cap; the weekly
 rhythm afterwards should leave headroom for reactions.
 
+**Which directives bite today.** The engine currently *acts on* five verbs:
+`SIGN` and `SELL` (the transfer flow), `RENEW` and `RELEASE` (the contract
+flow), and `FORBID` (tactical-plan fencing). Every other verb — `START`,
+`BENCH`, `GIVE_MINUTES`, `KEEP`, `TARGET_PROFILE`, `WAGE_CAP`,
+`DEVELOP`, … — validates, persists, and shows on your Mindset, but no
+simulation system consumes it yet (their consumers are roadmap work,
+[99](99-roadmap.md)). These playbooks therefore spend real Focus only on
+the live five; if you want inert verbs on record as forward intent, file
+them at `LEAN` (6 FP) and treat them as a paper trail, not a lever.
+
 ## 1. Title Challenge
 
 **Adopt when** `get_mindset` (free) shows a top-quartile brief — the
@@ -41,13 +51,16 @@ keep the ball. Pick the `formation` your best XI actually fills (the shape
 drives selection — [12 §6](12-match-model.md)); check `get_squad` for where
 your quality clusters before choosing between `4-3-3` and `4-2-3-1`.
 
-**Directives** (`add_directive`, 6/10/18 FP by strength): protect the spine
-and fence the plan.
+**Directives** (`add_directive`, 6/10/18 FP by strength; one call per
+line): protect the spine by contract and fence the plan.
 
 ```json
-{"verb": "KEEP", "target": {"player": <star_id>}, "strength": "ABSOLUTE"}
+{"verb": "RENEW", "target": {"player": <star_id>}, "strength": "INSIST"}
 {"verb": "FORBID", "target": {"scope": "mentality:VERY_DEFENSIVE"}, "strength": "INSIST"}
 ```
+
+A star walking free is the title challenge's classic self-inflicted wound —
+`RENEW` is the live verb that prevents it.
 
 **Alerts** (`configure_alerts`, 0 FP): title races are lost in the news you
 miss.
@@ -93,13 +106,15 @@ over mid-table-sliding. Points are the only currency; style is a luxury.
 `5-4-1`) suits squads whose quality sits in defence; check `get_squad`
 before assuming.
 
-**Directives**: stop the bleeding in the market and the dressing room.
+**Directives**: stop the bleeding with the live verbs.
 
 ```json
-{"verb": "KEEP", "target": {"player": <best_defender_id>}, "strength": "INSIST"}
+{"verb": "RENEW", "target": {"player": <best_defender_id>}, "strength": "INSIST"}
 {"verb": "FORBID", "target": {"scope": "mentality:VERY_ATTACKING"}, "strength": "LEAN"}
-{"verb": "WAGE_CAP", "target": {"scope": "renewals"}, "strength": "INSIST", "params": {"amount": <sustainable_wage>}}
 ```
+
+Resist panic sales: an explicit `SELL` listing is the one thing that lets a
+rival buy your contracted starter mid-fight.
 
 **Alerts**: relegation is decided by the matches around you.
 
@@ -145,13 +160,21 @@ your priorities and defend it with directives.
 `tempo: FAST` — but keep `mentality: BALANCED` so mistakes are not fatal.
 Choose a formation whose bands match where your prospects play.
 
-**Directives**: minutes are the whole point, so spend real strength on them.
+**Directives**: minutes are the whole point — and today the real minutes
+lever is squad composition, not a selection order. Selection fills the
+plan's formation bands by score ([12 §6](12-match-model.md)), so a prospect
+starts when his band is thin enough for him to win the slot: `SELL` or
+`RELEASE` the aging body blocking him, and lock the prospect down by
+contract.
 
 ```json
-{"verb": "GIVE_MINUTES", "target": {"player": <prospect_id>}, "strength": "INSIST"}
-{"verb": "KEEP", "target": {"player": <prospect_id>}, "strength": "ABSOLUTE"}
-{"verb": "TARGET_PROFILE", "target": {"position_group": "MF"}, "strength": "LEAN", "params": {"age_max": 23}}
+{"verb": "RENEW", "target": {"player": <prospect_id>}, "strength": "INSIST"}
+{"verb": "SELL", "target": {"player": <blocking_veteran_id>}, "strength": "LEAN", "params": {"min_fee": <fair_value>}}
 ```
+
+`GIVE_MINUTES` currently only records intent (see the intro); file it at
+`LEAN` if you want the plan legible on your Mindset, not because it changes
+a team sheet.
 
 **Alerts**: development news is quiet news; watch for it explicitly.
 
@@ -193,13 +216,18 @@ without cratering results.
 not the one you wish you had — re-check `get_squad` after every window and
 patch the plan (`update_tactical_plan` patches partially; 15 FP).
 
-**Directives**: the market does the heavy lifting.
+**Directives**: the market does the heavy lifting, all through live verbs —
+`SELL` the earners, `RELEASE` the fringe whose deals you will not renew,
+`RENEW` only the cheap core.
 
 ```json
-{"verb": "WAGE_CAP", "target": {"scope": "all"}, "strength": "ABSOLUTE", "params": {"amount": <target_wage>}}
 {"verb": "SELL", "target": {"player": <highest_earner_id>}, "strength": "INSIST", "params": {"min_fee": <fair_value>}}
-{"verb": "TARGET_PROFILE", "target": {"position_group": "DF"}, "strength": "LEAN", "params": {"age_max": 26, "max_fee": <small_fee>}}
+{"verb": "RELEASE", "target": {"player": <fringe_id>}, "strength": "LEAN"}
+{"verb": "RENEW", "target": {"player": <cheap_core_id>}, "strength": "LEAN"}
 ```
+
+`WAGE_CAP` and `TARGET_PROFILE` record intent only for now; the fees and
+wages you actually control flow through the three calls above.
 
 **Alerts**:
 
