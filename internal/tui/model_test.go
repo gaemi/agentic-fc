@@ -2255,6 +2255,11 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	if !m.HonoursView {
 		t.Fatal("h on the table tab should open the honours board")
 	}
+	m.UI["ui.honours.loading"] = "FETCHING"
+	if v := m.viewTable(100, 24); !strings.Contains(v, "FETCHING") {
+		t.Fatalf("board should show a loading state before data lands:\n%s", v)
+	}
+	m.HistoryLoaded = true
 	v := m.viewTable(100, 24)
 	for _, want := range []string{"HONOURS", "Alpha", "Beta", "Gamma", "Delta"} {
 		if !strings.Contains(v, want) {
@@ -2269,6 +2274,7 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 
 	m.History = nil
 	m.HonoursView = true
+	m.HistoryLoaded = true
 	if v := m.viewTable(100, 24); !strings.Contains(v, "No completed seasons yet.") {
 		t.Fatalf("empty history should explain itself:\n%s", v)
 	}
@@ -2284,6 +2290,7 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	// reachable via the down key and a more-below hint shows until then.
 	m.Tab = tabTable
 	m.HonoursView = true
+	m.HistoryLoaded = true
 	m.UI["ui.honours.more"] = "MORE BELOW"
 	m.History = nil
 	for year := 20; year >= 1; year-- {

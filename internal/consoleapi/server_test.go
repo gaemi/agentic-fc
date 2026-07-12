@@ -533,7 +533,7 @@ func TestHiddenNeverLeaks(t *testing.T) {
 		Scorers: []worldgen.MatchEvent{{Minute: 10, ClubID: host.world.Clubs[0].ID}},
 	})
 	paths := []string{
-		"/v1/world", "/v1/ui?locale=ko", "/v1/news", "/v1/tables?tier=1", "/v1/clubs",
+		"/v1/world", "/v1/ui?locale=ko", "/v1/news", "/v1/tables?tier=1", "/v1/clubs", "/v1/history",
 		fmt.Sprintf("/v1/clubs/%d", host.world.Clubs[0].ID), "/v1/fixtures",
 		"/v1/matches/live", "/v1/matches/99",
 	}

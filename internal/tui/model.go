@@ -117,6 +117,9 @@ type Model struct {
 	// ("h"); History caches the fetched seasons.
 	HonoursView   bool
 	HonoursOffset int
+	// HistoryLoaded separates "no seasons archived" from "still fetching" —
+	// the empty state must never render as authoritative before data lands.
+	HistoryLoaded bool
 	History       []HonoursSeason
 	Notice        string
 	NoticeTTL     int
@@ -482,6 +485,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.HonoursView = !m.HonoursView
 				m.HonoursOffset = 0
 				if m.HonoursView {
+					m.HistoryLoaded = false
 					return m, m.fetchHistory()
 				}
 			}
@@ -624,6 +628,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case HistoryMsg:
 		m.History = msg
+		m.HistoryLoaded = true
 	case ClubMsg:
 		m.Club = ClubDetail(msg)
 		if m.PlayerIdx >= len(m.Club.Squad) {
@@ -1151,6 +1156,7 @@ var uiFallbacks = map[string]string{
 	"ui.honours.cup":                  "Cup",
 	"ui.honours.empty":                "No completed seasons yet — the honours board fills at the first rollover.",
 	"ui.honours.more":                 "↑/↓ · PgUp/PgDn — older seasons below",
+	"ui.honours.loading":              "Fetching the archive...",
 	"ui.col.form":                     "Form",
 	"ui.form.win":                     "W",
 	"ui.form.draw":                    "D",
@@ -2382,6 +2388,10 @@ func signedCell(v int) string {
 func (m Model) viewHonours(width, height int) string {
 	var b strings.Builder
 	b.WriteString(styleHeader.Render(truncate(m.ui("ui.table.honours"), width)) + "\n")
+	if !m.HistoryLoaded {
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.honours.loading"), width)))
+		return b.String()
+	}
 	if len(m.History) == 0 {
 		b.WriteString(styleDim.Render(truncate(m.ui("ui.honours.empty"), width)))
 		return b.String()
