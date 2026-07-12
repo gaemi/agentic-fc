@@ -1460,14 +1460,21 @@ func (m Model) replayMatchModal(width, height int) string {
 	if md.Winner != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
 	}
-	// The report block costs 3-5 rows. It only spends them when the rows
-	// the rest of the modal still needs — event lists, ratings, the current
-	// scene, and a minimum replay log — would survive; otherwise the prose
-	// would push the replay content the pop-up exists for off the bottom.
-	if !compact && len(md.Story) > 0 &&
-		height-2-len(lines)-replayEssentialRows(md) >= len(md.Story)+1 {
-		lines = append(lines, "", m.ui("ui.match.report"))
-		lines = append(lines, md.Story...)
+	// The report block only spends rows when the ones the rest of the modal
+	// still needs — event lists, ratings, the current scene, and a minimum
+	// replay log — would survive; otherwise the prose would push the replay
+	// content the pop-up exists for off the bottom. The block's own cost is
+	// counted in WRAPPED rows for this width (prose lines wrap on narrow
+	// non-compact boxes), matching what modalBox will actually render.
+	if !compact && len(md.Story) > 0 {
+		storyRows := 1 // section header; the leading blank is in the budget
+		for _, line := range md.Story {
+			storyRows += len(wrapText(line, width-2))
+		}
+		if height-2-len(lines)-replayEssentialRows(md) >= storyRows+1 {
+			lines = append(lines, "", m.ui("ui.match.report"))
+			lines = append(lines, md.Story...)
+		}
 	}
 	if len(md.Scorers) > 0 {
 		lines = append(lines, "", m.ui("ui.match.scorers"))
