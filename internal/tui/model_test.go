@@ -2286,6 +2286,20 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 		t.Fatal("h outside the table tab must not toggle the board")
 	}
 
+	// An older daemon without /v1/history bounces back to the standings
+	// with a notice instead of a stuck loading loop.
+	m.Tab = tabTable
+	m.HonoursView = true
+	m.HistoryLoaded = false
+	m.UI["ui.honours.unavailable"] = "ARCHIVE UNAVAILABLE"
+	m = update(m, HistoryErrMsg{errors.New("404")})
+	if m.HonoursView {
+		t.Fatal("a failed history fetch should close the board")
+	}
+	if !strings.Contains(m.Notice, "ARCHIVE UNAVAILABLE") {
+		t.Fatalf("the failure should explain itself: %q", m.Notice)
+	}
+
 	// A long archive scrolls: with a tiny viewport the oldest season is
 	// reachable via the down key and a more-below hint shows until then.
 	m.Tab = tabTable

@@ -146,17 +146,18 @@ func NewModel(c *Client) Model {
 
 // Messages.
 type (
-	WorldMsg    WorldInfo
-	UIMsg       map[string]string
-	NewsMsg     []NewsArticle
-	TableMsg    Table
-	ClubsMsg    []ClubSummary
-	ClubMsg     ClubDetail
-	FixturesMsg []Fixture
-	MatchMsg    MatchDetail
-	MatchesMsg  []LiveMatchView
-	HistoryMsg  []HonoursSeason
-	SettingsMsg struct {
+	WorldMsg      WorldInfo
+	UIMsg         map[string]string
+	NewsMsg       []NewsArticle
+	TableMsg      Table
+	ClubsMsg      []ClubSummary
+	ClubMsg       ClubDetail
+	FixturesMsg   []Fixture
+	MatchMsg      MatchDetail
+	MatchesMsg    []LiveMatchView
+	HistoryMsg    []HonoursSeason
+	HistoryErrMsg struct{ Err error }
+	SettingsMsg   struct {
 		Settings AdminSettings
 		Updated  bool
 	}
@@ -283,7 +284,7 @@ func (m Model) fetchHistory() tea.Cmd {
 	return func() tea.Msg {
 		seasons, err := c.History()
 		if err != nil {
-			return ErrMsg{err}
+			return HistoryErrMsg{err}
 		}
 		return HistoryMsg(seasons)
 	}
@@ -629,6 +630,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case HistoryMsg:
 		m.History = msg
 		m.HistoryLoaded = true
+	case HistoryErrMsg:
+		// An older daemon has no /v1/history: bounce back to the standings
+		// with a notice instead of looping a loading screen and retries.
+		if m.HonoursView {
+			m.HonoursView = false
+			m.setNotice(m.ui("ui.honours.unavailable"))
+		}
 	case ClubMsg:
 		m.Club = ClubDetail(msg)
 		if m.PlayerIdx >= len(m.Club.Squad) {
@@ -1157,6 +1165,7 @@ var uiFallbacks = map[string]string{
 	"ui.honours.empty":                "No completed seasons yet — the honours board fills at the first rollover.",
 	"ui.honours.more":                 "↑/↓ · PgUp/PgDn — older seasons below",
 	"ui.honours.loading":              "Fetching the archive...",
+	"ui.honours.unavailable":          "Could not fetch the archive — the daemon may predate this console.",
 	"ui.col.form":                     "Form",
 	"ui.form.win":                     "W",
 	"ui.form.draw":                    "D",
