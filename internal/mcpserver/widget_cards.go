@@ -386,6 +386,9 @@ func situationCard(g *Gateway, loc narrative.Locale, _ emptyIn, env map[string]a
 		if injuries := mapList(urgent["injuries"]); injuries != nil {
 			c.row(g.tr(loc, "widget.row.injuries"), fmt.Sprint(len(injuries)))
 		}
+		if suspensions := mapList(urgent["suspensions"]); len(suspensions) > 0 {
+			c.row(g.tr(loc, "widget.row.suspensions"), fmt.Sprint(len(suspensions)))
+		}
 		c.countRow(g.tr(loc, "widget.row.expiring_contracts"), urgent["expiring_contracts"])
 	}
 	if next := anyMap(d["next_fixture"]); next != nil {
