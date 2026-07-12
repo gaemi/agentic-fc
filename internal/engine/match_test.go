@@ -520,29 +520,153 @@ func TestQuietCommentarySelectionPreservesRNGPosition(t *testing.T) {
 	}
 }
 
+// State-aware quiet beats: nervy lines for close late games, cruise lines
+// for one-sided ones — nil means the broad pool stands.
+func TestStateQuietKeysSelectsThemedPools(t *testing.T) {
+	cases := []struct {
+		name   string
+		clock  int
+		hg, ag int
+		want   string // "", "tension", "cruise"
+	}{
+		{"early goalless", 30, 0, 0, ""},
+		{"late close game", 76, 1, 1, "tension"},
+		{"late one-goal game", 88, 1, 2, "tension"},
+		{"cruising margin", 65, 4, 0, "cruise"},
+		{"late blowout stays cruise", 80, 0, 4, "cruise"},
+		{"big margin before the hour", 55, 3, 0, ""},
+		{"two-goal game is neither", 80, 2, 0, ""},
+	}
+	for _, tc := range cases {
+		lm := &worldgen.LiveMatch{Clock: tc.clock, HomeGoals: tc.hg, AwayGoals: tc.ag}
+		got := stateQuietKeys(lm)
+		prefix := map[string]string{"tension": "comment.quiet.tension.", "cruise": "comment.quiet.cruise."}[tc.want]
+		if prefix == "" {
+			if got != nil {
+				t.Fatalf("%s: themed pool %v, want broad quiet pool", tc.name, got)
+			}
+			continue
+		}
+		if len(got) == 0 || !strings.HasPrefix(got[0], prefix) {
+			t.Fatalf("%s: pool %v, want prefix %q", tc.name, got, prefix)
+		}
+	}
+	for _, key := range append(append([]string{}, tensionQuietKeys...), cruiseQuietKeys...) {
+		for _, loc := range narrative.Supported {
+			if _, ok := narrative.Default[loc][key]; !ok {
+				t.Fatalf("themed quiet key %q missing from %s catalog", key, loc)
+			}
+		}
+	}
+}
+
+// The themed quiet draw must consume exactly the RNG the broad draw consumes
+// (docs/12: presentation must not perturb play), prefer unused themed lines
+// while they last, and fall back to the broad pool afterwards.
+func TestQuietBeatKeyNarratesStateWithoutMovingRNG(t *testing.T) {
+	themed := rand.New(rand.NewPCG(3, 17))
+	baseline := rand.New(rand.NewPCG(3, 17))
+	tense := &worldgen.LiveMatch{Clock: 80, HomeGoals: 1, AwayGoals: 1}
+	neutral := &worldgen.LiveMatch{Clock: 30}
+	seen := map[string]bool{}
+	for range tensionQuietKeys {
+		key := quietBeatKey(themed, tense)
+		if !strings.HasPrefix(key, "comment.quiet.tension.") {
+			t.Fatalf("tense beat spoke %q, want a tension line", key)
+		}
+		if seen[key] {
+			t.Fatalf("tension line %q repeated before the pool was exhausted", key)
+		}
+		seen[key] = true
+		tense.Commentary = append(tense.Commentary, worldgen.CommentaryLine{Key: key})
+		quietBeatKey(baseline, neutral)
+		neutral.Commentary = append(neutral.Commentary, worldgen.CommentaryLine{Key: "comment.kickoff"})
+	}
+	if key := quietBeatKey(themed, tense); !strings.HasPrefix(key, "comment.quiet.") ||
+		strings.HasPrefix(key, "comment.quiet.tension.") {
+		t.Fatalf("exhausted tension pool should fall back to the broad quiet pool, got %q", key)
+	}
+	quietBeatKey(baseline, neutral)
+	if got, want := themed.Uint64(), baseline.Uint64(); got != want {
+		t.Fatalf("themed quiet selection moved the RNG position: got %d want %d", got, want)
+	}
+}
+
 // Score-context calls replace the pattern line only for the moments that
 // matter (opener, equalizer, late drama) and never consume match RNG.
 func TestGoalContextCommentaryKey(t *testing.T) {
+	// Scorer ledgers for the story-aware cases; club 1 is home, club 2 away.
+	goals := func(events ...[3]int64) []worldgen.MatchEvent {
+		out := make([]worldgen.MatchEvent, 0, len(events))
+		for _, e := range events {
+			out = append(out, worldgen.MatchEvent{Minute: int(e[0]), PlayerID: e[1], ClubID: e[2]})
+		}
+		return out
+	}
 	cases := []struct {
 		name       string
 		clock      int
 		homeGoals  int
 		awayGoals  int
 		home       bool
+		scorer     int64
+		scorers    []worldgen.MatchEvent
 		wantPrefix string
 	}{
-		{"opener", 10, 1, 0, true, "comment.goal.opener."},
-		{"away equalizer", 30, 1, 1, false, "comment.goal.equalizer."},
-		{"late equalizer", 88, 2, 2, true, "comment.goal.late_level."},
-		{"late winner", 87, 1, 0, true, "comment.goal.late."},
-		{"late go-ahead", 86, 2, 1, true, "comment.goal.late."},
-		{"padding the lead", 50, 2, 0, true, ""},
-		{"late but comfortable", 88, 3, 1, true, ""},
-		{"go-ahead keeps the pattern call", 40, 2, 1, true, ""},
+		{"opener", 10, 1, 0, true, 0, nil, "comment.goal.opener."},
+		{"away equalizer", 30, 1, 1, false, 0, nil, "comment.goal.equalizer."},
+		{"late equalizer", 88, 2, 2, true, 0, nil, "comment.goal.late_level."},
+		{"late winner", 87, 1, 0, true, 0, nil, "comment.goal.late."},
+		{"late go-ahead", 86, 2, 1, true, 0, nil, "comment.goal.late."},
+		{"padding the lead", 50, 2, 0, true, 0, nil, ""},
+		{"late but comfortable", 88, 3, 1, true, 0, nil, ""},
+		{"go-ahead keeps the pattern call", 40, 2, 1, true, 0, nil, ""},
+		{"hat-trick outranks the scoreline", 50, 3, 0, true, 9,
+			goals([3]int64{20, 9, 1}, [3]int64{35, 9, 1}, [3]int64{50, 9, 1}),
+			"comment.goal.hattrick."},
+		{"late hat-trick gets its own call", 88, 3, 3, true, 9,
+			goals([3]int64{20, 9, 1}, [3]int64{40, 21, 2}, [3]int64{55, 21, 2}, [3]int64{60, 9, 1}, [3]int64{70, 22, 2}, [3]int64{88, 9, 1}),
+			"comment.goal.hattrick_late."},
+		{"comeback completed from two down", 70, 2, 2, true, 9,
+			goals([3]int64{10, 21, 2}, [3]int64{25, 22, 2}, [3]int64{50, 8, 1}, [3]int64{70, 9, 1}),
+			"comment.goal.comeback_level."},
+		{"comeback turned into the lead", 75, 3, 2, true, 9,
+			goals([3]int64{10, 21, 2}, [3]int64{25, 22, 2}, [3]int64{50, 8, 1}, [3]int64{60, 9, 1}, [3]int64{75, 10, 1}),
+			"comment.goal.comeback_ahead."},
+		{"instant response restores the lead", 63, 2, 1, true, 9,
+			goals([3]int64{30, 8, 1}, [3]int64{60, 21, 2}, [3]int64{63, 9, 1}),
+			"comment.goal.response."},
+		{"slow reply keeps the pattern call", 63, 2, 1, true, 9,
+			goals([3]int64{30, 8, 1}, [3]int64{50, 21, 2}, [3]int64{63, 9, 1}),
+			""},
+		{"late comeback still narrates the fightback", 88, 2, 2, true, 9,
+			goals([3]int64{10, 21, 2}, [3]int64{25, 22, 2}, [3]int64{70, 8, 1}, [3]int64{88, 9, 1}),
+			"comment.goal.comeback_level."},
+		{"late instant response outranks the clock", 88, 3, 2, true, 9,
+			goals([3]int64{30, 8, 1}, [3]int64{50, 21, 2}, [3]int64{60, 8, 1}, [3]int64{84, 22, 2}, [3]int64{88, 9, 1}),
+			"comment.goal.response."},
+		{"go-ahead after a completed comeback is ordinary again", 70, 4, 3, true, 9,
+			goals([3]int64{5, 21, 2}, [3]int64{10, 22, 2}, [3]int64{25, 6, 1}, [3]int64{35, 7, 1},
+				[3]int64{45, 8, 1}, [3]int64{55, 21, 2}, [3]int64{70, 9, 1}),
+			""},
+		{"a second deep deficit re-arms the comeback", 80, 4, 4, true, 9,
+			goals([3]int64{5, 21, 2}, [3]int64{10, 22, 2}, [3]int64{20, 6, 1}, [3]int64{30, 7, 1},
+				[3]int64{40, 21, 2}, [3]int64{50, 22, 2}, [3]int64{65, 8, 1}, [3]int64{80, 9, 1}),
+			"comment.goal.comeback_level."},
+		{"fourth goal at a rout margin", 60, 4, 0, true, 9,
+			goals([3]int64{10, 6, 1}, [3]int64{20, 7, 1}, [3]int64{40, 8, 1}, [3]int64{60, 9, 1}),
+			"comment.goal.rout."},
+		{"four goals in a contest stay pattern", 60, 4, 2, true, 9,
+			goals([3]int64{10, 6, 1}, [3]int64{20, 7, 1}, [3]int64{30, 21, 2}, [3]int64{40, 8, 1}, [3]int64{50, 22, 2}, [3]int64{60, 9, 1}),
+			""},
 	}
 	for _, tc := range cases {
-		lm := &worldgen.LiveMatch{Clock: tc.clock, HomeGoals: tc.homeGoals, AwayGoals: tc.awayGoals}
-		got := goalContextCommentaryKey(lm, tc.home)
+		lm := &worldgen.LiveMatch{
+			HomeID: 1, AwayID: 2,
+			Clock: tc.clock, HomeGoals: tc.homeGoals, AwayGoals: tc.awayGoals,
+			Scorers: tc.scorers,
+		}
+		got := goalContextCommentaryKey(lm, tc.home, tc.scorer)
 		if tc.wantPrefix == "" {
 			if got != "" {
 				t.Fatalf("%s: key %q, want pattern call", tc.name, got)

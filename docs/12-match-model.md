@@ -449,10 +449,32 @@ Goal commentary is score-aware on the same no-RNG basis: the opener, an
 equalizer, and any goal from the late-drama minute (85', tunable) that levels
 or wins the match swap the patterned call for a context call
 (`comment.goal.opener/equalizer/late.*`), with the variant rotated on public
-match state. Goals that pad an existing lead keep their chance-pattern call
-(cross header, cut-back, through ball, long shot, set piece, counter,
-scramble — four variants each). The kickoff whistle rotates three voices by
-fixture ID.
+match state. The context ladder also reads the persisted scorer ledger: a
+scorer's third goal headlines as a hat-trick call (with a late variant)
+ahead of every scoreline context; leveling or going ahead after trailing by
+two narrates as a comeback — only until the fightback is complete (once the
+side has been level or ahead again, later goals are ordinary football, and a
+second deep deficit re-arms the story); re-taking the lead within five
+minutes of conceding reads as an instant response; and a side's fourth goal
+at a three-goal margin narrates as a rout
+(`comment.goal.hattrick/comeback_level/comeback_ahead/response/rout.*` — all
+thresholds tunable, docs/98). Precedence runs specific-to-generic:
+hat-trick, then comeback, then instant response, then the late-drama calls,
+then opener/equalizer, then rout — so a stoppage-time goal that completes a
+two-goal fightback narrates the fightback, and the late keys keep every
+ordinary closing-minutes leveler or winner. Ordinary lead-padding goals keep their
+chance-pattern call (cross header, cut-back, through ball, long shot, set
+piece, counter, scramble — four variants each). The kickoff whistle rotates
+three voices by fixture ID.
+
+Quiet beats are state-aware on the same contract: the single legacy-bound
+draw is taken exactly as before, but a close game from the tension minute
+(75', tunable) maps it into a nervy themed pool, and a three-goal margin
+from the cruise minute (60', tunable) maps it into game-management lines
+(`comment.quiet.tension/cruise.*`); when a themed pool has no unused line
+left, the beat falls back to the broad quiet pool's unused-probe. The RNG
+stream seen by cards, injuries, and every other outcome is untouched either
+way.
 
 The half-time whistle is its own queue event at exactly 45 minutes; it is no
 longer borrowed from the sampled 47' key moment. A match resumed from an older

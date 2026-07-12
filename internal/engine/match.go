@@ -29,6 +29,17 @@ const (
 	matchMoments         = 18 // key moments sampled across a match
 	lateDramaMinute      = 85 // goals from here narrate as late drama
 
+	// Commentary context thresholds (presentation only, docs/12 §7: variety
+	// must not perturb play — none of these gate an RNG draw).
+	hatTrickGoals         = 3  // a scorer's third goal headlines the call
+	comebackDeficitMin    = 2  // trailed by this many before leveling/leading
+	responseWindowMinutes = 5  // re-taking the lead this fast reads as a response
+	routGoalsMin          = 4  // a side's fourth goal...
+	routMarginMin         = 3  // ...at this margin narrates as a rout
+	tensionQuietMinute    = 75 // close games read tense from here
+	cruiseQuietMinute     = 60 // big leads read as cruise control from here
+	cruiseQuietMargin     = 3
+
 	chanceBaseRate         = 0.55  // per-moment P(a clear chance falls to a side)
 	conversionBase         = 0.20  // P(a chance converts), before skill skew
 	conversionScoreDivisor = 140.0 // attack-defense delta scale for conversion
@@ -253,7 +264,7 @@ func (e *Engine) rollMomentOutcome(lm *worldgen.LiveMatch, at sim.GameTime, r *r
 		e.resolveChance(lm, at, r, homeChance)
 	} else {
 		// Quiet passage — connective tissue so the feed never goes dead.
-		e.comment(lm, at, pickUnusedCommentaryKey(r, lm, quietCommentaryKeys), nil)
+		e.comment(lm, at, quietBeatKey(r, lm), nil)
 	}
 	if r.Float64() < cardRatePerMoment {
 		e.bookOne(lm, at, r)
@@ -275,6 +286,58 @@ var quietCommentaryKeys = []string{
 // legacyQuietPoolSize anchors the quiet draw's RNG bound (see pickWidenedKey).
 const legacyQuietPoolSize = 15
 
+// stateQuietKeys narrates the shape of the match during quiet beats: a close
+// game after the tension minute prefers nervy lines, a comfortable margin
+// after the cruise minute prefers game-management lines. Nil means the broad
+// quiet pool stands. Presentation only — the caller's RNG draw is identical
+// either way.
+func stateQuietKeys(lm *worldgen.LiveMatch) []string {
+	margin := lm.HomeGoals - lm.AwayGoals
+	if margin < 0 {
+		margin = -margin
+	}
+	switch {
+	case lm.Clock >= tensionQuietMinute && margin <= 1:
+		return tensionQuietKeys
+	case lm.Clock >= cruiseQuietMinute && margin >= cruiseQuietMargin:
+		return cruiseQuietKeys
+	default:
+		return nil
+	}
+}
+
+var tensionQuietKeys = []string{
+	"comment.quiet.tension.1", "comment.quiet.tension.2",
+	"comment.quiet.tension.3", "comment.quiet.tension.4",
+}
+
+var cruiseQuietKeys = []string{
+	"comment.quiet.cruise.1", "comment.quiet.cruise.2", "comment.quiet.cruise.3",
+}
+
+// quietBeatKey makes the quiet draw state-aware without touching the RNG
+// contract: exactly one IntN with the legacy bound, exactly as before. When
+// the match state prefers a themed pool and it still has unused lines, the
+// drawn value maps into that pool; otherwise it falls through to the broad
+// quiet pool's unused-probe.
+func quietBeatKey(r *rand.Rand, lm *worldgen.LiveMatch) string {
+	legacyCount := legacyQuietPoolSize
+	if legacyCount > len(quietCommentaryKeys) {
+		legacyCount = len(quietCommentaryKeys)
+	}
+	drawn := r.IntN(legacyCount)
+	used := usedCommentaryKeys(lm)
+	if preferred := stateQuietKeys(lm); len(preferred) > 0 {
+		if key := probeUnusedKey(drawn, lm, preferred, used); key != "" {
+			return key
+		}
+	}
+	if key := probeUnusedKey(drawn, lm, quietCommentaryKeys, used); key != "" {
+		return key
+	}
+	return quietCommentaryKeys[(drawn+lm.Clock+len(lm.Commentary)*3)%len(quietCommentaryKeys)]
+}
+
 // pickUnusedCommentaryKey preserves the original single IntN draw and bound,
 // then probes deterministically past keys already used in this match. Thus
 // presentation avoids repeats until the pool is exhausted without moving the
@@ -286,18 +349,36 @@ func pickUnusedCommentaryKey(r *rand.Rand, lm *worldgen.LiveMatch, keys []string
 	}
 	// The draw keeps its original bound; state rotation spreads it across
 	// any later pool growth without moving the RNG stream (see pickWidenedKey).
-	start := (r.IntN(legacyCount) + lm.Clock + len(lm.Commentary)*3) % len(keys)
+	drawn := r.IntN(legacyCount)
+	if key := probeUnusedKey(drawn, lm, keys, usedCommentaryKeys(lm)); key != "" {
+		return key
+	}
+	return keys[(drawn+lm.Clock+len(lm.Commentary)*3)%len(keys)]
+}
+
+func usedCommentaryKeys(lm *worldgen.LiveMatch) map[string]bool {
 	used := make(map[string]bool, len(lm.Commentary))
 	for _, line := range lm.Commentary {
 		used[line.Key] = true
 	}
+	return used
+}
+
+// probeUnusedKey maps an already-drawn value onto keys via the public-state
+// rotation, then probes forward for a line this match has not spoken yet.
+// Empty means the pool is exhausted.
+func probeUnusedKey(drawn int, lm *worldgen.LiveMatch, keys []string, used map[string]bool) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	start := (drawn + lm.Clock + len(lm.Commentary)*3) % len(keys)
 	for offset := range keys {
 		key := keys[(start+offset)%len(keys)]
 		if !used[key] {
 			return key
 		}
 	}
-	return keys[start]
+	return ""
 }
 
 // resolveChance chooses a chance type from the attacking side's tactical
@@ -364,7 +445,7 @@ func (e *Engine) resolveChance(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.
 	// so commentary variety never changes how much RNG the moment consumes
 	// (docs/12: presentation must not perturb play).
 	goalKey := pickWidenedKey(r, lm, legacyGoalPoolSize, goalCommentKeys(chanceType))
-	if contextKey := goalContextCommentaryKey(lm, home); contextKey != "" {
+	if contextKey := goalContextCommentaryKey(lm, home, scorer); contextKey != "" {
 		goalKey = contextKey
 	}
 	e.comment(lm, at, goalKey,
@@ -408,11 +489,13 @@ func kickoffCommentaryKey(fixtureID int64) string {
 }
 
 // goalContextCommentaryKey swaps a patterned goal call for one that speaks to
-// the match situation: the opener, an equalizer, or late drama. It returns ""
-// when the pattern call should stand (goals that pad an existing lead). The
-// variant rotates on public match state so no RNG is consumed — existing
-// seeds replay the same football.
-func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool) string {
+// the match situation: a hat-trick, late drama, a completed comeback, the
+// opener, an equalizer, an instant response, or a rout. It returns "" when
+// the pattern call should stand (ordinary goals that pad a lead). The variant
+// rotates on public match state so no RNG is consumed — existing seeds replay
+// the same football. It reads lm AFTER the goal is recorded (score bumped,
+// scorer appended).
+func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool, scorer int64) string {
 	atk, def := lm.HomeGoals, lm.AwayGoals
 	if !home {
 		atk, def = def, atk
@@ -421,7 +504,26 @@ func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool) string {
 		return keys[(lm.Clock+lm.HomeGoals*3+lm.AwayGoals)%len(keys)]
 	}
 	late := lm.Clock >= lateDramaMinute
+	// The scorer's personal milestone headlines the call whatever it does to
+	// the scoreline — a hat-trick is the story of the day.
+	if scorer != 0 && goalsBy(lm, scorer) == hatTrickGoals {
+		if late {
+			return pick("comment.goal.hattrick_late.1", "comment.goal.hattrick_late.2")
+		}
+		return pick("comment.goal.hattrick.1", "comment.goal.hattrick.2")
+	}
+	// The ladder runs specific-to-generic: a comeback or an instant response
+	// is a sharper story than the clock, so both outrank the late-drama
+	// calls; the late calls still take every ordinary closing-minutes
+	// leveler or winner.
+	deep, leveledSince, ledSince := comebackStanding(lm, home)
 	switch {
+	case deep && !leveledSince && atk == def:
+		return pick("comment.goal.comeback_level.1", "comment.goal.comeback_level.2")
+	case deep && !ledSince && atk == def+1:
+		return pick("comment.goal.comeback_ahead.1", "comment.goal.comeback_ahead.2")
+	case atk == def+1 && concededJustBefore(lm, home):
+		return pick("comment.goal.response.1", "comment.goal.response.2")
 	case late && atk == def:
 		return pick("comment.goal.late_level.1", "comment.goal.late_level.2")
 	case late && atk == def+1:
@@ -430,9 +532,76 @@ func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool) string {
 		return pick("comment.goal.opener.1", "comment.goal.opener.2")
 	case atk == def:
 		return pick("comment.goal.equalizer.1", "comment.goal.equalizer.2")
+	case atk >= routGoalsMin && atk-def >= routMarginMin:
+		return pick("comment.goal.rout.1", "comment.goal.rout.2", "comment.goal.rout.3")
 	default:
 		return ""
 	}
+}
+
+// goalsBy counts the scorer's goals in this match, including the goal just
+// recorded.
+func goalsBy(lm *worldgen.LiveMatch, scorer int64) int {
+	n := 0
+	for _, e := range lm.Scorers {
+		if e.PlayerID == scorer {
+			n++
+		}
+	}
+	return n
+}
+
+// comebackStanding replays the scorer ledger up to (not including) the goal
+// just recorded and reports whether the scoring side is still mid-fightback:
+// deep is a two-goal-plus deficit suffered at some point, and
+// leveledSince/ledSince say whether the side already drew level or led again
+// after the LAST time the hole was that deep. Once a fightback has been
+// completed, later goals are ordinary football again — a second deep deficit
+// re-arms the story.
+func comebackStanding(lm *worldgen.LiveMatch, home bool) (deep, leveledSince, ledSince bool) {
+	if len(lm.Scorers) == 0 {
+		return false, false, false
+	}
+	h, a := 0, 0
+	for _, e := range lm.Scorers[:len(lm.Scorers)-1] {
+		if e.ClubID == lm.HomeID {
+			h++
+		} else {
+			a++
+		}
+		deficit := a - h
+		if !home {
+			deficit = h - a
+		}
+		if deficit >= comebackDeficitMin {
+			deep, leveledSince, ledSince = true, false, false
+			continue
+		}
+		if !deep {
+			continue
+		}
+		if deficit <= 0 {
+			leveledSince = true
+		}
+		if deficit < 0 {
+			ledSince = true
+		}
+	}
+	return deep, leveledSince, ledSince
+}
+
+// concededJustBefore reports whether the goal just recorded answered an
+// opponent goal inside the response window — the "instant reply" story.
+func concededJustBefore(lm *worldgen.LiveMatch, home bool) bool {
+	if len(lm.Scorers) < 2 {
+		return false
+	}
+	prev := lm.Scorers[len(lm.Scorers)-2]
+	prevByOpponent := prev.ClubID != lm.HomeID
+	if !home {
+		prevByOpponent = prev.ClubID == lm.HomeID
+	}
+	return prevByOpponent && lm.Clock-prev.Minute <= responseWindowMinutes
 }
 
 func (e *Engine) bookOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand) {
