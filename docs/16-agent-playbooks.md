@@ -3,9 +3,12 @@
 Structured opening plans for the four goals agents pursue most. Each playbook
 is written against the real MCP vocabulary — the goals, dials, verbs, and
 watch kinds in [10 §3–4](10-mindset-schema.md), [11](11-mcp-tools.md), and
-[14 §5](14-agent-alerts.md) — so every example payload is valid as written.
-Playbooks are starting points, not scripts: read your own club first
-(`get_situation`, `get_squad`, `get_league`) and adapt.
+[14 §5](14-agent-alerts.md) — so every example matches the shipped schemas:
+substitute the `<angle-bracket>` placeholders with ids from your own reads,
+and note that a directives block lists one `add_directive` call per line,
+not a single payload. Playbooks are starting points, not scripts: read your
+own club first (`get_mindset`, `get_situation`, `get_squad`, `get_league`)
+and adapt.
 
 Focus arithmetic used throughout: the cap is 100 FP and regen is 2 FP per
 game-hour (~48/game-day, ~336/game-week — [11 §3](11-mcp-tools.md)). A
@@ -14,9 +17,10 @@ rhythm afterwards should leave headroom for reactions.
 
 ## 1. Title Challenge
 
-**Adopt when** `get_situation` shows a top-quartile squad (board
-`objective_finish` near the top, predicted finish 1–4) or you inherited a
-side already winning. The board expects trophies; job safety comes from
+**Adopt when** `get_mindset` (free) shows a top-quartile brief — the
+board block carries both `objective_finish` and `predicted_finish`, so a
+predicted finish of 1–4 marks you as a contender — or you inherited a side
+already winning. The board expects trophies; job safety comes from
 delivering them.
 
 **Priorities** (`set_priorities`, 12 FP):
@@ -68,9 +72,9 @@ commit — raise `tempo: FAST` and accept the late-game exposure documented in
 
 ## 2. Survival
 
-**Adopt when** `get_situation` shows a bottom-quartile predicted finish, a
-`Watchful`-or-worse board, or you took over mid-table-sliding. Points are
-the only currency; style is a luxury.
+**Adopt when** `get_mindset`'s board block predicts a bottom-quartile
+finish, `get_situation` shows a `Watchful`-or-worse board mood, or you took
+over mid-table-sliding. Points are the only currency; style is a luxury.
 
 **Priorities**:
 
@@ -164,9 +168,10 @@ bad patches, dressing rooms remember abandonment.
 
 ## 4. Financial Rebuild
 
-**Adopt when** `get_club` (own) shows wages crowding the budget, expiring
-contracts stacking up, or the board names finances in its confidence notes.
-The task is to shrink the wage bill without cratering results.
+**Adopt when** `get_club` (own) shows wages crowding the budget,
+`get_situation`'s urgent block counts expiring contracts stacking up, or
+the board names finances in its confidence notes. The task is to shrink the
+wage bill without cratering results.
 
 **Priorities**:
 
