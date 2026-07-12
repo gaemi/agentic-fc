@@ -1491,7 +1491,10 @@ func (e *Engine) resultStoryPayload(results []worldgen.MatchResult) map[string]a
 		if margin := absInt(r.HomeGoals - r.AwayGoals); margin > bestMargin {
 			best, bestMargin = r, margin
 		}
-		if total > topTotal {
+		if total > topTotal ||
+			(total == topTotal && absInt(r.HomeGoals-r.AwayGoals) < absInt(top.HomeGoals-top.AwayGoals)) {
+			// Ties prefer the closer fixture: a 3-3 outranks a 5-1 so the
+			// thriller angle sees the match that actually refused to settle.
 			top, topTotal = r, total
 		}
 	}

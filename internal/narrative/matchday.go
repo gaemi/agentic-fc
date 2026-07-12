@@ -149,10 +149,16 @@ func storyAngleKeys(story map[string]any) []string {
 	if draws == 0 && count > 1 {
 		angles = append(angles, "term.matchday.story.angle.decisive")
 	}
-	if len(angles) == 0 && count > 1 {
-		// An unremarkable round still deserves a second sentence: fall back
-		// to the day's win/draw balance.
-		angles = append(angles, "term.matchday.story.angle.balance")
+	if len(angles) == 0 {
+		if count > 1 {
+			// An unremarkable round still deserves a second sentence: fall
+			// back to the day's win/draw balance.
+			angles = append(angles, "term.matchday.story.angle.balance")
+		} else if count == 1 {
+			// A lone fixture (a cup final, a make-up match) cannot speak of
+			// "the rest of the day" — its second sentence is the occasion.
+			angles = append(angles, "term.matchday.story.angle.solo")
+		}
 	}
 	return angles
 }

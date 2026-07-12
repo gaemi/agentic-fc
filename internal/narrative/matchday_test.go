@@ -90,6 +90,11 @@ func TestMatchdayStoryAngleGating(t *testing.T) {
 		{"thriller.lopsided", map[string]any{"top_total": 6, "top_margin": 4}, "", "term.matchday.story.angle.thriller"},
 		{"stalemates", map[string]any{"draws": 3, "scoreless": 2}, "term.matchday.story.angle.stalemates", "term.matchday.story.angle.level"},
 		{"decisive", map[string]any{"draws": 0}, "term.matchday.story.angle.decisive", "term.matchday.story.angle.stalemates"},
+		// A lone 1-0 cup final: no statistical angle applies, so the solo
+		// occasion line keeps the lead company (never the balance line).
+		{"solo", map[string]any{"count": 1, "goals": 1, "draws": 0, "home_wins": 1, "away_wins": 0,
+			"best_margin": 1, "home_goals": 1, "away_goals": 0, "top_total": 1, "top_margin": 1},
+			"term.matchday.story.angle.solo", "term.matchday.story.angle.balance"},
 	}
 	for _, tt := range tests {
 		angles := storyAngleKeys(richStory(tt.overrides))
@@ -134,7 +139,7 @@ func TestMatchdayStoryKeysExistAndRotate(t *testing.T) {
 		"term.matchday.story.angle.awayday", "term.matchday.story.angle.fortress",
 		"term.matchday.story.angle.thriller", "term.matchday.story.angle.stalemates",
 		"term.matchday.story.angle.level", "term.matchday.story.angle.decisive",
-		"term.matchday.story.angle.balance",
+		"term.matchday.story.angle.balance", "term.matchday.story.angle.solo",
 	}
 	for _, key := range keys {
 		for _, loc := range Supported {

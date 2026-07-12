@@ -149,6 +149,17 @@ func TestResultStoryPayloadCountsCupWinnersAndTopMargin(t *testing.T) {
 	if story["top_total"] != 6 || story["top_margin"] != 4 {
 		t.Fatalf("top match facts wrong: %+v", story)
 	}
+
+	// A goal-total tie prefers the closer fixture: a 3-3 outranks a 5-1 so
+	// the thriller angle can see the match that refused to settle.
+	tied := append(results, worldgen.MatchResult{
+		Competition: worldgen.CompetitionCup, HomeID: c1, AwayID: c2,
+		HomeGoals: 3, AwayGoals: 3, Winner: c1,
+	})
+	story = e.resultStoryPayload(tied)
+	if story["top_total"] != 6 || story["top_margin"] != 0 {
+		t.Fatalf("tie-break did not prefer the closer fixture: %+v", story)
+	}
 }
 
 func TestBodyProfileFeedsAerialAndStrength(t *testing.T) {
