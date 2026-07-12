@@ -2143,3 +2143,24 @@ func TestReplayModalLineupPanelAndNarrowStack(t *testing.T) {
 		t.Fatalf("older daemons without lineups should explain the empty panel:\n%s", v)
 	}
 }
+
+func TestReplayModalShowsMatchReportProse(t *testing.T) {
+	m := liveModel(140, 36)
+	m.MatchModal = modalReplay
+	m.Fixtures[0].Status = "RESULT"
+	m.UI["ui.match.report"] = "STORY OF THE MATCH"
+	m.MatchDetail = MatchDetail{
+		Fixture: 9, Home: "Alpha", Away: "Beta", HomeGoals: 3, AwayGoals: 0,
+		KickoffText: "Aug 16", Competition: "LEAGUE",
+		Story: []string{"Alpha dismantled Beta.", "The press told the story."},
+	}
+	v := m.replayMatchModal(120, 32)
+	for _, want := range []string{"STORY OF THE MATCH", "Alpha dismantled Beta.", "The press told the story."} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("replay modal missing report %q:\n%s", want, v)
+		}
+	}
+	if compactView := m.replayMatchModal(80, 18); strings.Contains(compactView, "STORY OF THE MATCH") {
+		t.Fatalf("compact replay should keep prioritizing score and events:\n%s", compactView)
+	}
+}

@@ -1087,6 +1087,7 @@ var uiFallbacks = map[string]string{
 	"ui.match.scene.shootout":         "Penalty shootout",
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
+	"ui.match.report":                 "The story of the match",
 	"ui.match.modal.lineups":          "L lineups",
 	"ui.match.modal.lineups_back":     "L broadcast",
 	"ui.match.lineups.bench":          "Bench",
@@ -1458,6 +1459,10 @@ func (m Model) replayMatchModal(width, height int) string {
 	}
 	if md.Winner != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
+	}
+	if !compact && len(md.Story) > 0 {
+		lines = append(lines, "", m.ui("ui.match.report"))
+		lines = append(lines, md.Story...)
 	}
 	if len(md.Scorers) > 0 {
 		lines = append(lines, "", m.ui("ui.match.scorers"))

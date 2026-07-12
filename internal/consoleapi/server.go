@@ -894,8 +894,11 @@ type matchDetailDTO struct {
 	Ratings           []liveRatingDTO           `json:"ratings,omitempty"`
 	HomeLineup        []lineupEntryDTO          `json:"home_lineup,omitempty"`
 	AwayLineup        []lineupEntryDTO          `json:"away_lineup,omitempty"`
-	Commentary        []string                  `json:"commentary,omitempty"`
-	Beats             []beatDTO                 `json:"beats,omitempty"`
+	// Story is the rendered post-match report prose (result frame, one
+	// diagnostics edge, one ledger story beat) — see report.go.
+	Story      []string  `json:"story,omitempty"`
+	Commentary []string  `json:"commentary,omitempty"`
+	Beats      []beatDTO `json:"beats,omitempty"`
 }
 
 // lineupEntryDTO is one team-sheet row for the match pop-up (docs/07 §4.1):
@@ -1102,6 +1105,7 @@ func (s *Server) matchDetailDTO(loc narrative.Locale, names map[int64]string, pl
 	}
 	dto.HomeLineup = lineupEntries(r.HomeID, r.HomeXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
 	dto.AwayLineup = lineupEntries(r.AwayID, r.AwayXI, nil, r.Subs, r.Scorers, r.Cards, r.RatingsX10, playerOf)
+	dto.Story = s.matchStoryLines(loc, names, playerName, r)
 	sides := make(map[int64]string, len(r.HomeXI)+len(r.AwayXI)+2*len(r.Subs))
 	for _, id := range r.HomeXI {
 		sides[id] = matchSideHome

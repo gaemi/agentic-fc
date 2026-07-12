@@ -6,6 +6,13 @@ section below.
 
 ## Unreleased
 
+- Finished matches now carry a story-of-the-match report: the replay pop-up
+  (and `/v1/matches/{id}` as `story`) opens with a result frame, at most one
+  "how it was won" edge read from the public diagnostics (pressing, aerials,
+  set pieces, chance quality, or the winner's chance-pattern identity), and
+  at most one story beat read from the scorer ledger (hat-trick, two-goal
+  comeback, late winner) — rendered server-side in English and Korean,
+  deterministic per fixture, from already-public facts only.
 - Match commentary reads the story, not just the scoreline: a scorer's third
   goal headlines as a hat-trick call (with a late-drama variant), leveling or
   going ahead after trailing by two narrates as a comeback, re-taking the
