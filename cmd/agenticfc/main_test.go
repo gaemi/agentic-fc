@@ -403,11 +403,21 @@ func TestMCPConfigText(t *testing.T) {
     {"manager_id": 1005, "manager_name": "Eve Five", "club_id": 5, "club_name": "Echo City", "archetype": "The Professor", "reputation": 3100, "token": "mgr_ghost"}
   ]
 }`
-	world := &worldgen.World{Managers: []worldgen.Manager{
-		{ID: 1001}, {ID: 1002}, {ID: 1003},
-		{ID: 1004, Status: worldgen.ManagerRetired},
-		// 1005 is missing: an orphan credential the gateway prunes at load.
-	}}
+	world := &worldgen.World{
+		Clubs: []worldgen.Club{
+			{ID: 1, Name: "Alpha FC"},
+			{ID: 9, Name: "Gamma Rovers"},
+		},
+		Managers: []worldgen.Manager{
+			{ID: 1001, Name: "Ada One", ClubID: 1},
+			// Moved clubs since the token was issued; the manifest still
+			// says Beta United. The listing must show the snapshot's club.
+			{ID: 1002, Name: "Bo Two", ClubID: 9},
+			{ID: 1003, Name: "Cy Three"},
+			{ID: 1004, Name: "Del Four", Status: worldgen.ManagerRetired},
+			// 1005 is missing: an orphan credential the gateway prunes at load.
+		},
+	}
 	if err := os.WriteFile(manifest, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -421,6 +431,7 @@ func TestMCPConfigText(t *testing.T) {
 		"\"url\": \"http://127.0.0.1:7421\"",
 		"\"Authorization\": \"Bearer mgr_alpha\"",
 		"Ada One", "Bo Two", "Cy Three",
+		"Gamma Rovers",
 		"(unemployed)",
 		"get_guide",
 	} {
@@ -432,7 +443,7 @@ func TestMCPConfigText(t *testing.T) {
 	// the manifest so the listing never leaks every credential at once. The
 	// retired manager (1004) and the orphan credential (1005) must vanish
 	// entirely — their tokens are dead on arrival at the gateway.
-	for _, leak := range []string{"mgr_beta", "mgr_free", "mgr_dead", "mgr_ghost", "Del Four", "Eve Five"} {
+	for _, leak := range []string{"mgr_beta", "mgr_free", "mgr_dead", "mgr_ghost", "Del Four", "Eve Five", "Beta United"} {
 		if strings.Contains(out, leak) {
 			t.Errorf("default output contains %q, want it omitted\n%s", leak, out)
 		}

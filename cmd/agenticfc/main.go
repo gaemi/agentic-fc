@@ -680,13 +680,13 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen
 	if len(creds) == 0 {
 		return "", fmt.Errorf("manifest %s lists no managers", manifestPath)
 	}
-	statuses := make(map[int64]worldgen.ManagerStatus, len(world.Managers))
+	managers := make(map[int64]*worldgen.Manager, len(world.Managers))
 	for i := range world.Managers {
-		statuses[world.Managers[i].ID] = world.Managers[i].Status
+		managers[world.Managers[i].ID] = &world.Managers[i]
 	}
 	playable := make([]worldgen.ManagerCredential, 0, len(creds))
 	for _, c := range creds {
-		if st, ok := statuses[c.ManagerID]; ok && st != worldgen.ManagerRetired {
+		if m, ok := managers[c.ManagerID]; ok && m.Status != worldgen.ManagerRetired {
 			playable = append(playable, c)
 		}
 	}
@@ -703,7 +703,7 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen
 			}
 		}
 		if !found {
-			if statuses[managerID] == worldgen.ManagerRetired {
+			if m, ok := managers[managerID]; ok && m.Status == worldgen.ManagerRetired {
 				return "", fmt.Errorf("manager %d has retired — a retired manager's token no longer plays (MANAGER_RETIRED)", managerID)
 			}
 			return "", fmt.Errorf("manager %d is not in %s — run -mcp-config without -mcp-manager to list ids", managerID, manifestPath)
@@ -715,16 +715,23 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen
 	fmt.Fprintf(&b, "Managers in this world (the token binds the agent to one Manager):\n")
 	tw := tabwriter.NewWriter(&b, 2, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "\tID\tMANAGER\tCLUB\n")
+	clubNames := make(map[int64]string, len(world.Clubs))
+	for i := range world.Clubs {
+		clubNames[world.Clubs[i].ID] = world.Clubs[i].Name
+	}
 	for _, c := range playable {
 		mark := ""
 		if c.ManagerID == pick.ManagerID {
 			mark = "*"
 		}
-		club := c.ClubName
-		if c.ClubID == 0 {
-			club = "(unemployed)"
+		// Employment from the snapshot, not the credential: the manifest
+		// freezes ClubID/ClubName at token issuance, and managers move.
+		m := managers[c.ManagerID]
+		club := "(unemployed)"
+		if m.ClubID != 0 {
+			club = clubNames[m.ClubID]
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", mark, c.ManagerID, c.ManagerName, club)
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", mark, c.ManagerID, m.Name, club)
 	}
 	tw.Flush()
 	fmt.Fprintf(&b, "* = used below; choose another with -mcp-config -mcp-manager <id>\n")
