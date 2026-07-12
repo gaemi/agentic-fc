@@ -722,9 +722,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.ageNotice()
 		cmds := []tea.Cmd{m.fetchWorld(), m.fetchNews(), m.fetchTable(), m.fetchClubs(), m.fetchClub(), m.fetchFixtures(), m.fetchLive(), tick()}
-		if m.HonoursView {
+		if m.HonoursView && m.Tab == tabTable {
 			// The board is a live surface too: a rollover that lands while
-			// it is open must surface the new champion on the next poll.
+			// it is VISIBLE must surface the new champion on the next poll.
+			// Other tabs do not pay for it.
 			cmds = append(cmds, m.fetchHistory())
 		}
 		if cmd := m.refreshUIIfDue(); cmd != nil {
@@ -2415,18 +2416,17 @@ func (m Model) viewHonours(width, height int) string {
 	return b.String()
 }
 
-// honoursRows flattens the archive into display rows (one per division,
-// season header cells on each season's first row).
+// honoursRows flattens the archive into display rows, one per division.
+// Season and cup cells repeat on every row: the board scrolls by row, so a
+// viewport starting mid-season must still say which season it shows.
 func (m Model) honoursRows() [][]string {
 	rows := [][]string{}
 	for _, season := range m.History {
-		for i, div := range season.Divisions {
-			year, cup := "", ""
-			if i == 0 {
-				year = intCell(season.SeasonYear)
-				cup = season.CupWinner
-			}
-			rows = append(rows, []string{year, intCell(div.Tier), div.Champion, div.RunnerUp, cup})
+		for _, div := range season.Divisions {
+			rows = append(rows, []string{
+				intCell(season.SeasonYear), intCell(div.Tier),
+				div.Champion, div.RunnerUp, season.CupWinner,
+			})
 		}
 	}
 	return rows
