@@ -1520,7 +1520,7 @@ func liveMarkers(lm *worldgen.LiveMatch, clubName map[int64]string) []liveMarker
 			kind = "CHANCE"
 		case strings.HasPrefix(cl.Key, "comment.card"):
 			kind = "CARD"
-		case cl.Key == "comment.injury":
+		case strings.HasPrefix(cl.Key, "comment.injury"):
 			kind = "INJURY"
 		case strings.HasPrefix(cl.Key, "comment.sub"):
 			kind = "SUB"

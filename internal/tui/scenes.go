@@ -926,11 +926,11 @@ func matchSceneFromLine(line string, marker *LiveMarker) matchScene {
 		return sceneByKind("interval")
 	case containsAny(lower, "full time", "after 90", "경기 종료", "90분 종료"):
 		return sceneByKind("fulltime")
-	case containsAny(lower, "under way", "on their way", "get us started", "경기가 시작", "막을 올립", "경기를 시작"):
+	case containsAny(lower, "under way", "on their way", "get us started", "kick-off:", "경기가 시작", "막을 올립", "경기를 시작", "킥오프"):
 		return sceneByKind("kickoff")
-	case kind == "CARD" || containsAny(lower, "booked", "red card", "yellow", "경고", "퇴장", "카드"):
+	case kind == "CARD" || containsAny(lower, "booked", "red card", "straight red", "sent off", "yellow", "경고", "퇴장", "카드"):
 		return sceneByKind("card")
-	case kind == "INJURY" || containsAny(lower, "injury", "treatment", "is down", "stays down", "goes down", "쓰러", "치료", "부상"):
+	case kind == "INJURY" || containsAny(lower, "injury", "treatment", "is down", "stays down", "goes down", "stretcher", "hobbles", "physio", "쓰러", "치료", "부상", "들것", "절뚝", "의료진", "주저앉"):
 		return sceneByKind("injury")
 	case kind == "SUB" || containsAny(lower, "replaces", "fresh legs", "make a change", "comes on", "교체", "투입"):
 		return sceneByKind("sub")

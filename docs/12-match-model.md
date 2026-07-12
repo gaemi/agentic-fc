@@ -461,6 +461,15 @@ cycle through six localized commentary voices by counting already-persisted
 fatigue changes across the match; they consume no RNG, and the six-substitution
 match limit prevents a repeated fatigue line in normal play.
 
+Booking and injury calls vary on the same no-RNG contract. Each verdict keeps
+a localized pool — six yellow-card voices, four straight-red, three
+second-yellow, six injury — and the line is chosen by rotating on public match
+state (minute and commentary count), then probing past lines the match has
+already spoken. The card/injury outcome rolls are untouched: the pools only
+decide how an already-decided event is described, so existing seeds replay the
+same football with the same ledger. Legacy single keys remain renderable for
+saved matches and stay first in each pool.
+
 Half-time and full-time commentary is likewise deterministic but contextual.
 Half-time distinguishes goalless, scoring-level, ordinary lead, and three-goal
 command for either side. Full-time distinguishes goalless, scoring-level,
@@ -487,7 +496,7 @@ two-goal fightback narrates the fightback, and the late keys keep every
 ordinary closing-minutes leveler or winner. Ordinary lead-padding goals keep their
 chance-pattern call (cross header, cut-back, through ball, long shot, set
 piece, counter, scramble — four variants each). The kickoff whistle rotates
-three voices by fixture ID.
+six voices by fixture ID.
 
 Quiet beats are state-aware on the same contract: the single legacy-bound
 draw is taken exactly as before, but a close game from the tension minute

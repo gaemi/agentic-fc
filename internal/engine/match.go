@@ -488,12 +488,50 @@ func pickWidenedKey(r *rand.Rand, lm *worldgen.LiveMatch, legacyCount int, keys 
 // kickoffCommentaryKey rotates the opening whistle line per fixture without
 // touching the match RNG stream.
 func kickoffCommentaryKey(fixtureID int64) string {
-	keys := []string{"comment.kickoff", "comment.kickoff.2", "comment.kickoff.3"}
+	keys := []string{
+		"comment.kickoff", "comment.kickoff.2", "comment.kickoff.3",
+		"comment.kickoff.4", "comment.kickoff.5", "comment.kickoff.6",
+	}
 	idx := int(fixtureID % int64(len(keys)))
 	if idx < 0 {
 		idx += len(keys)
 	}
 	return keys[idx]
+}
+
+// Booking and injury calls carry no RNG draw of their own (the outcome rolls
+// already happened), so their pools rotate purely on public match state.
+var (
+	yellowCardCommentKeys = []string{
+		"comment.card.yellow", "comment.card.yellow.2", "comment.card.yellow.3",
+		"comment.card.yellow.4", "comment.card.yellow.5", "comment.card.yellow.6",
+	}
+	redCardCommentKeys = []string{
+		"comment.card.red", "comment.card.red.2", "comment.card.red.3",
+		"comment.card.red.4",
+	}
+	secondYellowCommentKeys = []string{
+		"comment.card.secondyellow", "comment.card.secondyellow.2",
+		"comment.card.secondyellow.3",
+	}
+	injuryCommentKeys = []string{
+		"comment.injury", "comment.injury.2", "comment.injury.3",
+		"comment.injury.4", "comment.injury.5", "comment.injury.6",
+	}
+)
+
+// rotatedUnusedKey varies commentary that never had an RNG draw: the anchor
+// comes from public match state alone and the probe walks past lines this
+// match has already spoken. Exhausted pools fall back to the same rotation,
+// so the choice stays deterministic for replays either way.
+func rotatedUnusedKey(lm *worldgen.LiveMatch, keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	if key := probeUnusedKey(0, lm, keys, usedCommentaryKeys(lm)); key != "" {
+		return key
+	}
+	return keys[(lm.Clock+len(lm.Commentary)*3)%len(keys)]
 }
 
 // goalContextCommentaryKey swaps a patterned goal call for one that speaks to
@@ -631,19 +669,21 @@ func (e *Engine) bookOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand) 
 
 // cardVerdict settles what a booking becomes: a straight red, or — when the
 // player already sits on a yellow — a second yellow that upgrades to a RED in
-// the ledger (so OnPitch ejects on it) under its own commentary key. A red,
-// straight or second-yellow, sends the player off with no replacement; the
-// side plays short (football rules — the ejected slot cannot be filled).
+// the ledger (so OnPitch ejects on it) under its own commentary key family. A
+// red, straight or second-yellow, sends the player off with no replacement;
+// the side plays short (football rules — the ejected slot cannot be filled).
+// The key rotates inside its family on public state only; the RNG stream is
+// untouched (docs/12: presentation must not perturb play).
 func cardVerdict(lm *worldgen.LiveMatch, pid int64, straightRed bool) (detail, key string) {
 	if straightRed {
-		return "RED", "comment.card.red"
+		return "RED", rotatedUnusedKey(lm, redCardCommentKeys)
 	}
 	for _, c := range lm.Cards {
 		if c.PlayerID == pid && c.Detail == "YELLOW" {
-			return "RED", "comment.card.secondyellow"
+			return "RED", rotatedUnusedKey(lm, secondYellowCommentKeys)
 		}
 	}
-	return "YELLOW", "comment.card.yellow"
+	return "YELLOW", rotatedUnusedKey(lm, yellowCardCommentKeys)
 }
 
 // injureOne turns a moment's injury roll into a real injury: the
@@ -681,7 +721,7 @@ func (e *Engine) injureOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand
 		SeasonYear: worldgen.DateOf(at).Season, Band: band,
 	})
 
-	e.comment(lm, at, "comment.injury", map[string]any{"player": p.Name, "club": e.clubName(club)})
+	e.comment(lm, at, rotatedUnusedKey(lm, injuryCommentKeys), map[string]any{"player": p.Name, "club": e.clubName(club)})
 	params := map[string]any{"player": p.Name, "club": e.clubName(club)}
 	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "injury", Key: injuryNewsKey(band), Params: params, ClubIDs: []int64{club},
