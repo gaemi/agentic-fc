@@ -1432,6 +1432,10 @@ func (e *Engine) applyPostMatch(lm *worldgen.LiveMatch, ratings map[int64]int) {
 // match starts a fresh ban — the order guarantees a ban issued today never
 // counts today's match as served. Deterministic and RNG-free: bans follow
 // from the recorded card ledger alone.
+//
+// The ban belongs to the PLAYER, not the issuing club — as in real football,
+// discipline carries across a transfer, so it is served as his CURRENT
+// club's fixtures complete; a free agent's ban freezes until he signs.
 func (e *Engine) applySuspensions(lm *worldgen.LiveMatch, at sim.GameTime) {
 	played := map[int64]bool{}
 	for _, pid := range append(lm.Participants(lm.HomeID), lm.Participants(lm.AwayID)...) {

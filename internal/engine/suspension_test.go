@@ -78,5 +78,23 @@ func TestRedCardSuspensionLifecycle(t *testing.T) {
 	if p.SuspendedMatches != 1 {
 		t.Fatalf("an unrelated fixture must not serve the ban, got %d left", p.SuspendedMatches)
 	}
-	p.SuspendedMatches = 0
+
+	// Discipline follows the player (real-football rule): after a transfer
+	// the ban is served by the NEW club's completed fixtures, and the old
+	// club's fixtures no longer touch it.
+	p.ClubID = otherHome
+	former := &worldgen.LiveMatch{
+		FixtureID: 900004, Competition: worldgen.CompetitionLeague,
+		HomeID: home, AwayID: away, Kickoff: at, Clock: 90,
+		HomeXI: xi2, AwayXI: awayXI,
+	}
+	e.applySuspensions(former, at)
+	if p.SuspendedMatches != 1 {
+		t.Fatalf("the former club's fixture must not serve a transferred ban, got %d left", p.SuspendedMatches)
+	}
+	e.applySuspensions(elsewhere, at)
+	if p.SuspendedMatches != 0 {
+		t.Fatalf("the new club's fixture should serve the transferred ban, got %d left", p.SuspendedMatches)
+	}
+	p.ClubID = home
 }
