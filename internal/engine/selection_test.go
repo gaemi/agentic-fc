@@ -93,6 +93,33 @@ func TestSelectSquadHonoursFormationShape(t *testing.T) {
 	if got[attr.DF] != 2 || got[attr.GK] != 1 {
 		t.Fatalf("depleted back line: shape %v, want both fit defenders kept", got)
 	}
+
+	// Deep crisis: with only eight fit outfielders in the whole squad, the
+	// spare keepers backfill the XI before anyone sits on the bench.
+	fitOutfield := 0
+	for i := range e.world.Players {
+		p := &e.world.Players[i]
+		if p.ClubID != club || p.Youth || p.Group == attr.GK || p.InjuredUntil > at {
+			continue
+		}
+		if fitOutfield < 8 {
+			fitOutfield++
+			continue
+		}
+		p.InjuredUntil = at + 10
+	}
+	xi, bench := e.selectSquad(club, at, mindset.TacticalPlan{Formation: "4-4-2"})
+	if len(xi) != 11 {
+		t.Fatalf("outfield crisis: XI = %d players, want spare keepers to backfill", len(xi))
+	}
+	if got := countGroups(xi); got[attr.GK] != 3 {
+		t.Fatalf("outfield crisis: shape %v, want three keepers on the pitch", got)
+	}
+	for _, id := range bench {
+		if e.players[id].Group == attr.GK {
+			t.Fatalf("outfield crisis: no keeper should be left for the bench, got %v", bench)
+		}
+	}
 }
 
 // Injury replacements are role-aware: an injured keeper takes the bench

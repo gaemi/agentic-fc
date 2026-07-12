@@ -1605,14 +1605,25 @@ func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.Tactica
 	for ; n < len(leftovers) && len(xi) < 11; n++ {
 		xi = append(xi, leftovers[n].ID)
 	}
+	// Deep crisis: fewer than ten fit outfielders in the whole squad. Spare
+	// keepers backfill the XI before anyone sits down — a body on the pitch
+	// beats a spare glove on the bench.
+	gkUsed := 1
+	if len(gks) == 0 {
+		gkUsed = 0
+	}
+	for len(xi) < 11 && gkUsed < len(gks) {
+		xi = append(xi, gks[gkUsed].ID)
+		gkUsed++
+	}
 
 	// Bench: the best remaining keeper first, then the best of everyone
 	// left over, re-ranked.
 	var spare []*worldgen.Player
 	spare = append(spare, leftovers[n:]...)
-	if len(gks) > 1 {
-		bench = append(bench, gks[1].ID)
-		spare = append(spare, gks[2:]...)
+	if len(gks) > gkUsed {
+		bench = append(bench, gks[gkUsed].ID)
+		spare = append(spare, gks[gkUsed+1:]...)
 	}
 	byStrength(spare)
 	for i := 0; i < len(spare) && len(bench) < benchSize; i++ {
