@@ -727,7 +727,10 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", mark, c.ManagerID, c.ManagerName, club)
 	}
 	tw.Flush()
-	fmt.Fprintf(&b, "* = used below; choose another with -mcp-config -mcp-manager <id>\n\n")
+	fmt.Fprintf(&b, "* = used below; choose another with -mcp-config -mcp-manager <id>\n")
+	// The snapshot can trail a running daemon by up to the snapshot interval,
+	// so a just-retired or just-spawned manager may be listed wrong briefly.
+	fmt.Fprintf(&b, "(list follows the last saved snapshot — if a pasted token is rejected, re-run this command)\n\n")
 	fmt.Fprintf(&b, "MCP endpoint (the daemon must be running): %s\n\n", mcpURL)
 	fmt.Fprintf(&b, "Claude Code:\n")
 	fmt.Fprintf(&b, "  claude mcp add --transport http agentic-fc %s --header \"Authorization: Bearer %s\"\n\n", mcpURL, pick.Token)
