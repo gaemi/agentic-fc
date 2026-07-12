@@ -123,6 +123,20 @@ func TestMatchStoryLinesFramesEdgesAndBeats(t *testing.T) {
 		}
 	}
 
+	// A double-swing draw credits the side that erased the FINAL deficit:
+	// 0-2, 2-2, 4-2, 4-4 — both clubs trailed by two, but Beta salvaged it.
+	swing := storyFixture(117, 4, 4)
+	swing.Scorers = []worldgen.MatchEvent{
+		{Minute: 5, PlayerID: 21, ClubID: 2}, {Minute: 10, PlayerID: 22, ClubID: 2},
+		{Minute: 20, PlayerID: 5, ClubID: 1}, {Minute: 30, PlayerID: 6, ClubID: 1},
+		{Minute: 40, PlayerID: 7, ClubID: 1}, {Minute: 50, PlayerID: 8, ClubID: 1},
+		{Minute: 70, PlayerID: 23, ClubID: 2}, {Minute: 85, PlayerID: 24, ClubID: 2},
+	}
+	lines = renderStory(t, s, swing)
+	if len(lines) != 2 || !strings.Contains(lines[1], "Beta") {
+		t.Fatalf("double-swing draw should credit the final salvager: %v", lines)
+	}
+
 	// A losing side's diagnostic dominance is not "how it was won": the
 	// away side wins 0-1 while the home side leads the press 5-1 — no press
 	// line may credit Alpha, and with no away-side edge the report is

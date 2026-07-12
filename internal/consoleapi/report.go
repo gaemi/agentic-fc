@@ -179,14 +179,25 @@ func matchStoryBeat(r *worldgen.MatchResult, winnerID int64, winner, loser strin
 		if deficit := worstDeficit(r, winnerID); deficit >= 2 {
 			return "report.beat.comeback_win", map[string]any{"club": winner, "deficit": deficit}
 		}
-	} else {
-		for _, clubID := range []int64{r.HomeID, r.AwayID} {
+	} else if len(r.Scorers) > 0 {
+		// The salvage credit goes to the side that erased the FINAL deficit
+		// — the club of the match's last goal (a draw's last goal is by
+		// definition the equalizer). Only if that side never trailed deep
+		// does the other qualifier (a rare double-swing draw) take it.
+		last := r.Scorers[len(r.Scorers)-1].ClubID
+		other := r.HomeID
+		if last == r.HomeID {
+			other = r.AwayID
+		}
+		nameOf := func(clubID int64) string {
+			if clubID == r.HomeID {
+				return winner // a draw's winner/loser default to home/away
+			}
+			return loser
+		}
+		for _, clubID := range []int64{last, other} {
 			if deficit := worstDeficit(r, clubID); deficit >= 2 {
-				name := loser
-				if clubID == r.HomeID {
-					name = winner // a draw's winner/loser default to home/away
-				}
-				return "report.beat.comeback_draw", map[string]any{"club": name, "deficit": deficit}
+				return "report.beat.comeback_draw", map[string]any{"club": nameOf(clubID), "deficit": deficit}
 			}
 		}
 	}

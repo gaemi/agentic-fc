@@ -1690,7 +1690,9 @@ func lineupRow(e LineupEntry) string {
 // replay-log lines. The action-scene frame self-gates on spare height and is
 // deliberately not part of the budget.
 func replayEssentialRows(md MatchDetail) int {
-	rows := 3 + 2 + 3 // current scene block + replay header + minimum log
+	// current scene block + replay header + minimum log + one row reserved
+	// for the static goal banner a goal-selected beat raises later.
+	rows := 3 + 2 + 3 + 1
 	if len(md.Scorers) > 0 {
 		rows += 2 + len(md.Scorers)
 	}
