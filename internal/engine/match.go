@@ -522,16 +522,22 @@ var (
 
 // rotatedUnusedKey varies commentary that never had an RNG draw: the anchor
 // comes from public match state alone and the probe walks past lines this
-// match has already spoken. Exhausted pools fall back to the same rotation,
+// match has already spoken. The fixture ID salts the anchor so simultaneous
+// matches — which share the sampled moment grid — do not all pick the same
+// voice at the same minute. Exhausted pools fall back to the same rotation,
 // so the choice stays deterministic for replays either way.
 func rotatedUnusedKey(lm *worldgen.LiveMatch, keys []string) string {
 	if len(keys) == 0 {
 		return ""
 	}
-	if key := probeUnusedKey(0, lm, keys, usedCommentaryKeys(lm)); key != "" {
+	salt := int(lm.FixtureID % int64(len(keys)))
+	if salt < 0 {
+		salt += len(keys)
+	}
+	if key := probeUnusedKey(salt, lm, keys, usedCommentaryKeys(lm)); key != "" {
 		return key
 	}
-	return keys[(lm.Clock+len(lm.Commentary)*3)%len(keys)]
+	return keys[(salt+lm.Clock+len(lm.Commentary)*3)%len(keys)]
 }
 
 // goalContextCommentaryKey swaps a patterned goal call for one that speaks to
