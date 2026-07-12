@@ -45,7 +45,8 @@ establishing the core loop.
   panel.
 - More flexible layouts for very short and extra-tall terminals.
 - Additional club, manager, and player history screens.
-- More browsing tools for archived seasons.
+- Deeper archived-season browsing beyond the honours board (full past
+  tables, per-club season histories).
 
 ## Operations
 

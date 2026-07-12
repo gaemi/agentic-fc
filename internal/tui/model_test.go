@@ -2231,3 +2231,51 @@ func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
 		t.Fatalf("empty form data should suppress the column:\n%s", blank)
 	}
 }
+
+func TestHonoursBoardToggleOnTableTab(t *testing.T) {
+	m := testModel()
+	m.Tab = tabTable
+	m.UI["ui.table.honours"] = "HONOURS"
+	m.UI["ui.honours.season"] = "Season"
+	m.UI["ui.honours.champion"] = "Champions"
+	m.UI["ui.honours.runner_up"] = "Runners-up"
+	m.UI["ui.honours.cup"] = "Cup"
+	m.UI["ui.honours.empty"] = "No completed seasons yet."
+	m.History = []HonoursSeason{{
+		SeasonYear: 1,
+		Divisions: []HonoursRow{
+			{Tier: 1, Champion: "Alpha", RunnerUp: "Beta"},
+			{Tier: 2, Champion: "Gamma", RunnerUp: "Delta"},
+		},
+		CupWinner: "Alpha",
+	}}
+
+	m = update(m, key("h"))
+	if !m.HonoursView {
+		t.Fatal("h on the table tab should open the honours board")
+	}
+	v := m.viewTable(100, 24)
+	for _, want := range []string{"HONOURS", "Alpha", "Beta", "Gamma", "Delta"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("honours board missing %q:\n%s", want, v)
+		}
+	}
+
+	m = update(m, key("h"))
+	if m.HonoursView {
+		t.Fatal("h should toggle back to the standings")
+	}
+
+	m.History = nil
+	m.HonoursView = true
+	if v := m.viewTable(100, 24); !strings.Contains(v, "No completed seasons yet.") {
+		t.Fatalf("empty history should explain itself:\n%s", v)
+	}
+
+	m.Tab = tabMedia
+	m.HonoursView = false
+	m = update(m, key("h"))
+	if m.HonoursView {
+		t.Fatal("h outside the table tab must not toggle the board")
+	}
+}

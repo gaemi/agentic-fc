@@ -169,7 +169,11 @@ viewer can move through prior seasons instead of only the latest page. The
 first rows lead with the next kick-off group followed by the latest completed
 matchday, then the remaining forward schedule and older results. This
 keeps both anticipation and replay access in the initial viewport even when a
-full season of future fixtures is already generated. Finished current-season
+full season of future fixtures is already generated. The standings tab also
+carries the **honours board** behind the `h` toggle: every completed season's
+champion and runner-up per division plus the cup winner (public final-table
+facts served by `GET /v1/history`, newest season first), so a long-running
+world's history stays one keystroke away. Finished current-season
 matches open a replay pop-up with score, shots, scorers, cards,
 substitutions, club-labelled top ratings, the `l` team-sheet panel, a short
 **story-of-the-match report** (a result frame — shootout winners included —

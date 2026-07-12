@@ -397,6 +397,27 @@ type LiveMatchView struct {
 	Momentum    []int            `json:"momentum"`
 }
 
+// HonoursRow / HonoursSeason mirror GET /v1/history (the honours board).
+type HonoursRow struct {
+	Tier     int    `json:"tier"`
+	Champion string `json:"champion"`
+	RunnerUp string `json:"runner_up"`
+}
+
+type HonoursSeason struct {
+	SeasonYear int          `json:"season_year"`
+	Divisions  []HonoursRow `json:"divisions"`
+	CupWinner  string       `json:"cup_winner"`
+}
+
+func (c *Client) History() ([]HonoursSeason, error) {
+	var out struct {
+		Seasons []HonoursSeason `json:"seasons"`
+	}
+	err := c.get("/v1/history", &out)
+	return out.Seasons, err
+}
+
 func (c *Client) LiveMatches() ([]LiveMatchView, error) {
 	var out struct {
 		Matches []LiveMatchView `json:"matches"`

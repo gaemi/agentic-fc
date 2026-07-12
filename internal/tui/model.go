@@ -113,21 +113,25 @@ type Model struct {
 	matchAnimationPaused   bool
 	Matches                []LiveMatchView
 	MatchIdx               int
-	Notice                 string
-	NoticeTTL              int
-	LatestNewsID           int64
-	LiveCount              int
-	AdminMode              bool
-	Settings               AdminSettings
-	SettingsIdx            int
-	SettingsDirty          bool
-	SettingsRev            int
-	Tab                    int
-	Tier                   int
-	Width                  int
-	Height                 int
-	Err                    string
-	ConnErr                string // last /v1/ui fetch failure; "" once the catalog arrives
+	// HonoursView flips the standings tab to the archived honours board
+	// ("h"); History caches the fetched seasons.
+	HonoursView   bool
+	History       []HonoursSeason
+	Notice        string
+	NoticeTTL     int
+	LatestNewsID  int64
+	LiveCount     int
+	AdminMode     bool
+	Settings      AdminSettings
+	SettingsIdx   int
+	SettingsDirty bool
+	SettingsRev   int
+	Tab           int
+	Tier          int
+	Width         int
+	Height        int
+	Err           string
+	ConnErr       string // last /v1/ui fetch failure; "" once the catalog arrives
 
 	uiRefreshCountdown int
 }
@@ -147,6 +151,7 @@ type (
 	FixturesMsg []Fixture
 	MatchMsg    MatchDetail
 	MatchesMsg  []LiveMatchView
+	HistoryMsg  []HonoursSeason
 	SettingsMsg struct {
 		Settings AdminSettings
 		Updated  bool
@@ -263,6 +268,20 @@ func (m Model) fetchClub() tea.Cmd {
 			return ErrMsg{err}
 		}
 		return ClubMsg(club)
+	}
+}
+
+func (m Model) fetchHistory() tea.Cmd {
+	if m.Client == nil {
+		return nil
+	}
+	c := m.Client
+	return func() tea.Msg {
+		seasons, err := c.History()
+		if err != nil {
+			return ErrMsg{err}
+		}
+		return HistoryMsg(seasons)
 	}
 }
 
@@ -449,6 +468,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.MatchModal == modalLive || m.MatchModal == modalReplay {
 				m.LineupView = !m.LineupView
 			}
+		case "h":
+			if m.Tab == tabTable && m.MatchModal == modalNone {
+				m.HonoursView = !m.HonoursView
+				if m.HonoursView {
+					return m, m.fetchHistory()
+				}
+			}
 		case "tab":
 			if m.Tab == tabClubs && len(m.Club.Squad) > 0 {
 				m.PlayerIdx = (m.PlayerIdx + 1) % len(m.Club.Squad)
@@ -578,6 +604,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.Clubs) > 0 && m.Club.ID != m.Clubs[m.ClubIdx].ID {
 			return m, m.fetchClub()
 		}
+	case HistoryMsg:
+		m.History = msg
 	case ClubMsg:
 		m.Club = ClubDetail(msg)
 		if m.PlayerIdx >= len(m.Club.Squad) {
@@ -1053,7 +1081,7 @@ var uiFallbacks = map[string]string{
 	"ui.disconnected.hint_server":     "If it listens at another address, relaunch with -server <url>.",
 	"ui.disconnected.retrying":        "Retrying:",
 	"ui.help.media":                   "↑/↓ story · PgUp/PgDn article",
-	"ui.help.table":                   "←/→ division",
+	"ui.help.table":                   "←/→ division · h honours",
 	"ui.help.clubs":                   "↑/↓ club · Tab player",
 	"ui.help.fixtures":                "↑/↓ fixture · Enter/Space open · ←/→ division",
 	"ui.help.settings":                "↑/↓ setting · +/- or [/] adjust",
@@ -1089,6 +1117,12 @@ var uiFallbacks = map[string]string{
 	"ui.match.modal.animation_pause":  "Space pause",
 	"ui.match.modal.animation_resume": "Space animate",
 	"ui.col.gd":                       "GD",
+	"ui.table.honours":                "Honours board",
+	"ui.honours.season":               "Season",
+	"ui.honours.champion":             "Champions",
+	"ui.honours.runner_up":            "Runners-up",
+	"ui.honours.cup":                  "Cup",
+	"ui.honours.empty":                "No completed seasons yet — the honours board fills at the first rollover.",
 	"ui.col.form":                     "Form",
 	"ui.form.win":                     "W",
 	"ui.form.draw":                    "D",
@@ -2217,6 +2251,9 @@ func articleRule(width int) string {
 }
 
 func (m Model) viewTable(width, height int) string {
+	if m.HonoursView {
+		return m.viewHonours(width, height)
+	}
 	var b strings.Builder
 	b.WriteString(styleDim.Render(truncate(m.Table.Label, width)) + "\n")
 	cols := []tableColumn{
@@ -2309,6 +2346,45 @@ func signedCell(v int) string {
 		return "+" + strconv.Itoa(v)
 	}
 	return strconv.Itoa(v)
+}
+
+// viewHonours is the standings tab's archived view ("h"): every completed
+// season's champion and runner-up per division, plus the cup winner on the
+// season's first row. Public final-table facts only, newest season first.
+func (m Model) viewHonours(width, height int) string {
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(truncate(m.ui("ui.table.honours"), width)) + "\n")
+	if len(m.History) == 0 {
+		b.WriteString(styleDim.Render(truncate(m.ui("ui.honours.empty"), width)))
+		return b.String()
+	}
+	cols := []tableColumn{
+		{Header: m.ui("ui.honours.season"), Width: colWidth(m.ui("ui.honours.season"), 4), Align: alignRight},
+		{Header: m.ui("ui.col.div"), Width: colWidth(m.ui("ui.col.div"), 3), Align: alignRight},
+		{Header: m.ui("ui.honours.champion"), MinWidth: 14, Flex: true, Align: alignLeft},
+		{Header: m.ui("ui.honours.runner_up"), MinWidth: 14, Flex: true, Align: alignLeft},
+		{Header: m.ui("ui.honours.cup"), MinWidth: 10, Flex: true, Align: alignLeft},
+	}
+	maxRows := height - 5
+	if maxRows < 0 {
+		maxRows = 0
+	}
+	rows := make([][]string, 0, maxRows)
+	for _, season := range m.History {
+		for i, div := range season.Divisions {
+			if len(rows) >= maxRows {
+				break
+			}
+			year, cup := "", ""
+			if i == 0 {
+				year = intCell(season.SeasonYear)
+				cup = season.CupWinner
+			}
+			rows = append(rows, []string{year, intCell(div.Tier), div.Champion, div.RunnerUp, cup})
+		}
+	}
+	b.WriteString(renderTextTable(width, cols, rows))
+	return b.String()
 }
 
 func (m Model) viewClubs(width, height int) string {

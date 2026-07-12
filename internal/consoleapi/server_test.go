@@ -1469,3 +1469,42 @@ func TestTeamOfTheWeekArticleRenders(t *testing.T) {
 		}
 	}
 }
+
+// TestHistoryServesHonours locks the honours board wire: archived seasons
+// newest first, champion/runner-up per division, cup winner named.
+func TestHistoryServesHonours(t *testing.T) {
+	s, host := newTestServer(t)
+	w := host.world
+	a, b, c := w.Clubs[0], w.Clubs[1], w.Clubs[2]
+	w.History = append(w.History,
+		worldgen.SeasonSummary{
+			SeasonYear:  1,
+			FinalTables: [][]worldgen.Standing{{{ClubID: a.ID}, {ClubID: b.ID}}},
+			CupWinnerID: c.ID,
+		},
+		worldgen.SeasonSummary{
+			SeasonYear:  2,
+			FinalTables: [][]worldgen.Standing{{{ClubID: b.ID}, {ClubID: a.ID}}},
+		},
+	)
+	_, body := get(t, s, "/v1/history")
+	var out struct {
+		Seasons []honoursSeasonDTO `json:"seasons"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Seasons) != 2 || out.Seasons[0].SeasonYear != 2 {
+		t.Fatalf("seasons should list newest first: %+v", out.Seasons)
+	}
+	latest, first := out.Seasons[0], out.Seasons[1]
+	if latest.Divisions[0].Champion != b.Name || latest.Divisions[0].RunnerUp != a.Name {
+		t.Fatalf("latest champions wrong: %+v", latest)
+	}
+	if latest.CupWinner != "" {
+		t.Fatalf("season without a cup winner should omit it: %+v", latest)
+	}
+	if first.CupWinner != c.Name || first.Divisions[0].Champion != a.Name {
+		t.Fatalf("first season honours wrong: %+v", first)
+	}
+}
