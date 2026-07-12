@@ -1456,30 +1456,70 @@ func (e *Engine) tableSnapshotPayloads(results []worldgen.MatchResult) []map[str
 	return out
 }
 
+// resultStoryPayload gathers the public round facts the media desk composes
+// its "main thread" prose from (narrative.MatchdayStoryLine): the widest win,
+// the highest-scoring match, and win/draw/goal tallies. Ints and names only —
+// params reach the world hash via News, so no floats (docs/12).
 func (e *Engine) resultStoryPayload(results []worldgen.MatchResult) map[string]any {
 	if len(results) == 0 {
 		return nil
 	}
-	var best worldgen.MatchResult
-	bestMargin := 0
-	draws := 0
+	var best, top worldgen.MatchResult
+	bestMargin, topTotal := 0, -1
+	draws, scoreless, goals, homeWins, awayWins := 0, 0, 0, 0, 0
 	for _, r := range results {
-		if r.HomeGoals == r.AwayGoals {
+		total := r.HomeGoals + r.AwayGoals
+		goals += total
+		// A cup tie level after ninety carries its shootout winner: it is a
+		// decided match, not a draw, or the story could claim "no winner"
+		// while the results block names who advanced.
+		switch {
+		case r.Winner != 0 && r.Winner == r.HomeID:
+			homeWins++
+		case r.Winner != 0 && r.Winner == r.AwayID:
+			awayWins++
+		case r.HomeGoals == r.AwayGoals:
 			draws++
+			if total == 0 {
+				scoreless++
+			}
+		case r.HomeGoals > r.AwayGoals:
+			homeWins++
+		default:
+			awayWins++
 		}
 		if margin := absInt(r.HomeGoals - r.AwayGoals); margin > bestMargin {
 			best, bestMargin = r, margin
+		}
+		if total > topTotal ||
+			(total == topTotal && absInt(r.HomeGoals-r.AwayGoals) < absInt(top.HomeGoals-top.AwayGoals)) {
+			// Ties prefer the closer fixture: a 3-3 outranks a 5-1 so the
+			// thriller angle sees the match that actually refused to settle.
+			top, topTotal = r, total
 		}
 	}
 	out := map[string]any{
 		"best_margin": bestMargin,
 		"draws":       draws,
+		"count":       len(results),
+		"goals":       goals,
+		"home_wins":   homeWins,
+		"away_wins":   awayWins,
+		"scoreless":   scoreless,
 	}
 	if bestMargin > 0 {
 		out["best_home"] = e.clubName(best.HomeID)
 		out["best_away"] = e.clubName(best.AwayID)
 		out["home_goals"] = best.HomeGoals
 		out["away_goals"] = best.AwayGoals
+	}
+	if topTotal > 0 {
+		out["top_total"] = topTotal
+		out["top_margin"] = absInt(top.HomeGoals - top.AwayGoals)
+		out["top_home"] = e.clubName(top.HomeID)
+		out["top_away"] = e.clubName(top.AwayID)
+		out["top_home_goals"] = top.HomeGoals
+		out["top_away_goals"] = top.AwayGoals
 	}
 	return out
 }

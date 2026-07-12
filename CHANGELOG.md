@@ -13,6 +13,16 @@ section below.
   identical football. Injury calls pick their voice from the severity band
   (mild knocks never arrive on a stretcher), and the "quick succession"
   second yellow only speaks when the bookings really were close together.
+- Matchday round-up articles now open with composed journalism instead of a
+  stat fragment: a lead sentence graded by the round's widest win (rout,
+  clear win, single-goal day, or full deadlock, framed for the winning side)
+  plus one secondary angle — goal fest, defensive gridlock, away day, home
+  sweep, the neutrals' thriller, stalemates, or the win/draw balance —
+  rotated deterministically by news ID in both languages. The engine records
+  the public round facts (goals, home/away wins, scoreless draws, the
+  highest-scoring match) with each round-up, one shared composer renders the
+  Console and MCP surfaces identically, and articles persisted by older
+  versions keep their original text.
 
 ## 0.2.0 - 2026-07-12
 
