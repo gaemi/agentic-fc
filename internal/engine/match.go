@@ -149,6 +149,7 @@ func (e *Engine) startMatch(ev *sim.Event) error {
 		HomeID: f.HomeID, AwayID: f.AwayID, Kickoff: ev.Due,
 		HomeXI: homeXI, AwayXI: awayXI,
 		HomeBench: homeBench, AwayBench: awayBench,
+		ServingBan: e.servingBanAtKickoff(f.HomeID, f.AwayID),
 	}
 	if e.world.LiveMatches == nil {
 		e.world.LiveMatches = make(map[int64]*worldgen.LiveMatch)
@@ -1437,16 +1438,11 @@ func (e *Engine) applyPostMatch(lm *worldgen.LiveMatch, ratings map[int64]int) {
 // discipline carries across a transfer, so it is served as his CURRENT
 // club's fixtures complete; a free agent's ban freezes until he signs.
 func (e *Engine) applySuspensions(lm *worldgen.LiveMatch, at sim.GameTime) {
-	played := map[int64]bool{}
-	for _, pid := range append(lm.Participants(lm.HomeID), lm.Participants(lm.AwayID)...) {
-		played[pid] = true
-	}
-	for i := range e.world.Players {
-		p := &e.world.Players[i]
-		if p.SuspendedMatches <= 0 || played[p.ID] {
-			continue
-		}
-		if p.ClubID == lm.HomeID || p.ClubID == lm.AwayID {
+	// Serve against the kickoff snapshot, not full-time club membership: a
+	// transfer completing inside the live window must neither serve a ban
+	// for a club the player only just joined nor skip one he sat out.
+	for _, pid := range lm.ServingBan {
+		if p := e.players[pid]; p != nil && p.SuspendedMatches > 0 {
 			p.SuspendedMatches--
 		}
 	}
@@ -1459,15 +1455,34 @@ func (e *Engine) applySuspensions(lm *worldgen.LiveMatch, at sim.GameTime) {
 			continue
 		}
 		p.SuspendedMatches += suspensionMatchesRed
+		// News reaches both the club he was sent off for and — after a
+		// mid-window transfer — the club whose selection the ban now hits.
+		refs := []int64{c.ClubID}
+		if p.ClubID != 0 && p.ClubID != c.ClubID {
+			refs = append(refs, p.ClubID)
+		}
 		params := map[string]any{
 			"player": p.Name, "club": e.clubName(c.ClubID), "count": suspensionMatchesRed,
 		}
 		e.addNews(worldgen.NewsItem{
 			GameTime: at, Category: "match", Key: "news.player.suspended",
-			Params: params, ClubIDs: []int64{c.ClubID},
+			Params: params, ClubIDs: refs,
 		})
 		e.emit(at, "news.player.suspended", cloneParams(params))
 	}
+}
+
+// servingBanAtKickoff snapshots both clubs' suspended players as the squads
+// are picked — the fixture these bans are being served against.
+func (e *Engine) servingBanAtKickoff(homeID, awayID int64) []int64 {
+	var out []int64
+	for i := range e.world.Players {
+		p := &e.world.Players[i]
+		if p.SuspendedMatches > 0 && (p.ClubID == homeID || p.ClubID == awayID) {
+			out = append(out, p.ID)
+		}
+	}
+	return out
 }
 
 // ratings scores every participant at full time. The formula lives in

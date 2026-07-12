@@ -137,9 +137,16 @@ type LiveMatch struct {
 	// set and the participants are DERIVED (OnPitch/Participants) rather than
 	// stored, so sparse mid-match state degrades to "XI unchanged" and resumes
 	// exactly as it ran before.
-	HomeBench   []int64      `json:"home_bench,omitempty"`
-	AwayBench   []int64      `json:"away_bench,omitempty"`
-	Subs        []SubEvent   `json:"subs,omitempty"`
+	HomeBench []int64    `json:"home_bench,omitempty"`
+	AwayBench []int64    `json:"away_bench,omitempty"`
+	Subs      []SubEvent `json:"subs,omitempty"`
+	// ServingBan is the kickoff snapshot of suspended players sitting this
+	// fixture out (either club). Serving against this list — not against
+	// club membership at full time — keeps a ban's countdown correct even
+	// when a transfer completes inside the live match window. Empty on
+	// snapshots from daemons that predate suspensions: that one resumed
+	// match then serves nothing, which only delays a ban by one fixture.
+	ServingBan  []int64      `json:"serving_ban,omitempty"`
 	HomeGoals   int          `json:"home_goals"`
 	AwayGoals   int          `json:"away_goals"`
 	Clock       int          `json:"clock"`        // game-minutes elapsed

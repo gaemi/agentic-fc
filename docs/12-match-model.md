@@ -438,10 +438,11 @@ Discipline carries consequences beyond the ninety minutes: a red card —
 straight or second yellow — sends the player off with no replacement (the
 side plays short), and at full time it starts a disciplinary ban
 (one club fixture per red, tunable). A banned player is skipped by squad
-selection exactly like an injured one, the ban counts down as his current
-club's fixtures complete (it ticks whether or not the player is also
-injured; like real football discipline it follows the player across a
-transfer, and it freezes while he is a free agent), and
+selection exactly like an injured one, the ban counts down against the
+fixtures he was snapshotted as sitting out at kickoff (it ticks whether or
+not the player is also injured; like real football discipline it follows
+the player across a transfer — served with the new club's matches — and it
+freezes while he is a free agent), and
 the ban is announced as public news — every surface may show the remaining
 matches. Bans follow deterministically from the recorded card ledger; no RNG
 is involved.

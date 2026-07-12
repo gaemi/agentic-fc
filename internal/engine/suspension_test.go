@@ -27,7 +27,11 @@ func TestRedCardSuspensionLifecycle(t *testing.T) {
 		FixtureID: 900001, Competition: worldgen.CompetitionLeague,
 		HomeID: home, AwayID: away, Kickoff: at, Clock: 90,
 		HomeXI: homeXI, HomeBench: homeBench, AwayXI: awayXI,
-		Cards: []worldgen.MatchEvent{{Minute: 60, PlayerID: sentOff, ClubID: home, Detail: "RED"}},
+		ServingBan: e.servingBanAtKickoff(home, away),
+		Cards:      []worldgen.MatchEvent{{Minute: 60, PlayerID: sentOff, ClubID: home, Detail: "RED"}},
+	}
+	if len(issuing.ServingBan) != 0 {
+		t.Fatalf("nobody should be serving before the first red: %v", issuing.ServingBan)
 	}
 	e.applySuspensions(issuing, at)
 	p := e.players[sentOff]
@@ -51,7 +55,11 @@ func TestRedCardSuspensionLifecycle(t *testing.T) {
 		FixtureID: 900002, Competition: worldgen.CompetitionLeague,
 		HomeID: home, AwayID: away, Kickoff: at, Clock: 90,
 		HomeXI: xi2, AwayXI: awayXI,
-		Cards: []worldgen.MatchEvent{{Minute: 30, PlayerID: booked, ClubID: away, Detail: "YELLOW"}},
+		ServingBan: e.servingBanAtKickoff(home, away),
+		Cards:      []worldgen.MatchEvent{{Minute: 30, PlayerID: booked, ClubID: away, Detail: "YELLOW"}},
+	}
+	if len(yellowOnly.ServingBan) != 1 || yellowOnly.ServingBan[0] != sentOff {
+		t.Fatalf("the banned player should be snapshotted as serving: %v", yellowOnly.ServingBan)
 	}
 	e.applySuspensions(yellowOnly, at)
 	if e.players[booked].SuspendedMatches != 0 {
@@ -73,6 +81,7 @@ func TestRedCardSuspensionLifecycle(t *testing.T) {
 		FixtureID: 900003, Competition: worldgen.CompetitionLeague,
 		HomeID: otherHome, AwayID: otherAway, Kickoff: at, Clock: 90,
 		HomeXI: oXI, AwayXI: oAwayXI,
+		ServingBan: e.servingBanAtKickoff(otherHome, otherAway),
 	}
 	e.applySuspensions(elsewhere, at)
 	if p.SuspendedMatches != 1 {
@@ -87,12 +96,19 @@ func TestRedCardSuspensionLifecycle(t *testing.T) {
 		FixtureID: 900004, Competition: worldgen.CompetitionLeague,
 		HomeID: home, AwayID: away, Kickoff: at, Clock: 90,
 		HomeXI: xi2, AwayXI: awayXI,
+		ServingBan: e.servingBanAtKickoff(home, away),
 	}
 	e.applySuspensions(former, at)
 	if p.SuspendedMatches != 1 {
 		t.Fatalf("the former club's fixture must not serve a transferred ban, got %d left", p.SuspendedMatches)
 	}
-	e.applySuspensions(elsewhere, at)
+	newClub := &worldgen.LiveMatch{
+		FixtureID: 900005, Competition: worldgen.CompetitionLeague,
+		HomeID: otherHome, AwayID: otherAway, Kickoff: at, Clock: 90,
+		HomeXI: oXI, AwayXI: oAwayXI,
+		ServingBan: e.servingBanAtKickoff(otherHome, otherAway),
+	}
+	e.applySuspensions(newClub, at)
 	if p.SuspendedMatches != 0 {
 		t.Fatalf("the new club's fixture should serve the transferred ban, got %d left", p.SuspendedMatches)
 	}
