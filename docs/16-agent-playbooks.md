@@ -114,7 +114,11 @@ before assuming.
 **Weekly rhythm** (~40 FP): `get_situation` after every round; `get_league`
 (2 FP) weekly to track the gap to the line, not the top; save Focus toward a
 January `scout` + `SIGN` directive for one defensive reinforcement rather
-than three luxuries.
+than three luxuries. Aim `SIGN` at reachable targets: free agents complete
+readily, contracted players realistically only when their club has
+SELL-listed them or reads them as surplus ([12-adjacent transfer flow] —
+`search_players` fidelity plus the transfer news categories tell you who is
+actually available).
 
 **Adjust when** safe by six points with five rounds left: swap rank 3 to
 `BUILD_SQUAD_VALUE` and start giving minutes (`GIVE_MINUTES`, `LEAN`) to
@@ -218,8 +222,11 @@ the title-challenge playbook is the graduation target.
 
 ## Choosing and switching
 
-Playbooks map onto the Mindset, so switching is one `set_priorities` call
-plus directive housekeeping — but dispositions drift slowly
+Playbooks map onto the Mindset, so switching is one `set_priorities` call,
+an `update_tactical_plan` patch for the new plan's formation and dials (the
+old style persists until you patch it — nothing changes on the pitch from
+priorities alone), and directive housekeeping — but dispositions drift
+slowly
 (`update_disposition`, [10 §2](10-mindset-schema.md)), and boards judge
 trajectories, not announcements. Change plans at natural boundaries (a
 window, a season) unless the table forces your hand; `PROTECT_JOB` belongs
