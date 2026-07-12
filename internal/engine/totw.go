@@ -60,17 +60,11 @@ func (e *Engine) addMatchdayTeamNews(at, kickoff sim.GameTime, competition strin
 
 	params := e.matchdayBaseParams(kickoff, competition, division, len(results))
 	rows := make([]map[string]any, 0, len(team))
-	clubs := make([]int64, 0, len(team))
-	seenClub := map[int64]bool{}
 	for _, c := range team {
 		rows = append(rows, map[string]any{
 			"name": c.player.Name, "club": e.clubName(c.clubID),
 			"position": c.player.Position, "rating_x10": c.ratingX10, "goals": c.goals,
 		})
-		if !seenClub[c.clubID] {
-			seenClub[c.clubID] = true
-			clubs = append(clubs, c.clubID)
-		}
 	}
 	star := team[0]
 	for _, c := range team[1:] {
@@ -84,9 +78,12 @@ func (e *Engine) addMatchdayTeamNews(at, kickoff sim.GameTime, competition strin
 	params["star_rating_x10"] = star.ratingX10
 	params["star_goals"] = star.goals
 
+	// The article belongs to the whole round: ClubIDs is the ownership
+	// filter for get_news/get_situation and news alerts, so every club that
+	// played the window sees it — not only the clubs that placed a player.
 	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "match", Key: FeedMatchdayTeam,
-		Params: params, ClubIDs: clubs,
+		Params: params, ClubIDs: fixtureClubRefs(fixtures),
 	})
 }
 

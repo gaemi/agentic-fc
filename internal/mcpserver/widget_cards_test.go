@@ -384,3 +384,32 @@ func TestEnumVocabulariesComplete(t *testing.T) {
 		}
 	}
 }
+
+// The MCP news surface renders the Team of the Week article with its own
+// prose class — sheet rows, display ratings, and the star line — in both
+// locales, with no raw keys leaking.
+func TestTeamOfTheWeekNewsArticleRendersOnMCP(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	params := map[string]any{
+		"count": 8, "month": 8, "day": 16, "kickoff_time": "15:00",
+		"team": []map[string]any{
+			{"name": "Kim Min-jae", "club": "Alpha", "position": "GK", "rating_x10": 81, "goals": 0},
+			{"name": "Lee Kang-in", "club": "Beta", "position": "ST", "rating_x10": 92, "goals": 3},
+		},
+		"star": "Lee Kang-in", "star_club": "Beta", "star_rating_x10": 92, "star_goals": 3,
+	}
+	for _, loc := range []narrative.Locale{narrative.LocaleEN, narrative.LocaleKO} {
+		article := g.newsArticle("match", "feed.matchday.totw", params, loc, 7)
+		blob := fmt.Sprint(article["title"]) + "\n" + fmt.Sprint(article["deck"]) + "\n" + fmt.Sprint(article["body"])
+		for _, want := range []string{"Lee Kang-in", "Kim Min-jae", "8.1", "9.2", "Beta"} {
+			if !strings.Contains(blob, want) {
+				t.Fatalf("%s TOTW article missing %q: %+v", loc, want, article)
+			}
+		}
+		for _, leak := range []string{"news.article.deck.match\n", "term.totw", "{team}", "{star"} {
+			if strings.Contains(blob, leak) {
+				t.Fatalf("%s TOTW article leaked %q:\n%s", loc, leak, blob)
+			}
+		}
+	}
+}

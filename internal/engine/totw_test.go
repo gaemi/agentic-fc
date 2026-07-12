@@ -54,8 +54,8 @@ func TestMatchdayFilesTeamOfTheWeek(t *testing.T) {
 		if rating, ok := newsParamInt64(n.Params["star_rating_x10"]); !ok || rating <= 0 {
 			t.Fatalf("totw star lacks a rating: %+v", n.Params)
 		}
-		if len(n.ClubIDs) == 0 {
-			t.Fatal("totw news should reference the featured clubs")
+		if len(n.ClubIDs) < 12 {
+			t.Fatalf("totw news should reference every club in the round, got %d refs", len(n.ClubIDs))
 		}
 	}
 	if len(perDivision) == 0 {
