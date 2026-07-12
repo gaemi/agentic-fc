@@ -427,7 +427,7 @@ func TestMCPConfigText(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"claude mcp add --transport http agentic-fc http://127.0.0.1:7421 --header \"Authorization: Bearer mgr_alpha\"",
+		"claude mcp add --transport http agentic-fc 'http://127.0.0.1:7421' --header 'Authorization: Bearer mgr_alpha'",
 		"\"url\": \"http://127.0.0.1:7421\"",
 		"\"Authorization\": \"Bearer mgr_alpha\"",
 		"Ada One", "Bo Two", "Cy Three",
@@ -506,14 +506,14 @@ func TestShellQuote(t *testing.T) {
 func TestMCPEndpointURL(t *testing.T) {
 	for in, want := range map[string]string{
 		"127.0.0.1:7421": "http://127.0.0.1:7421",
-		":7421":          "http://127.0.0.1:7421",
+		"[::]:7421":      "http://[::1]:7421",
 	} {
 		got, err := mcpEndpointURL(in)
 		if err != nil || got != want {
 			t.Errorf("mcpEndpointURL(%q) = %q, %v; want %q", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"not-an-address", "127.0.0.1:0", ":0", "127.0.0.1:http", "127.0.0.1:70000", ""} {
+	for _, bad := range []string{"not-an-address", "127.0.0.1:0", ":0", ":7421", "127.0.0.1:http", "127.0.0.1:70000", ""} {
 		if got, err := mcpEndpointURL(bad); err == nil {
 			t.Errorf("mcpEndpointURL(%q) = %q, want error", bad, got)
 		}

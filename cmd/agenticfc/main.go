@@ -293,9 +293,9 @@ func main() {
 	connectHint += " -data " + shellQuote(hintData)
 	if mcpURL != "http://"+dialableAddr(*mcpAddr) {
 		// A ":0" flag landed on an OS-picked port -mcp-config cannot re-derive.
-		connectHint += " -mcp-addr " + dialableAddr(mcpLn.Addr().String())
+		connectHint += " -mcp-addr " + shellQuote(dialableAddr(mcpLn.Addr().String()))
 	} else if explicitFlags["mcp-addr"] {
-		connectHint += " -mcp-addr " + *mcpAddr
+		connectHint += " -mcp-addr " + shellQuote(*mcpAddr)
 	}
 	fmt.Printf("connect an AI agent: %s\n", connectHint)
 
@@ -679,9 +679,14 @@ func shellQuote(s string) string {
 // host:port, and port 0, where the OS would pick a port this offline helper
 // cannot know (a running daemon's banner prints the actually bound address).
 func mcpEndpointURL(addr string) (string, error) {
-	_, port, err := net.SplitHostPort(addr)
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "", fmt.Errorf("-mcp-addr %q is not host:port: %v", addr, err)
+	}
+	if host == "" {
+		// A bare :port binds whichever family the OS picks; offline there is
+		// no listener to ask, so refusing beats printing an unreachable URL.
+		return "", fmt.Errorf("-mcp-addr %q needs an explicit host (IPv4 vs IPv6 is the daemon's choice for a bare :port) — a running daemon's startup banner shows the bound address", addr)
 	}
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
 		return "", fmt.Errorf("-mcp-addr %q needs a fixed numeric port (1-65535) for a dialable URL — a running daemon's startup banner shows its actual address", addr)
@@ -767,7 +772,9 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen
 	fmt.Fprintf(&b, "(list follows the last saved snapshot — if a pasted token is rejected, re-run this command)\n\n")
 	fmt.Fprintf(&b, "MCP endpoint (the daemon must be running): %s\n\n", mcpURL)
 	fmt.Fprintf(&b, "Claude Code:\n")
-	fmt.Fprintf(&b, "  claude mcp add --transport http agentic-fc %s --header \"Authorization: Bearer %s\"\n\n", mcpURL, pick.Token)
+	// Quote both shell words: an IPv6 URL's brackets glob in zsh.
+	fmt.Fprintf(&b, "  claude mcp add --transport http agentic-fc %s --header %s\n\n",
+		shellQuote(mcpURL), shellQuote("Authorization: Bearer "+pick.Token))
 	type serverEntry struct {
 		Type    string            `json:"type"`
 		URL     string            `json:"url"`
