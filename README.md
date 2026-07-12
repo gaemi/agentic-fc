@@ -57,7 +57,27 @@ The public API and save format may still change before a stable release.
   catalogs and message keys; the current supported catalogs are English and
   Korean.
 
-## Quick Start
+## Install
+
+On macOS and Linux, install the released binaries from the project Homebrew
+tap:
+
+```sh
+brew install gaemi/tap/agentic-fc
+```
+
+This installs all three commands. A three-line session:
+
+```sh
+agenticfc -start        # create a world (first run) and start its clock, with MCP on :7421
+agenticfc-console       # watch it from another terminal
+agenticfc -mcp-config   # print ready-to-paste MCP setup for your AI agent
+```
+
+Prebuilt archives for macOS, Linux, and Windows are also attached to each
+[GitHub release](https://github.com/gaemi/agentic-fc/releases).
+
+## Quick Start (from source)
 
 Requirements:
 
@@ -90,7 +110,8 @@ Open the spectator console in another terminal:
 The daemon also starts an MCP Streamable HTTP endpoint at
 `http://127.0.0.1:7421`. Manager tokens are written to
 `./data/manifest.json`; use one as the bearer token when connecting an MCP
-client.
+client. `agenticfc -mcp-config -data ./data` prints a ready-to-paste
+`claude mcp add` command and a generic JSON config with a token filled in.
 
 First-run notes:
 

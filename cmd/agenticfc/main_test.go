@@ -386,3 +386,72 @@ func TestResolveRunProfileRejectsInvalidInput(t *testing.T) {
 		t.Fatal("invalid speed override accepted")
 	}
 }
+
+func TestMCPConfigText(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "manifest.json")
+	body := `{
+  "world_name": "Test League",
+  "seed": 7,
+  "start_state": "running",
+  "managers": [
+    {"manager_id": 1001, "manager_name": "Ada One", "club_id": 1, "club_name": "Alpha FC", "archetype": "The Idealist", "reputation": 5000, "token": "mgr_alpha"},
+    {"manager_id": 1002, "manager_name": "Bo Two", "club_id": 2, "club_name": "Beta United", "archetype": "The Professor", "reputation": 5100, "token": "mgr_beta"},
+    {"manager_id": 1003, "manager_name": "Cy Three", "club_id": 0, "archetype": "The Firefighter", "reputation": 4200, "token": "mgr_free"}
+  ]
+}`
+	if err := os.WriteFile(manifest, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"claude mcp add --transport http agentic-fc http://127.0.0.1:7421 --header \"Authorization: Bearer mgr_alpha\"",
+		"\"url\": \"http://127.0.0.1:7421\"",
+		"\"Authorization\": \"Bearer mgr_alpha\"",
+		"Ada One", "Bo Two", "Cy Three",
+		"(unemployed)",
+		"get_guide",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("default output missing %q\n%s", want, out)
+		}
+	}
+	// Only the picked manager's token may appear: the other tokens stay in
+	// the manifest so the listing never leaks every credential at once.
+	for _, leak := range []string{"mgr_beta", "mgr_free"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("default output leaks unpicked token %q\n%s", leak, out)
+		}
+	}
+
+	out, err = mcpConfigText(manifest, "http://127.0.0.1:7421", 1002)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Bearer mgr_beta") {
+		t.Errorf("-mcp-manager 1002 output missing beta token\n%s", out)
+	}
+	if strings.Contains(out, "mgr_alpha") {
+		t.Errorf("-mcp-manager 1002 output leaks alpha token\n%s", out)
+	}
+
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 9999); err == nil {
+		t.Fatal("unknown manager id accepted")
+	}
+	if _, err := mcpConfigText(filepath.Join(dir, "missing.json"), "http://127.0.0.1:7421", 0); err == nil ||
+		!strings.Contains(err.Error(), "no world manifest") {
+		t.Fatalf("missing manifest error = %v, want friendly hint", err)
+	}
+
+	empty := filepath.Join(dir, "empty.json")
+	if err := os.WriteFile(empty, []byte(`{"world_name":"x","seed":1,"start_state":"ready","managers":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mcpConfigText(empty, "http://127.0.0.1:7421", 0); err == nil {
+		t.Fatal("empty manager list accepted")
+	}
+}

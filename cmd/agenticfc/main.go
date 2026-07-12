@@ -31,6 +31,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -65,6 +66,8 @@ func main() {
 	snapshotEvery := flag.Duration("snapshot-interval", time.Minute, "periodic snapshot cadence (real time)")
 	widgetMode := flag.String("widget-mode", "apps", "MCP UI mode: apps (official MCP Apps resource) | meta/content (compatibility fallbacks)")
 	widgetLocale := flag.String("widget-locale", "", "MCP UI locale override: supported language tag (en/ko, e.g. ko-KR); empty = client/system language")
+	mcpConfig := flag.Bool("mcp-config", false, "print ready-to-paste MCP client setup for this world and exit")
+	mcpManager := flag.Int64("mcp-manager", 0, "manager id whose token -mcp-config embeds (default: first manifest entry)")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *versionFlag {
@@ -73,6 +76,19 @@ func main() {
 	}
 	explicitFlags := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { explicitFlags[f.Name] = true })
+
+	if *mcpConfig {
+		dataDir, err := resolveDataDir(*dataFlag)
+		if err != nil {
+			log.Fatal(err)
+		}
+		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), "http://"+dialableAddr(*mcpAddr), *mcpManager)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(out)
+		return
+	}
 
 	runProfile, err := resolveRunProfile(*profile, sim.Speed(*speed), explicitFlags["speed"],
 		*idleAccel, explicitFlags["idle-accel"], *offseasonAccel, explicitFlags["offseason-accel"])
@@ -248,6 +264,19 @@ func main() {
 	consoleURL := "http://" + dialableAddr(consoleLn.Addr().String())
 	mcpURL := "http://" + dialableAddr(mcpLn.Addr().String())
 	fmt.Printf("Console API: %s  ·  MCP: %s\n", consoleURL, mcpURL)
+	// Repeat only the flags that change what -mcp-config would print, so the
+	// suggested command works verbatim for this exact launch.
+	connectHint := "agenticfc -mcp-config"
+	if explicitFlags["data"] {
+		connectHint += " -data " + *dataFlag
+	}
+	if mcpURL != "http://"+dialableAddr(*mcpAddr) {
+		// A ":0" flag landed on an OS-picked port -mcp-config cannot re-derive.
+		connectHint += " -mcp-addr " + dialableAddr(mcpLn.Addr().String())
+	} else if explicitFlags["mcp-addr"] {
+		connectHint += " -mcp-addr " + *mcpAddr
+	}
+	fmt.Printf("connect an AI agent: %s\n", connectHint)
 
 	if willRun {
 		if err := host.Start(); err != nil {
@@ -615,6 +644,76 @@ func readManifestCredentials(path string) ([]worldgen.ManagerCredential, error) 
 		return nil, err
 	}
 	return m.Managers, nil
+}
+
+// mcpConfigText renders ready-to-paste MCP client setup for one Manager of
+// the world whose manifest lives at manifestPath. The endpoint comes from
+// the -mcp-addr flag value, so the daemon does not need to be running.
+// managerID 0 picks the first manifest entry.
+func mcpConfigText(manifestPath, mcpURL string, managerID int64) (string, error) {
+	creds, err := readManifestCredentials(manifestPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("no world manifest at %s — launch the daemon once to create a world (agenticfc -start)", manifestPath)
+		}
+		return "", err
+	}
+	if len(creds) == 0 {
+		return "", fmt.Errorf("manifest %s lists no managers", manifestPath)
+	}
+	pick := creds[0]
+	if managerID != 0 {
+		found := false
+		for _, c := range creds {
+			if c.ManagerID == managerID {
+				pick, found = c, true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("manager %d is not in %s — run -mcp-config without -mcp-manager to list ids", managerID, manifestPath)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "manager tokens: %s\n\n", manifestPath)
+	fmt.Fprintf(&b, "Managers in this world (the token binds the agent to one Manager):\n")
+	tw := tabwriter.NewWriter(&b, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "\tID\tMANAGER\tCLUB\n")
+	for _, c := range creds {
+		mark := ""
+		if c.ManagerID == pick.ManagerID {
+			mark = "*"
+		}
+		club := c.ClubName
+		if c.ClubID == 0 {
+			club = "(unemployed)"
+		}
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", mark, c.ManagerID, c.ManagerName, club)
+	}
+	tw.Flush()
+	fmt.Fprintf(&b, "* = used below; choose another with -mcp-config -mcp-manager <id>\n\n")
+	fmt.Fprintf(&b, "MCP endpoint (the daemon must be running): %s\n\n", mcpURL)
+	fmt.Fprintf(&b, "Claude Code:\n")
+	fmt.Fprintf(&b, "  claude mcp add --transport http agentic-fc %s --header \"Authorization: Bearer %s\"\n\n", mcpURL, pick.Token)
+	type serverEntry struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+	}
+	cfgJSON, err := json.MarshalIndent(map[string]map[string]serverEntry{
+		"mcpServers": {"agentic-fc": {
+			Type:    "http",
+			URL:     mcpURL,
+			Headers: map[string]string{"Authorization": "Bearer " + pick.Token},
+		}},
+	}, "  ", "  ")
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&b, "Any MCP client (JSON config):\n  %s\n\n", cfgJSON)
+	fmt.Fprintf(&b, "First tool calls for a fresh agent: get_guide, get_settings, get_time, get_situation, get_mindset\n")
+	return b.String(), nil
 }
 
 // worldHost owns the running world: the runner goroutine is the single

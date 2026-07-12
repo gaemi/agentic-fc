@@ -2,6 +2,20 @@
 
 This guide covers local development and ordinary operation of Agentic FC.
 
+## Install with Homebrew
+
+Released builds install from the project tap on macOS and Linux:
+
+```sh
+brew install gaemi/tap/agentic-fc
+```
+
+The formula builds the released source with Go and installs all three
+commands (`agenticfc`, `agenticfc-console`, `agenticfc-calibrate`) onto the
+`PATH`. Installed binaries keep their world in the per-user OS data directory
+(see the `-data` flag notes below), so `agenticfc -start` from any working
+directory always resumes the same world.
+
 ## Build
 
 ```sh
@@ -58,6 +72,8 @@ Useful daemon flags:
 | `-snapshot-interval` | `1m` | Periodic snapshot cadence. |
 | `-widget-mode` | `apps` | MCP UI mode: `apps`, `meta`, or `content`. |
 | `-widget-locale` | `""` | MCP UI locale override: supported language tag resolving to `en` or `ko` (for example `ko-KR`); empty follows client/system language. |
+| `-mcp-config` | `false` | Print ready-to-paste MCP client setup for the world in the data directory, then exit (see [Connect an MCP Client](#connect-an-mcp-client)). |
+| `-mcp-manager` | `0` | Manager id whose token `-mcp-config` embeds; `0` picks the first manifest entry. |
 
 Invalid `-widget-locale` values fail startup so deployments do not silently pin
 the UI to an unintended language.
@@ -191,8 +207,21 @@ The Console API endpoints backing this screen are:
 
 ## Connect an MCP Client
 
-The MCP gateway listens on the daemon's `-mcp-addr`. Use a Manager token from
-`manifest.json` as the bearer token.
+The quickest path is the daemon's built-in helper:
+
+```sh
+agenticfc -mcp-config
+```
+
+It lists the world's Managers and prints a complete `claude mcp add` command
+plus a generic JSON config with a Manager token already filled in — paste
+either into your MCP client and start playing. Pick a different Manager with
+`-mcp-manager <id>`, and repeat `-data`/`-mcp-addr` if the daemon was launched
+with custom values (the daemon's startup banner prints the exact helper
+command for its own launch flags).
+
+Under the hood: the MCP gateway listens on the daemon's `-mcp-addr`. Use a
+Manager token from `manifest.json` as the bearer token.
 
 Example endpoint:
 
@@ -258,13 +287,13 @@ The root `VERSION` file is the source of truth for public release identity. It
 contains a bare SemVer version with no `v` prefix, prerelease suffix, or build
 metadata. Agentic FC starts at `0.1.0`.
 
-Release tags add the `v` prefix. For `VERSION=0.1.0`, the release tag is
-`v0.1.0`.
+Release tags add the `v` prefix. For `VERSION=0.2.0`, the release tag is
+`v0.2.0`.
 
 Release builds inject traceable build metadata into each binary's `--version`
 output. The binary version therefore has the form
-`v0.1.0+<commit_count>.g<short_sha>`, while the root `VERSION` file remains
-`0.1.0`.
+`v0.2.0+<commit_count>.g<short_sha>`, while the root `VERSION` file remains
+`0.2.0`.
 
 Before `1.0.0`, Agentic FC is still allowed to change public APIs, save data,
 game balance, MCP tool shapes, and TUI presentation. Use the following rules:
@@ -279,7 +308,7 @@ game balance, MCP tool shapes, and TUI presentation. Use the following rules:
 Every release-preparation change must update these files together:
 
 - `VERSION`
-- `CHANGELOG.md`, with a section exactly like `## 0.1.0 - YYYY-MM-DD`
+- `CHANGELOG.md`, with a section exactly like `## 0.2.0 - YYYY-MM-DD`
 - `docs/13-operations.md`, whose release tag and build metadata examples are
   pinned to the current `VERSION`
 
@@ -304,7 +333,7 @@ Typical flow:
    `main`.
 4. The workflow runs `make verify` on that checkout.
 5. The workflow reads the release version from the root `VERSION` file. For
-   `VERSION=0.1.0`, the draft release tag is `v0.1.0`.
+   `VERSION=0.2.0`, the draft release tag is `v0.2.0`.
 6. It cross-compiles all shipped commands and creates a GitHub Release marked as
    a draft.
 
@@ -317,7 +346,7 @@ The draft release packages include:
 
 Each binary supports `--version`. Release builds inject the release tag and
 commit SHA into that output, using the build metadata form
-`v0.1.0+<commit_count>.g<short_sha>`, so bug reports can be traced back to the
+`v0.2.0+<commit_count>.g<short_sha>`, so bug reports can be traced back to the
 published artifact.
 
 Published target triples:
@@ -332,10 +361,10 @@ The release also includes `checksums.txt` with SHA-256 hashes for every archive
 and release notes linking back to the draft build run.
 
 The workflow updates only an automation-owned draft release for the current
-`VERSION`: if `v0.1.0` is still a draft with the workflow marker in its notes, a
+`VERSION`: if `v0.2.0` is still a draft with the workflow marker in its notes, a
 later manual run can update that draft's target, notes, and packaged assets when
 `replace_existing_draft=true`. It does not delete a published release. If
-`v0.1.0` has already been published, the workflow fails instead of replacing it.
+`v0.2.0` has already been published, the workflow fails instead of replacing it.
 Bump `VERSION` before creating the next draft release.
 
 Draft replacement is monotonic. A manual run for an older commit cannot rewind
