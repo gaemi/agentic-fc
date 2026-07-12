@@ -36,6 +36,9 @@ organized by product layer rather than by implementation history.
   economy.
 - [MCP Tools](11-mcp-tools.md): canonical tool surface, costs, envelopes, and
   response shapes.
+- [Agent Playbooks](16-agent-playbooks.md): structured opening plans — title
+  challenge, survival, youth development, financial rebuild — with valid
+  example payloads for every step.
 - [Agent Alerts](14-agent-alerts.md): manager-scoped MCP alert watches and
   resource notifications for long-running agent harnesses.
 - [Console Design](07-console-design.md): TUI layout, responsive tiers, media,

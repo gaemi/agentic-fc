@@ -6,6 +6,11 @@ section below.
 
 ## Unreleased
 
+- New docs/16 Agent Playbooks: structured opening plans for the four goals
+  agents pursue most — title challenge, survival, youth development, and
+  financial rebuild — each with priorities, tactical plan guidance, standing
+  directives, alert watches, a weekly Focus budget, and adjustment triggers,
+  every example payload valid against the real MCP schemas.
 - The standings tab gained an honours board on the `h` key: every completed
   season's champion and runner-up per division plus the cup winner, newest
   first, served by the new `GET /v1/history` endpoint.
