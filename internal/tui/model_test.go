@@ -2220,4 +2220,14 @@ func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
 	if legacy := m.viewTable(90, 24); !strings.Contains(legacy, "+8") {
 		t.Fatalf("gd must derive locally for legacy payloads:\n%s", legacy)
 	}
+
+	// No form data anywhere (older daemon or unplayed season): the column
+	// must not reserve a blank strip even on wide layouts.
+	m.Width, m.Height = 122, 24
+	for i := range m.Table.Rows {
+		m.Table.Rows[i].Form = nil
+	}
+	if blank := m.viewTable(120, 24); strings.Contains(blank, "Form") {
+		t.Fatalf("empty form data should suppress the column:\n%s", blank)
+	}
 }

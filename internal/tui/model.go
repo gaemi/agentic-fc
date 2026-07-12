@@ -2233,9 +2233,19 @@ func (m Model) viewTable(width, height int) string {
 	}
 	// Form joins on medium-and-wider layouts (docs/07 §4.3) — gated on the
 	// terminal's layout tier, not the pane width, so tier S keeps its club
-	// column. The column is sized from the rendered glyph (Hangul 승/무/패
-	// are two cells wide, W/D/L one) so neither locale truncates the strip.
-	showForm := layout.Compute(m.Width, m.Height) >= layout.TierM
+	// column; and only once any row actually carries form data, so an older
+	// daemon's payload or an unplayed season doesn't reserve a blank column.
+	// The column is sized from the rendered glyph (Hangul 승/무/패 are two
+	// cells wide, W/D/L one) so neither locale truncates the strip.
+	showForm := false
+	if layout.Compute(m.Width, m.Height) >= layout.TierM {
+		for _, r := range m.Table.Rows {
+			if len(r.Form) > 0 {
+				showForm = true
+				break
+			}
+		}
+	}
 	if showForm {
 		glyph := lipgloss.Width(m.ui("ui.form.win"))
 		cols = append(cols, tableColumn{
