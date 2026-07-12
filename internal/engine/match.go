@@ -45,11 +45,14 @@ const (
 	conversionScoreDivisor = 140.0 // attack-defense delta scale for conversion
 	conversionMin          = 0.03
 	conversionMax          = 0.58
-	volatilitySpread       = 0.40  // finishing wobble; narrows with Consistency
-	cardRatePerMoment      = 0.06  // per-moment P(a card)
-	redCardShare           = 0.10  // fraction of cards that are red
-	injuryRatePerMoment    = 0.010 // per-moment P(an injury knock)
-	injuryConditionHit     = 35    // condition lost to an in-match knock
+	volatilitySpread       = 0.40 // finishing wobble; narrows with Consistency
+	cardRatePerMoment      = 0.06 // per-moment P(a card)
+	redCardShare           = 0.10 // fraction of cards that are red
+	// suspensionMatchesRed is the ban a red card earns (straight or second
+	// yellow): the player sits out this many of the club's next fixtures.
+	suspensionMatchesRed = 1
+	injuryRatePerMoment  = 0.010 // per-moment P(an injury knock)
+	injuryConditionHit   = 35    // condition lost to an in-match knock
 
 	// Real injuries + substitutions (tunable docs/98). Lay-off =
 	// base + IntN(span) days, shifted by hidden InjuryProne (longer) and
@@ -883,7 +886,7 @@ func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameT
 	var best *worldgen.Player
 	for _, id := range bench {
 		p := e.players[id]
-		if p == nil || used[id] || p.InjuredUntil > at {
+		if p == nil || used[id] || p.InjuredUntil > at || p.SuspendedMatches > 0 {
 			continue
 		}
 		if best == nil || p.AbilityPool > best.AbilityPool ||
@@ -1046,7 +1049,7 @@ func (e *Engine) bestOutfieldOnBench(lm *worldgen.LiveMatch, club int64, at sim.
 	var best *worldgen.Player
 	for _, id := range bench {
 		p := e.players[id]
-		if p == nil || used[id] || p.InjuredUntil > at || p.Group == attr.GK {
+		if p == nil || used[id] || p.InjuredUntil > at || p.SuspendedMatches > 0 || p.Group == attr.GK {
 			continue
 		}
 		if best == nil || p.AbilityPool > best.AbilityPool ||
@@ -1147,6 +1150,7 @@ func (e *Engine) finalizeMatch(ev *sim.Event, lm *worldgen.LiveMatch) error {
 		e.advanceCup(ev.Due, lm)
 	}
 	e.applyPostMatch(lm, res.RatingsX10)
+	e.applySuspensions(lm, ev.Due)
 	delete(e.world.LiveMatches, lm.FixtureID)
 
 	params := map[string]any{
@@ -1422,6 +1426,46 @@ func (e *Engine) applyPostMatch(lm *worldgen.LiveMatch, ratings map[int64]int) {
 	}
 }
 
+// applySuspensions settles discipline at full time. Serving comes first: a
+// player who sat this fixture out under an existing ban has now served one
+// match (a ban ticks whenever the club plays). Then every red card in this
+// match starts a fresh ban — the order guarantees a ban issued today never
+// counts today's match as served. Deterministic and RNG-free: bans follow
+// from the recorded card ledger alone.
+func (e *Engine) applySuspensions(lm *worldgen.LiveMatch, at sim.GameTime) {
+	played := map[int64]bool{}
+	for _, pid := range append(lm.Participants(lm.HomeID), lm.Participants(lm.AwayID)...) {
+		played[pid] = true
+	}
+	for i := range e.world.Players {
+		p := &e.world.Players[i]
+		if p.SuspendedMatches <= 0 || played[p.ID] {
+			continue
+		}
+		if p.ClubID == lm.HomeID || p.ClubID == lm.AwayID {
+			p.SuspendedMatches--
+		}
+	}
+	for _, c := range lm.Cards {
+		if c.Detail != "RED" {
+			continue
+		}
+		p := e.players[c.PlayerID]
+		if p == nil {
+			continue
+		}
+		p.SuspendedMatches += suspensionMatchesRed
+		params := map[string]any{
+			"player": p.Name, "club": e.clubName(c.ClubID), "count": suspensionMatchesRed,
+		}
+		e.addNews(worldgen.NewsItem{
+			GameTime: at, Category: "match", Key: "news.player.suspended",
+			Params: params, ClubIDs: []int64{c.ClubID},
+		})
+		e.emit(at, "news.player.suspended", cloneParams(params))
+	}
+}
+
 // ratings scores every participant at full time. The formula lives in
 // worldgen.LiveRatingsX10 — one code location shared with the Console's live
 // ratings pane (docs/98) — and is a pure function of the tally, so the
@@ -1433,14 +1477,14 @@ func (e *Engine) ratings(lm *worldgen.LiveMatch) map[int64]int {
 // selectSquad picks a club's matchday squad at kickoff: the strongest FIT
 // goalkeeper plus the ten strongest fit outfielders by Ability Pool (id
 // tie-breaks — replay-identical) as the XI, and the next benchSize fit players
-// by the same ranking as the bench. Fit = senior
-// and not injured at kickoff — the InjuredUntil timestamp comparison IS the
-// whole recovery model (no recovery event exists).
+// by the same ranking as the bench. Fit = senior, not injured at kickoff
+// (the InjuredUntil timestamp comparison IS the whole recovery model — no
+// recovery event exists), and not serving a disciplinary ban.
 func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.TacticalPlan) (xi, bench []int64) {
 	var gks, out []*worldgen.Player
 	for i := range e.world.Players {
 		p := &e.world.Players[i]
-		if p.ClubID != clubID || p.Youth || p.InjuredUntil > at {
+		if p.ClubID != clubID || p.Youth || p.InjuredUntil > at || p.SuspendedMatches > 0 {
 			continue
 		}
 		if p.Group == attr.GK {

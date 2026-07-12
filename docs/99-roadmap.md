@@ -13,7 +13,9 @@ establishing the core loop.
 
 - More position-aware squad selection, bench construction, and replacement
   logic.
-- Suspensions and disciplinary consequences after red cards.
+- Accumulated-yellow suspensions and richer disciplinary consequences
+  (multi-match bans by offence, appeals) on top of the one-match red-card
+  ban.
 - Loans, pre-contracts, signing bonuses, and richer wage/contract negotiation.
 - More detailed transfer needs by position group and squad role.
 - Continental competitions and broader football calendar structures.

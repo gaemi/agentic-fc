@@ -125,6 +125,12 @@ type Player struct {
 	// a return date; everyone else gets a coarse band (FR-22). Zero (and any
 	// past time) reads as fit.
 	InjuredUntil sim.GameTime `json:"injured_until,omitempty"`
+	// SuspendedMatches is the disciplinary ban still to serve: club fixtures
+	// the player must sit out after a red card. Selection skips the player
+	// while it is positive, and it counts down as the club's fixtures
+	// complete (a ban ticks whenever the team plays, injured or not). It is
+	// a public fact — bans are announced, so every surface may show it.
+	SuspendedMatches int `json:"suspended_matches,omitempty"`
 	// Injuries is the injury history: season + coarse severity band only,
 	// never exact durations (FR-22).
 	Injuries []InjuryRecord `json:"injuries,omitempty"`

@@ -502,6 +502,9 @@ type playerDTO struct {
 	WeakFootLabel        string         `json:"weak_foot_label"`
 	Attributes           map[string]int `json:"attributes"`
 	ContractExpirySeason int            `json:"contract_expiry_season,omitempty"`
+	// SuspendedMatches is the announced disciplinary ban still to serve —
+	// a public fact, like the news item that reported it.
+	SuspendedMatches int `json:"suspended_matches,omitempty"`
 }
 
 func (s *Server) playerToDTO(loc narrative.Locale, p *worldgen.Player) playerDTO {
@@ -528,6 +531,7 @@ func (s *Server) playerToDTO(loc narrative.Locale, p *worldgen.Player) playerDTO
 	if p.Contract != nil {
 		dto.ContractExpirySeason = p.Contract.ExpirySeasonYear
 	}
+	dto.SuspendedMatches = p.SuspendedMatches
 	return dto
 }
 

@@ -91,6 +91,7 @@ func (g *Gateway) getSituation(mid int64, sid string, _ emptyIn) map[string]any 
 			season := worldgen.DateOf(cc.now).Season
 			expiring := 0
 			injuries := []map[string]any{}
+			suspensions := []map[string]any{}
 			for i := range w.Players {
 				p := &w.Players[i]
 				if p.ClubID != m.ClubID {
@@ -109,9 +110,16 @@ func (g *Gateway) getSituation(mid int64, sid string, _ emptyIn) map[string]any 
 						"expected_return": gameTimeISO(p.InjuredUntil),
 					})
 				}
+				// Bans are announced facts, so the count itself is public.
+				if p.SuspendedMatches > 0 {
+					suspensions = append(suspensions, map[string]any{
+						"player": p.ID, "name": p.Name, "matches": p.SuspendedMatches,
+					})
+				}
 			}
 			data["urgent"] = map[string]any{
 				"injuries":           injuries,
+				"suspensions":        suspensions,
 				"expiring_contracts": expiring,
 				"board": map[string]any{
 					"objective_finish": club.BoardObjectiveFinish,
@@ -871,6 +879,11 @@ func (g *Gateway) personPlayer(cc *callCtx, id int64) (any, *apiError) {
 			inj["expected_return"] = gameTimeISO(p.InjuredUntil)
 		}
 		data["injury"] = inj
+	}
+	// A live ban is a public announced fact: everyone sees the remaining
+	// matches.
+	if p.SuspendedMatches > 0 {
+		data["suspension"] = map[string]any{"matches": p.SuspendedMatches}
 	}
 	if c := g.clubByID(p.ClubID); c != nil {
 		data["club"] = clubRef(c)
