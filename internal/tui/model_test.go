@@ -2197,6 +2197,7 @@ func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
 			Form: []string{"L", "L", "D", "L", "W"}},
 	}}
 
+	m.Width, m.Height = 122, 24 // tier M terminal; the body pane is 120
 	wide := m.viewTable(120, 24)
 	for _, want := range []string{"GD", "+8", "-6", "Form", "L W D W W"} {
 		if !strings.Contains(wide, want) {
@@ -2204,11 +2205,19 @@ func TestStandingsShowGoalDifferenceAndFormByWidth(t *testing.T) {
 		}
 	}
 
+	m.Width, m.Height = 92, 24 // tier S: form yields, GD stays
 	narrow := m.viewTable(90, 24)
 	if !strings.Contains(narrow, "+8") {
 		t.Fatalf("narrow standings should keep goal difference:\n%s", narrow)
 	}
 	if strings.Contains(narrow, "L W D W W") {
 		t.Fatalf("narrow standings should drop the form strip:\n%s", narrow)
+	}
+
+	// An older daemon serves no gd field; the column derives from GF/GA and
+	// must not print zeros.
+	m.Table.Rows[0].GD = 0
+	if legacy := m.viewTable(90, 24); !strings.Contains(legacy, "+8") {
+		t.Fatalf("gd must derive locally for legacy payloads:\n%s", legacy)
 	}
 }

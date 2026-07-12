@@ -2231,10 +2231,11 @@ func (m Model) viewTable(width, height int) string {
 		{Header: m.ui("ui.col.gd"), Width: colWidth(m.ui("ui.col.gd"), 4), Align: alignRight},
 		{Header: m.ui("ui.col.pts"), Width: colWidth(m.ui("ui.col.pts"), 4), Align: alignRight},
 	}
-	// Form joins on medium-and-wider layouts (docs/07 §4.3). The column is
-	// sized from the rendered glyph (Hangul 승/무/패 are two cells wide,
-	// W/D/L one) so neither locale truncates the strip.
-	showForm := width >= 96
+	// Form joins on medium-and-wider layouts (docs/07 §4.3) — gated on the
+	// terminal's layout tier, not the pane width, so tier S keeps its club
+	// column. The column is sized from the rendered glyph (Hangul 승/무/패
+	// are two cells wide, W/D/L one) so neither locale truncates the strip.
+	showForm := layout.Compute(m.Width, m.Height) >= layout.TierM
 	if showForm {
 		glyph := lipgloss.Width(m.ui("ui.form.win"))
 		cols = append(cols, tableColumn{
@@ -2254,7 +2255,10 @@ func (m Model) viewTable(width, height int) string {
 		}
 		row := []string{
 			intCell(r.Pos), r.Club, intCell(r.Played), intCell(r.Won), intCell(r.Drawn),
-			intCell(r.Lost), intCell(r.GF), intCell(r.GA), signedCell(r.GD), intCell(r.Points),
+			intCell(r.Lost), intCell(r.GF), intCell(r.GA),
+			// Derived locally: an older daemon's payload has no gd field,
+			// and GF/GA are always present.
+			signedCell(r.GF - r.GA), intCell(r.Points),
 		}
 		if showForm {
 			row = append(row, m.formStrip(r.Form))
