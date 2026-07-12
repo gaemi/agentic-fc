@@ -166,7 +166,15 @@ matchday, then the remaining forward schedule and older results. This
 keeps both anticipation and replay access in the initial viewport even when a
 full season of future fixtures is already generated. Finished current-season
 matches open a replay pop-up with score, shots, scorers, cards,
-substitutions, club-labelled top ratings, the `l` team-sheet panel, and the
+substitutions, club-labelled top ratings, the `l` team-sheet panel, a short
+**story-of-the-match report** (a result frame — shootout winners included —
+then at most one diagnostics edge credited to the side that got the result
+(either side in a genuine draw): pressing/aerial/set-piece/chance-quality
+dominance or the winner's chance-pattern identity, and at most one ledger
+story beat such as a hat-trick, a two-goal comeback, or a late winner
+detected from the decisive goal — rendered server-side from public facts
+only, variants rotated deterministically by fixture ID, and shown only when
+the box still has room for the event lists and replay log after it), and the
 preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.

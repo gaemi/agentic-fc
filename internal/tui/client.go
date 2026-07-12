@@ -315,8 +315,10 @@ type MatchDetail struct {
 	Ratings           []LiveRating     `json:"ratings"`
 	HomeLineup        []LineupEntry    `json:"home_lineup"`
 	AwayLineup        []LineupEntry    `json:"away_lineup"`
-	Commentary        []string         `json:"commentary"`
-	Beats             []CommentaryBeat `json:"beats"`
+	// Story is the daemon-rendered post-match report prose.
+	Story      []string         `json:"story"`
+	Commentary []string         `json:"commentary"`
+	Beats      []CommentaryBeat `json:"beats"`
 }
 
 // LineupEntry is one team-sheet row of the match pop-up's lineup panel:

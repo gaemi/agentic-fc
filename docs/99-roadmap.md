@@ -23,7 +23,8 @@ establishing the core loop.
 
 - More event families beyond the current key chance types.
 - Published event-family weight tables once the model stabilizes.
-- More public post-match explanatory summaries built from observed diagnostics.
+- Longer-form post-match analysis (multi-paragraph reports, player focus
+  pieces) building on the pop-up's story-of-the-match verdict.
 - Long-run balance checks across presets, quality bands, and run profiles.
 - More commentary variation for different tactical and emotional contexts.
 
