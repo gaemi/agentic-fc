@@ -291,12 +291,10 @@ func main() {
 		hintData = abs
 	}
 	connectHint += " -data " + shellQuote(hintData)
-	if mcpURL != "http://"+dialableAddr(*mcpAddr) {
-		// A ":0" flag landed on an OS-picked port -mcp-config cannot re-derive.
-		connectHint += " -mcp-addr " + shellQuote(dialableAddr(mcpLn.Addr().String()))
-	} else if explicitFlags["mcp-addr"] {
-		connectHint += " -mcp-addr " + shellQuote(*mcpAddr)
-	}
+	// Always the resolved bound address, never the replayed flag: the flag can
+	// be hostless (:7421) or port 0, both of which the offline helper rejects
+	// by design because it cannot know what the OS would bind.
+	connectHint += " -mcp-addr " + shellQuote(dialableAddr(mcpLn.Addr().String()))
 	fmt.Printf("connect an AI agent: %s\n", connectHint)
 
 	if willRun {
