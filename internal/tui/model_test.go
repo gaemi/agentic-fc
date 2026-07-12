@@ -937,11 +937,27 @@ func TestReopeningCachedReplayRefreshesWithoutLoadingFlash(t *testing.T) {
 	if m.MatchDetail.Fixture != cached.Fixture || len(m.MatchDetail.Commentary) != len(cached.Commentary) {
 		t.Fatalf("cached detail was cleared before refresh: got=%+v want=%+v", m.MatchDetail, cached)
 	}
-	msg := cmd()
-	if _, ok := msg.(MatchMsg); !ok {
-		t.Fatalf("refresh returned %T, want MatchMsg", msg)
+	// The reopen batches the refresh fetch with the scene-animation tick;
+	// find the MatchMsg among the batched commands.
+	var refreshed MatchMsg
+	found := false
+	switch v := cmd().(type) {
+	case MatchMsg:
+		refreshed, found = v, true
+	case tea.BatchMsg:
+		for _, sub := range v {
+			if sub == nil {
+				continue
+			}
+			if mm, ok := sub().(MatchMsg); ok {
+				refreshed, found = mm, true
+			}
+		}
 	}
-	m = update(m, msg)
+	if !found {
+		t.Fatal("refresh batch carried no MatchMsg")
+	}
+	m = update(m, refreshed)
 	if got := m.MatchDetail.Commentary; len(got) != 1 || got[0] != fresh.Commentary[0] {
 		t.Fatalf("fresh replay did not replace cached prose: %q", got)
 	}
@@ -1556,6 +1572,59 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 	}
 }
 
+// Replay pop-ups animate their scene like live ones: opening a result arms
+// the tick, browsing beats restarts the animation for the new scene, Space
+// pauses, and closing the modal invalidates the run.
+func TestReplayAnimationLifecycleAndBeatSync(t *testing.T) {
+	m := testModel()
+	m.Tab = tabFixtures
+	m.FixtureIdx = 0 // fixture 7: RESULT with cached detail
+
+	next, cmd := m.openSelectedFixture()
+	m = next.(Model)
+	if cmd == nil || m.MatchModal != modalReplay || m.matchAnimationRun == 0 {
+		t.Fatalf("opening replay did not start animation: modal=%q run=%d cmd=%v", m.MatchModal, m.matchAnimationRun, cmd)
+	}
+	run := m.matchAnimationRun
+	next, cmd = m.Update(matchAnimationMsg{Run: run})
+	m = next.(Model)
+	if m.matchAnimationFrame != 1 || cmd == nil {
+		t.Fatalf("replay animation tick frame=%d cmd=%v, want frame 1 and continuation", m.matchAnimationFrame, cmd)
+	}
+	// The rendered replay body must move with the frame counter.
+	m.Width, m.Height = 140, 40
+	first := m.replayMatchModal(120, 36)
+	m.matchAnimationFrame++
+	second := m.replayMatchModal(120, 36)
+	if first == second {
+		t.Fatal("replay scene did not change between animation frames")
+	}
+	m.matchAnimationFrame = 1
+
+	// Browsing to another beat restarts the animation for its scene.
+	m = update(m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.ReplayOffset != 1 || m.matchAnimationFrame != 0 {
+		t.Fatalf("browsing beats did not resync animation: offset=%d frame=%d", m.ReplayOffset, m.matchAnimationFrame)
+	}
+
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(Model)
+	if !m.matchAnimationPaused || cmd != nil {
+		t.Fatalf("Space did not pause replay animation: paused=%t cmd=%v", m.matchAnimationPaused, cmd)
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(Model)
+	if m.matchAnimationPaused || cmd == nil {
+		t.Fatalf("Space did not resume replay animation: paused=%t cmd=%v", m.matchAnimationPaused, cmd)
+	}
+
+	stale := m.matchAnimationRun
+	m = update(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.MatchModal != modalNone || m.matchAnimationRun == stale {
+		t.Fatalf("closing replay did not invalidate animation: modal=%q run=%d", m.MatchModal, m.matchAnimationRun)
+	}
+}
+
 func TestLiveMatchAnimationLifecycleAndSceneReset(t *testing.T) {
 	m := testModel()
 	m.Tab = tabFixtures
@@ -1884,8 +1953,11 @@ func TestLiveMatchModalTransitionsToReplayWhenResultArrives(t *testing.T) {
 	if m.MatchModal != modalReplay || m.MatchModalID != 9 || m.FixtureIdx != 0 {
 		t.Fatalf("live modal did not transition to replay: modal=%q id=%d fixture=%d", m.MatchModal, m.MatchModalID, m.FixtureIdx)
 	}
-	if cmd != nil {
-		t.Fatal("nil test client should not schedule replay fetch")
+	// The replay body animates its scene, so the transition arms a fresh
+	// animation run and schedules its tick (the nil test client contributes
+	// no fetch command to the batch).
+	if cmd == nil || m.matchAnimationRun == 0 {
+		t.Fatalf("replay transition should schedule the animation tick: run=%d cmd=%v", m.matchAnimationRun, cmd)
 	}
 }
 

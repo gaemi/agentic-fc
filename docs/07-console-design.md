@@ -85,12 +85,15 @@ stoppages, and neutral build-up keep one orientation. Replays mirror only
 recorded away goals (the scorer ledger carries the side); other replay beats
 stay home-directed.
 The 180 ms presentation tick exists only
-while a live match pop-up is open, restarts when the latest commentary beat
-changes (including a new action of the same kind),
-and is invalidated immediately on close or full time. Replay
-views stay on a stable frame, so the spectator surface does not flicker when
-nothing is happening. `Space` pauses the live animation and invalidates its
-timer chain; pressing it again starts a fresh chain. Presentation never changes
+while a match pop-up (live or replay) is open, restarts when the animated
+scene changes — the latest commentary beat on live views (including a new
+action of the same kind), the browsed beat on replays — and is invalidated
+immediately on close or full time. Replays animate the beat the cursor rests
+on, so browsing a finished match plays each action back instead of freezing
+its first frame; stepping to another beat restarts that beat's animation from
+frame zero. `Space` pauses the animation in both pop-up variants and
+invalidates its timer chain; pressing it again starts a fresh chain — a
+paused replay is a stable still for reading. Presentation never changes
 simulation timing.
 Wide replay pop-ups retain the same chance-pattern, shot-quality, aerial,
 pressing, and set-piece diagnostics after full time so tactical review does not
