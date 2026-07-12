@@ -1667,6 +1667,11 @@ func mentalityLevel(m string) int {
 // mentality (base dial + the in-match shift). Summation is over the XI slice
 // (deterministic order, integer math).
 func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) (attack, defense int) {
+	// Only one keeper guards the goal: the first GK in the XI (selection
+	// puts the real keeper first) earns the keeper-specific bonus, so an
+	// emergency spare keeper fielded as a crisis outfield body defends with
+	// his outfield attributes only, not as a second keeper.
+	keeperCredited := false
 	for _, pid := range xi {
 		p := e.players[pid]
 		if p == nil {
@@ -1680,8 +1685,9 @@ func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) 
 		d := (effective(p, attr.Tackling) + effective(p, attr.Marking) +
 			effective(p, attr.Positioning) + effective(p, attr.Concentration) +
 			bodyStrength(p) + bodyReach(p)/2)
-		if p.Group == attr.GK {
+		if p.Group == attr.GK && !keeperCredited {
 			d += effective(p, attr.Reflexes) + effective(p, attr.Handling) + effective(p, attr.CommandOfArea)
+			keeperCredited = true
 		}
 		attack += a * fit / 200
 		defense += d * fit / 200

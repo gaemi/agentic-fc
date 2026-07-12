@@ -162,6 +162,37 @@ func TestInjuryReplacementRespectsRoles(t *testing.T) {
 	}
 }
 
+// Only one keeper earns the keeper bonus in the aggregate strength model:
+// a crisis XI with several GK bodies defends with outfield attributes for
+// the extras, so stacking keepers is never a defensive exploit.
+func TestTeamStrengthCreditsOneKeeperOnly(t *testing.T) {
+	e, _ := newEngine(t, 19)
+	club := e.world.Clubs[0].ID
+	var gks []int64
+	for i := range e.world.Players {
+		p := &e.world.Players[i]
+		if p.ClubID == club && !p.Youth && p.Group == attr.GK {
+			gks = append(gks, p.ID)
+		}
+	}
+	if len(gks) < 2 {
+		t.Fatal("test world should carry multiple keepers per squad")
+	}
+	plan := mindset.TacticalPlan{}
+	_, dBoth := e.teamStrength(gks[:2], plan, 0)
+	_, dFirst := e.teamStrength(gks[:1], plan, 0)
+	_, dSecond := e.teamStrength(gks[1:2], plan, 0)
+	if dBoth >= dFirst+dSecond {
+		t.Fatalf("second keeper must not earn the keeper bonus: both=%d first=%d second=%d", dBoth, dFirst, dSecond)
+	}
+	aBoth, _ := e.teamStrength(gks[:2], plan, 0)
+	aFirst, _ := e.teamStrength(gks[:1], plan, 0)
+	aSecond, _ := e.teamStrength(gks[1:2], plan, 0)
+	if aBoth != aFirst+aSecond {
+		t.Fatalf("attack must stay additive: both=%d first=%d second=%d", aBoth, aFirst, aSecond)
+	}
+}
+
 // After a keeper red card the goal stands empty; the next injury window must
 // restore a keeper rather than replacing like-for-like.
 func TestInjuryWindowRestoresMissingKeeper(t *testing.T) {
