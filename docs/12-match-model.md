@@ -456,7 +456,11 @@ two narrates as a comeback; re-taking the lead within five minutes of
 conceding reads as an instant response; and a side's fourth goal at a
 three-goal margin narrates as a rout
 (`comment.goal.hattrick/comeback_level/comeback_ahead/response/rout.*` — all
-thresholds tunable, docs/98). Ordinary lead-padding goals keep their
+thresholds tunable, docs/98). Precedence runs specific-to-generic:
+hat-trick, then comeback, then instant response, then the late-drama calls,
+then opener/equalizer, then rout — so a stoppage-time goal that completes a
+two-goal fightback narrates the fightback, and the late keys keep every
+ordinary closing-minutes leveler or winner. Ordinary lead-padding goals keep their
 chance-pattern call (cross header, cut-back, through ball, long shot, set
 piece, counter, scramble — four variants each). The kickoff whistle rotates
 three voices by fixture ID.

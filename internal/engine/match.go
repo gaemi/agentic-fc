@@ -512,22 +512,26 @@ func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool, scorer int64) s
 		}
 		return pick("comment.goal.hattrick.1", "comment.goal.hattrick.2")
 	}
+	// The ladder runs specific-to-generic: a comeback or an instant response
+	// is a sharper story than the clock, so both outrank the late-drama
+	// calls; the late calls still take every ordinary closing-minutes
+	// leveler or winner.
 	comeback := maxDeficitBefore(lm, home) >= comebackDeficitMin
 	switch {
-	case late && atk == def:
-		return pick("comment.goal.late_level.1", "comment.goal.late_level.2")
-	case late && atk == def+1:
-		return pick("comment.goal.late.1", "comment.goal.late.2")
 	case comeback && atk == def:
 		return pick("comment.goal.comeback_level.1", "comment.goal.comeback_level.2")
 	case comeback && atk == def+1:
 		return pick("comment.goal.comeback_ahead.1", "comment.goal.comeback_ahead.2")
+	case atk == def+1 && concededJustBefore(lm, home):
+		return pick("comment.goal.response.1", "comment.goal.response.2")
+	case late && atk == def:
+		return pick("comment.goal.late_level.1", "comment.goal.late_level.2")
+	case late && atk == def+1:
+		return pick("comment.goal.late.1", "comment.goal.late.2")
 	case lm.HomeGoals+lm.AwayGoals == 1:
 		return pick("comment.goal.opener.1", "comment.goal.opener.2")
 	case atk == def:
 		return pick("comment.goal.equalizer.1", "comment.goal.equalizer.2")
-	case atk == def+1 && concededJustBefore(lm, home):
-		return pick("comment.goal.response.1", "comment.goal.response.2")
 	case atk >= routGoalsMin && atk-def >= routMarginMin:
 		return pick("comment.goal.rout.1", "comment.goal.rout.2", "comment.goal.rout.3")
 	default:
