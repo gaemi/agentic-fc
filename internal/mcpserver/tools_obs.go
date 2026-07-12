@@ -520,7 +520,7 @@ func (g *Gateway) renderHeadline(n *worldgen.NewsItem) map[string]any {
 	}
 	if headline, ok := out["headline"].(map[string]any); ok {
 		if params, ok := headline["params"].(map[string]any); ok {
-			for _, key := range []string{"fixtures", "results", "story", "table"} {
+			for _, key := range []string{"fixtures", "results", "story", "table", "team"} {
 				delete(params, key)
 			}
 		}

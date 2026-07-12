@@ -9,6 +9,7 @@ import (
 	"github.com/gaemi/agentic-fc/internal/focus"
 	"github.com/gaemi/agentic-fc/internal/mindset"
 	"github.com/gaemi/agentic-fc/internal/narrative"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
 
 // TestWriteCardsRenderFromEnvelope covers the shaping-write cards: each renders
@@ -411,5 +412,28 @@ func TestTeamOfTheWeekNewsArticleRendersOnMCP(t *testing.T) {
 				t.Fatalf("%s TOTW article leaked %q:\n%s", loc, leak, blob)
 			}
 		}
+	}
+}
+
+// Dashboard headlines stay wide-and-shallow: the TOTW sheet never rides
+// along in get_situation headline params.
+func TestHeadlineStripsTeamOfTheWeekSheet(t *testing.T) {
+	g, _, _, _ := newGateway(t)
+	n := &worldgen.NewsItem{
+		ID: 7, GameTime: 100, Category: "match", Key: "feed.matchday.totw",
+		Params: map[string]any{
+			"team": []map[string]any{{"name": "Kim", "club": "Alpha", "position": "GK", "rating_x10": 80, "goals": 0}},
+			"star": "Kim", "star_club": "Alpha", "star_rating_x10": 80, "star_goals": 0,
+			"kickoff_time": "15:00", "count": 8, "month": 8, "day": 16,
+		},
+	}
+	out := g.renderHeadline(n)
+	headline, _ := out["headline"].(map[string]any)
+	params, _ := headline["params"].(map[string]any)
+	if _, leaked := params["team"]; leaked {
+		t.Fatalf("headline params must strip the TOTW sheet: %+v", params)
+	}
+	if params["star"] != "Kim" {
+		t.Fatalf("light star params should survive for the preview: %+v", params)
 	}
 }
