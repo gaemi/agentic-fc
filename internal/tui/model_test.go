@@ -1577,6 +1577,7 @@ func TestAnimatedMatchScenesKeepFixedFrames(t *testing.T) {
 // pauses, and closing the modal invalidates the run.
 func TestReplayAnimationLifecycleAndBeatSync(t *testing.T) {
 	m := testModel()
+	m.Width, m.Height = 140, 40 // wide enough that the scene animates
 	m.Tab = tabFixtures
 	m.FixtureIdx = 0 // fixture 7: RESULT with cached detail
 
@@ -1592,7 +1593,6 @@ func TestReplayAnimationLifecycleAndBeatSync(t *testing.T) {
 		t.Fatalf("replay animation tick frame=%d cmd=%v, want frame 1 and continuation", m.matchAnimationFrame, cmd)
 	}
 	// The rendered replay body must move with the frame counter.
-	m.Width, m.Height = 140, 40
 	first := m.replayMatchModal(120, 36)
 	m.matchAnimationFrame++
 	second := m.replayMatchModal(120, 36)
@@ -1625,8 +1625,57 @@ func TestReplayAnimationLifecycleAndBeatSync(t *testing.T) {
 	}
 }
 
+// The tick chain only survives where the scene actually renders: compact
+// layouts and the lineup panel gate it off, and the lineup toggle and resizes
+// re-arm it when animation becomes visible again.
+func TestAnimationTickGatedOffWhenSceneCannotRender(t *testing.T) {
+	m := testModel() // 80x24: compact modal, no scene art
+	m.Tab = tabFixtures
+	m.FixtureIdx = 0
+
+	next, _ := m.openSelectedFixture()
+	m = next.(Model)
+	run := m.matchAnimationRun
+	next, cmd := m.Update(matchAnimationMsg{Run: run})
+	m = next.(Model)
+	if m.matchAnimationFrame != 0 || cmd != nil {
+		t.Fatalf("compact replay advanced its animation: frame=%d cmd=%v", m.matchAnimationFrame, cmd)
+	}
+
+	// Growing the terminal past the compact threshold revives the chain.
+	next, cmd = m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("resize past compact threshold did not re-arm the animation tick")
+	}
+	next, cmd = m.Update(matchAnimationMsg{Run: m.matchAnimationRun})
+	m = next.(Model)
+	if m.matchAnimationFrame != 1 || cmd == nil {
+		t.Fatalf("revived chain did not advance: frame=%d cmd=%v", m.matchAnimationFrame, cmd)
+	}
+
+	// The lineup panel replaces the scene: the chain dies behind it and
+	// returns when the broadcast body comes back.
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = next.(Model)
+	if !m.LineupView || cmd != nil {
+		t.Fatalf("opening lineup should not schedule a tick: lineup=%t cmd=%v", m.LineupView, cmd)
+	}
+	next, cmd = m.Update(matchAnimationMsg{Run: m.matchAnimationRun})
+	m = next.(Model)
+	if cmd != nil {
+		t.Fatal("lineup view kept the animation chain alive")
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = next.(Model)
+	if m.LineupView || cmd == nil {
+		t.Fatalf("closing lineup should re-arm the tick: lineup=%t cmd=%v", m.LineupView, cmd)
+	}
+}
+
 func TestLiveMatchAnimationLifecycleAndSceneReset(t *testing.T) {
 	m := testModel()
+	m.Width, m.Height = 140, 40 // wide enough that the scene animates
 	m.Tab = tabFixtures
 	m.FixtureIdx = 1
 	m.Matches = []LiveMatchView{{

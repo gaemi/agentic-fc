@@ -383,6 +383,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = msg.Width, msg.Height
+		// A resize can move a match pop-up across the compact threshold. Arm a
+		// fresh tick chain when a scene can now animate (an old chain may have
+		// been gated away on the smaller layout); the run bump keeps a live
+		// chain from doubling.
+		if m.MatchModal == modalLive || m.MatchModal == modalReplay {
+			m.matchAnimationRun++
+			if !m.matchAnimationPaused && m.matchSceneAnimates() {
+				return m, matchAnimationTick(m.matchAnimationRun)
+			}
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -491,6 +501,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "l":
 			if m.MatchModal == modalLive || m.MatchModal == modalReplay {
 				m.LineupView = !m.LineupView
+				// The lineup panel replaces the scene, so the tick chain is
+				// gated off behind it; re-arm it when the broadcast body
+				// returns. The run bump retires the old chain either way.
+				m.matchAnimationRun++
+				if !m.LineupView && !m.matchAnimationPaused && m.matchSceneAnimates() {
+					return m, matchAnimationTick(m.matchAnimationRun)
+				}
 			}
 		case "h":
 			if m.Tab == tabTable && m.MatchModal == modalNone {
@@ -762,6 +779,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			(m.MatchModal != modalLive && m.MatchModal != modalReplay) {
 			break
 		}
+		if !m.matchSceneAnimates() {
+			// Nothing on screen reads the frame counter (compact layout or
+			// lineup panel): let the chain die instead of redrawing a static
+			// body every 180ms. Resize and the lineup toggle re-arm it.
+			break
+		}
 		m.matchAnimationFrame++
 		return m, matchAnimationTick(m.matchAnimationRun)
 	case tickMsg:
@@ -844,6 +867,17 @@ func (m *Model) toggleMatchAnimation() tea.Cmd {
 		return nil
 	}
 	return matchAnimationTick(m.matchAnimationRun)
+}
+
+// matchSceneAnimates reports whether the open match pop-up can actually show
+// animated scene art: compact boxes and the lineup panel never render the
+// frame counter, so their tick chains are pure redraw noise and get gated.
+func (m Model) matchSceneAnimates() bool {
+	if m.LineupView {
+		return false
+	}
+	w, h := matchModalSize(m.Width, m.Height)
+	return !matchModalCompact(w, h)
 }
 
 func (m Model) matchAnimationHelp() string {
