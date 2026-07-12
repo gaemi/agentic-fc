@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gaemi/agentic-fc/internal/attr"
@@ -851,7 +852,16 @@ func fulltimeCommentaryKey(homeGoals, awayGoals int) string {
 func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, at sim.GameTime) {
 	sub := worldgen.SubEvent{Minute: lm.Clock, ClubID: club, Off: pid, Reason: subReasonInjury}
 	if lm.SubsUsed(club) < subsMax {
-		if rep := e.bestFitOnBench(lm, club, at); rep != 0 {
+		wantGK := false
+		if p := e.players[pid]; p != nil {
+			wantGK = p.Group == attr.GK
+		}
+		if !wantGK && !e.hasOnPitchKeeper(lm, club, pid) {
+			// The side already plays without a keeper (a red card leaves
+			// the slot empty): any replacement window restores one first.
+			wantGK = true
+		}
+		if rep := e.bestFitOnBench(lm, club, at, wantGK); rep != 0 {
 			sub.On = rep
 		}
 	}
@@ -867,9 +877,28 @@ func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, 
 	})
 }
 
-// bestFitOnBench picks the strongest bench player who hasn't already come on,
-// been withdrawn, or picked up this match's injury.
-func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameTime) int64 {
+// hasOnPitchKeeper reports whether the side still has a natural keeper on
+// the pitch, ignoring the player about to leave.
+func (e *Engine) hasOnPitchKeeper(lm *worldgen.LiveMatch, club, excluding int64) bool {
+	for _, id := range lm.OnPitch(club) {
+		if id == excluding {
+			continue
+		}
+		if p := e.players[id]; p != nil && p.Group == attr.GK {
+			return true
+		}
+	}
+	return false
+}
+
+// bestFitOnBench picks the injury replacement role-aware and in bench
+// order: an injured keeper takes the first unused bench keeper (the seat
+// selectSquad reserved), an injured outfielder the first unused bench
+// outfielder — the backup keeper is not burned as an outfield body. Only
+// when the matching role is exhausted does the other kind come on as an
+// emergency replacement (a full XI beats role purity; the true play-short
+// case is SubEvent.On == 0 when nothing usable remains).
+func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameTime, wantGK bool) int64 {
 	bench := lm.HomeBench
 	if club == lm.AwayID {
 		bench = lm.AwayBench
@@ -884,21 +913,25 @@ func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameT
 			used[s.On] = true
 		}
 	}
-	var best *worldgen.Player
+	// The bench already stands in the order selectSquad promised — the
+	// reserved keeper first, then selection score — so the picker honors
+	// that order instead of re-ranking: the first eligible body of the
+	// matching role comes on, and the first eligible body of the other
+	// kind is remembered as the emergency.
+	var emergency int64
 	for _, id := range bench {
 		p := e.players[id]
 		if p == nil || used[id] || p.InjuredUntil > at || p.SuspendedMatches > 0 {
 			continue
 		}
-		if best == nil || p.AbilityPool > best.AbilityPool ||
-			(p.AbilityPool == best.AbilityPool && p.ID < best.ID) {
-			best = p
+		if (p.Group == attr.GK) == wantGK {
+			return p.ID
+		}
+		if emergency == 0 {
+			emergency = p.ID
 		}
 	}
-	if best == nil {
-		return 0
-	}
-	return best.ID
+	return emergency
 }
 
 // maybeDiscretionarySubs lets each side make voluntary changes:
@@ -1493,14 +1526,46 @@ func (e *Engine) ratings(lm *worldgen.LiveMatch) map[int64]int {
 	return worldgen.LiveRatingsX10(lm, func(id int64) *worldgen.Player { return e.players[id] })
 }
 
-// selectSquad picks a club's matchday squad at kickoff: the strongest FIT
-// goalkeeper plus the ten strongest fit outfielders by Ability Pool (id
-// tie-breaks — replay-identical) as the XI, and the next benchSize fit players
-// by the same ranking as the bench. Fit = senior, not injured at kickoff
-// (the InjuredUntil timestamp comparison IS the whole recovery model — no
-// recovery event exists), and not serving a disciplinary ban.
+// formationBands parses a FormationCatalog shape ("4-3-3", "4-2-3-1") into
+// defender/midfielder/forward slot counts: the first band is the back line,
+// the last is the front, and everything between is midfield. An empty or
+// unparseable shape reads as 4-4-2, the neutral default (docs/98).
+func formationBands(formation string) (df, mf, fw int) {
+	parts := strings.Split(formation, "-")
+	nums := make([]int, 0, len(parts))
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n <= 0 {
+			nums = nil
+			break
+		}
+		nums = append(nums, n)
+	}
+	total := 0
+	for _, n := range nums {
+		total += n
+	}
+	if len(nums) < 3 || total != 11-1 {
+		return 4, 4, 2
+	}
+	df, fw = nums[0], nums[len(nums)-1]
+	return df, 10 - df - fw, fw
+}
+
+// selectSquad picks a club's matchday squad at kickoff in the shape of the
+// manager's tactical plan: the strongest FIT goalkeeper, then the formation's
+// defender/midfielder/forward slot counts filled from each position group by
+// selection score (id tie-breaks — replay-identical). When injuries and bans
+// leave a group short, the remaining XI slots fall back to the strongest
+// leftover outfielders regardless of group — a shaped XI when possible, a
+// full XI always. The bench reserves its first seat for the best remaining
+// keeper (a matchday squad never travels without one while a spare exists)
+// and fills the rest with the best leftovers re-ranked. Fit = senior, not
+// injured at kickoff (the InjuredUntil timestamp comparison IS the whole
+// recovery model — no recovery event exists), and not serving a ban.
 func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.TacticalPlan) (xi, bench []int64) {
-	var gks, out []*worldgen.Player
+	var gks []*worldgen.Player
+	groups := map[attr.PositionGroup][]*worldgen.Player{}
 	for i := range e.world.Players {
 		p := &e.world.Players[i]
 		if p.ClubID != clubID || p.Youth || p.InjuredUntil > at || p.SuspendedMatches > 0 {
@@ -1509,7 +1574,7 @@ func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.Tactica
 		if p.Group == attr.GK {
 			gks = append(gks, p)
 		} else {
-			out = append(out, p)
+			groups[p.Group] = append(groups[p.Group], p)
 		}
 	}
 	byStrength := func(s []*worldgen.Player) {
@@ -1523,23 +1588,59 @@ func (e *Engine) selectSquad(clubID int64, at sim.GameTime, plan mindset.Tactica
 		})
 	}
 	byStrength(gks)
-	byStrength(out)
+	for g := range groups {
+		byStrength(groups[g])
+	}
+
 	xi = make([]int64, 0, 11)
 	if len(gks) > 0 {
 		xi = append(xi, gks[0].ID)
 	}
-	n := 0
-	for ; n < len(out) && len(xi) < 11; n++ {
-		xi = append(xi, out[n].ID)
+	df, mf, fw := formationBands(plan.Formation)
+	var leftovers []*worldgen.Player
+	take := func(group attr.PositionGroup, want int) {
+		pool := groups[group]
+		n := want
+		if n > len(pool) {
+			n = len(pool)
+		}
+		for _, p := range pool[:n] {
+			xi = append(xi, p.ID)
+		}
+		leftovers = append(leftovers, pool[n:]...)
 	}
-	// Bench: the best of everyone left over (spare keepers included), re-ranked.
+	take(attr.DF, df)
+	take(attr.MF, mf)
+	take(attr.FW, fw)
+	// Shortfall fallback: a depleted group must not shrink the XI while fit
+	// bodies remain elsewhere.
+	byStrength(leftovers)
+	n := 0
+	for ; n < len(leftovers) && len(xi) < 11; n++ {
+		xi = append(xi, leftovers[n].ID)
+	}
+	// Deep crisis: fewer than ten fit outfielders in the whole squad. Spare
+	// keepers backfill the XI before anyone sits down — a body on the pitch
+	// beats a spare glove on the bench.
+	gkUsed := 1
+	if len(gks) == 0 {
+		gkUsed = 0
+	}
+	for len(xi) < 11 && gkUsed < len(gks) {
+		xi = append(xi, gks[gkUsed].ID)
+		gkUsed++
+	}
+
+	// Bench: the best remaining keeper first, then the best of everyone
+	// left over, re-ranked.
 	var spare []*worldgen.Player
-	spare = append(spare, out[n:]...)
-	if len(gks) > 1 {
-		spare = append(spare, gks[1:]...)
+	spare = append(spare, leftovers[n:]...)
+	if len(gks) > gkUsed {
+		bench = append(bench, gks[gkUsed].ID)
+		spare = append(spare, gks[gkUsed+1:]...)
 	}
 	byStrength(spare)
-	for i := 0; i < len(spare) && i < benchSize; i++ {
+	for i := 0; i < len(spare) && len(bench) < benchSize; i++ {
 		bench = append(bench, spare[i].ID)
 	}
 	return xi, bench
@@ -1566,6 +1667,11 @@ func mentalityLevel(m string) int {
 // mentality (base dial + the in-match shift). Summation is over the XI slice
 // (deterministic order, integer math).
 func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) (attack, defense int) {
+	// Only one keeper guards the goal: the side is credited with its best
+	// available keeper's bonus exactly once, independent of lineup order
+	// (a crisis XI can carry several GK bodies; whoever keeps best is in
+	// goal). The extras defend with their outfield attributes only.
+	bestKeeper := 0
 	for _, pid := range xi {
 		p := e.players[pid]
 		if p == nil {
@@ -1580,11 +1686,16 @@ func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) 
 			effective(p, attr.Positioning) + effective(p, attr.Concentration) +
 			bodyStrength(p) + bodyReach(p)/2)
 		if p.Group == attr.GK {
-			d += effective(p, attr.Reflexes) + effective(p, attr.Handling) + effective(p, attr.CommandOfArea)
+			kb := (effective(p, attr.Reflexes) + effective(p, attr.Handling) +
+				effective(p, attr.CommandOfArea)) * fit / 200
+			if kb > bestKeeper {
+				bestKeeper = kb
+			}
 		}
 		attack += a * fit / 200
 		defense += d * fit / 200
 	}
+	defense += bestKeeper
 	level := clampInt(mentalityLevel(plan.Mentality)+shift, -2, 2)
 	attack += attack * level / 10   // +10% attack per attacking step
 	defense -= defense * level / 10 // −10% defense per attacking step
