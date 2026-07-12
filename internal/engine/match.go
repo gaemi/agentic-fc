@@ -516,11 +516,11 @@ func goalContextCommentaryKey(lm *worldgen.LiveMatch, home bool, scorer int64) s
 	// is a sharper story than the clock, so both outrank the late-drama
 	// calls; the late calls still take every ordinary closing-minutes
 	// leveler or winner.
-	comeback := maxDeficitBefore(lm, home) >= comebackDeficitMin
+	deep, leveledSince, ledSince := comebackStanding(lm, home)
 	switch {
-	case comeback && atk == def:
+	case deep && !leveledSince && atk == def:
 		return pick("comment.goal.comeback_level.1", "comment.goal.comeback_level.2")
-	case comeback && atk == def+1:
+	case deep && !ledSince && atk == def+1:
 		return pick("comment.goal.comeback_ahead.1", "comment.goal.comeback_ahead.2")
 	case atk == def+1 && concededJustBefore(lm, home):
 		return pick("comment.goal.response.1", "comment.goal.response.2")
@@ -551,14 +551,18 @@ func goalsBy(lm *worldgen.LiveMatch, scorer int64) int {
 	return n
 }
 
-// maxDeficitBefore replays the scorer ledger up to (not including) the goal
-// just recorded and returns the scoring side's worst deficit — the fuel a
-// comeback call burns.
-func maxDeficitBefore(lm *worldgen.LiveMatch, home bool) int {
+// comebackStanding replays the scorer ledger up to (not including) the goal
+// just recorded and reports whether the scoring side is still mid-fightback:
+// deep is a two-goal-plus deficit suffered at some point, and
+// leveledSince/ledSince say whether the side already drew level or led again
+// after the LAST time the hole was that deep. Once a fightback has been
+// completed, later goals are ordinary football again — a second deep deficit
+// re-arms the story.
+func comebackStanding(lm *worldgen.LiveMatch, home bool) (deep, leveledSince, ledSince bool) {
 	if len(lm.Scorers) == 0 {
-		return 0
+		return false, false, false
 	}
-	h, a, worst := 0, 0, 0
+	h, a := 0, 0
 	for _, e := range lm.Scorers[:len(lm.Scorers)-1] {
 		if e.ClubID == lm.HomeID {
 			h++
@@ -569,11 +573,21 @@ func maxDeficitBefore(lm *worldgen.LiveMatch, home bool) int {
 		if !home {
 			deficit = h - a
 		}
-		if deficit > worst {
-			worst = deficit
+		if deficit >= comebackDeficitMin {
+			deep, leveledSince, ledSince = true, false, false
+			continue
+		}
+		if !deep {
+			continue
+		}
+		if deficit <= 0 {
+			leveledSince = true
+		}
+		if deficit < 0 {
+			ledSince = true
 		}
 	}
-	return worst
+	return deep, leveledSince, ledSince
 }
 
 // concededJustBefore reports whether the goal just recorded answered an

@@ -452,9 +452,11 @@ or wins the match swap the patterned call for a context call
 match state. The context ladder also reads the persisted scorer ledger: a
 scorer's third goal headlines as a hat-trick call (with a late variant)
 ahead of every scoreline context; leveling or going ahead after trailing by
-two narrates as a comeback; re-taking the lead within five minutes of
-conceding reads as an instant response; and a side's fourth goal at a
-three-goal margin narrates as a rout
+two narrates as a comeback — only until the fightback is complete (once the
+side has been level or ahead again, later goals are ordinary football, and a
+second deep deficit re-arms the story); re-taking the lead within five
+minutes of conceding reads as an instant response; and a side's fourth goal
+at a three-goal margin narrates as a rout
 (`comment.goal.hattrick/comeback_level/comeback_ahead/response/rout.*` — all
 thresholds tunable, docs/98). Precedence runs specific-to-generic:
 hat-trick, then comeback, then instant response, then the late-drama calls,
