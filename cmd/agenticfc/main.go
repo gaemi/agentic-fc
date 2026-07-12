@@ -82,7 +82,18 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), "http://"+dialableAddr(*mcpAddr), *mcpManager)
+		// The manifest alone cannot say whether a token still plays: managers
+		// retire (their tokens then fail every call with MANAGER_RETIRED) and
+		// a crash can leave the manifest a credential ahead of the snapshot.
+		// Load the world so the helper only offers tokens the gateway serves.
+		snap, err := (&store.FileStore{Dir: dataDir}).LoadSnapshot()
+		if err != nil {
+			log.Fatalf("loading snapshot: %v", err)
+		}
+		if snap == nil {
+			log.Fatalf("no world in %s — launch the daemon once to create one (agenticfc -start)", dataDir)
+		}
+		out, err := mcpConfigText(filepath.Join(dataDir, "manifest.json"), "http://"+dialableAddr(*mcpAddr), *mcpManager, snap.World)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -264,12 +275,17 @@ func main() {
 	consoleURL := "http://" + dialableAddr(consoleLn.Addr().String())
 	mcpURL := "http://" + dialableAddr(mcpLn.Addr().String())
 	fmt.Printf("Console API: %s  ·  MCP: %s\n", consoleURL, mcpURL)
-	// Repeat only the flags that change what -mcp-config would print, so the
-	// suggested command works verbatim for this exact launch.
+	// Repeat the flags that change what -mcp-config would print, so the
+	// suggested command works verbatim for this exact launch. The data dir is
+	// always pinned as an absolute path: a relative one (including the adopted
+	// ./data default) would resolve to a different world from another working
+	// directory, and the macOS per-user default contains a space, so quote it.
 	connectHint := "agenticfc -mcp-config"
-	if explicitFlags["data"] {
-		connectHint += " -data " + *dataFlag
+	hintData := dataDir
+	if abs, err := filepath.Abs(dataDir); err == nil {
+		hintData = abs
 	}
+	connectHint += fmt.Sprintf(" -data %q", hintData)
 	if mcpURL != "http://"+dialableAddr(*mcpAddr) {
 		// A ":0" flag landed on an OS-picked port -mcp-config cannot re-derive.
 		connectHint += " -mcp-addr " + dialableAddr(mcpLn.Addr().String())
@@ -649,8 +665,11 @@ func readManifestCredentials(path string) ([]worldgen.ManagerCredential, error) 
 // mcpConfigText renders ready-to-paste MCP client setup for one Manager of
 // the world whose manifest lives at manifestPath. The endpoint comes from
 // the -mcp-addr flag value, so the daemon does not need to be running.
-// managerID 0 picks the first manifest entry.
-func mcpConfigText(manifestPath, mcpURL string, managerID int64) (string, error) {
+// managerID 0 picks the first playable manifest entry. Credentials are
+// filtered against the world snapshot: a RETIRED manager's token fails every
+// call (FR-14e), and a credential whose manager is missing from the snapshot
+// is an orphan the gateway prunes at load — neither is worth pasting.
+func mcpConfigText(manifestPath, mcpURL string, managerID int64, world *worldgen.World) (string, error) {
 	creds, err := readManifestCredentials(manifestPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -661,16 +680,32 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64) (string, error)
 	if len(creds) == 0 {
 		return "", fmt.Errorf("manifest %s lists no managers", manifestPath)
 	}
-	pick := creds[0]
+	statuses := make(map[int64]worldgen.ManagerStatus, len(world.Managers))
+	for i := range world.Managers {
+		statuses[world.Managers[i].ID] = world.Managers[i].Status
+	}
+	playable := make([]worldgen.ManagerCredential, 0, len(creds))
+	for _, c := range creds {
+		if st, ok := statuses[c.ManagerID]; ok && st != worldgen.ManagerRetired {
+			playable = append(playable, c)
+		}
+	}
+	if len(playable) == 0 {
+		return "", fmt.Errorf("no playable managers in %s — every credential is retired or no longer in the world", manifestPath)
+	}
+	pick := playable[0]
 	if managerID != 0 {
 		found := false
-		for _, c := range creds {
+		for _, c := range playable {
 			if c.ManagerID == managerID {
 				pick, found = c, true
 				break
 			}
 		}
 		if !found {
+			if statuses[managerID] == worldgen.ManagerRetired {
+				return "", fmt.Errorf("manager %d has retired — a retired manager's token no longer plays (MANAGER_RETIRED)", managerID)
+			}
 			return "", fmt.Errorf("manager %d is not in %s — run -mcp-config without -mcp-manager to list ids", managerID, manifestPath)
 		}
 	}
@@ -680,7 +715,7 @@ func mcpConfigText(manifestPath, mcpURL string, managerID int64) (string, error)
 	fmt.Fprintf(&b, "Managers in this world (the token binds the agent to one Manager):\n")
 	tw := tabwriter.NewWriter(&b, 2, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "\tID\tMANAGER\tCLUB\n")
-	for _, c := range creds {
+	for _, c := range playable {
 		mark := ""
 		if c.ManagerID == pick.ManagerID {
 			mark = "*"

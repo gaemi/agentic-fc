@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gaemi/agentic-fc/internal/sim"
+	"github.com/gaemi/agentic-fc/internal/worldgen"
 )
 
 func TestListenTCP(t *testing.T) {
@@ -397,14 +398,21 @@ func TestMCPConfigText(t *testing.T) {
   "managers": [
     {"manager_id": 1001, "manager_name": "Ada One", "club_id": 1, "club_name": "Alpha FC", "archetype": "The Idealist", "reputation": 5000, "token": "mgr_alpha"},
     {"manager_id": 1002, "manager_name": "Bo Two", "club_id": 2, "club_name": "Beta United", "archetype": "The Professor", "reputation": 5100, "token": "mgr_beta"},
-    {"manager_id": 1003, "manager_name": "Cy Three", "club_id": 0, "archetype": "The Firefighter", "reputation": 4200, "token": "mgr_free"}
+    {"manager_id": 1003, "manager_name": "Cy Three", "club_id": 0, "archetype": "The Firefighter", "reputation": 4200, "token": "mgr_free"},
+    {"manager_id": 1004, "manager_name": "Del Four", "club_id": 4, "club_name": "Delta Town", "archetype": "The Idealist", "reputation": 3000, "token": "mgr_dead"},
+    {"manager_id": 1005, "manager_name": "Eve Five", "club_id": 5, "club_name": "Echo City", "archetype": "The Professor", "reputation": 3100, "token": "mgr_ghost"}
   ]
 }`
+	world := &worldgen.World{Managers: []worldgen.Manager{
+		{ID: 1001}, {ID: 1002}, {ID: 1003},
+		{ID: 1004, Status: worldgen.ManagerRetired},
+		// 1005 is missing: an orphan credential the gateway prunes at load.
+	}}
 	if err := os.WriteFile(manifest, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	out, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0)
+	out, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0, world)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,14 +429,16 @@ func TestMCPConfigText(t *testing.T) {
 		}
 	}
 	// Only the picked manager's token may appear: the other tokens stay in
-	// the manifest so the listing never leaks every credential at once.
-	for _, leak := range []string{"mgr_beta", "mgr_free"} {
+	// the manifest so the listing never leaks every credential at once. The
+	// retired manager (1004) and the orphan credential (1005) must vanish
+	// entirely — their tokens are dead on arrival at the gateway.
+	for _, leak := range []string{"mgr_beta", "mgr_free", "mgr_dead", "mgr_ghost", "Del Four", "Eve Five"} {
 		if strings.Contains(out, leak) {
-			t.Errorf("default output leaks unpicked token %q\n%s", leak, out)
+			t.Errorf("default output contains %q, want it omitted\n%s", leak, out)
 		}
 	}
 
-	out, err = mcpConfigText(manifest, "http://127.0.0.1:7421", 1002)
+	out, err = mcpConfigText(manifest, "http://127.0.0.1:7421", 1002, world)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,10 +449,18 @@ func TestMCPConfigText(t *testing.T) {
 		t.Errorf("-mcp-manager 1002 output leaks alpha token\n%s", out)
 	}
 
-	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 9999); err == nil {
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 9999, world); err == nil {
 		t.Fatal("unknown manager id accepted")
 	}
-	if _, err := mcpConfigText(filepath.Join(dir, "missing.json"), "http://127.0.0.1:7421", 0); err == nil ||
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 1004, world); err == nil ||
+		!strings.Contains(err.Error(), "retired") {
+		t.Fatalf("retired manager error = %v, want retirement hint", err)
+	}
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 1005, world); err == nil ||
+		strings.Contains(err.Error(), "retired") {
+		t.Fatalf("orphan credential error = %v, want plain not-found", err)
+	}
+	if _, err := mcpConfigText(filepath.Join(dir, "missing.json"), "http://127.0.0.1:7421", 0, world); err == nil ||
 		!strings.Contains(err.Error(), "no world manifest") {
 		t.Fatalf("missing manifest error = %v, want friendly hint", err)
 	}
@@ -451,7 +469,12 @@ func TestMCPConfigText(t *testing.T) {
 	if err := os.WriteFile(empty, []byte(`{"world_name":"x","seed":1,"start_state":"ready","managers":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mcpConfigText(empty, "http://127.0.0.1:7421", 0); err == nil {
+	if _, err := mcpConfigText(empty, "http://127.0.0.1:7421", 0, world); err == nil {
 		t.Fatal("empty manager list accepted")
+	}
+	if _, err := mcpConfigText(manifest, "http://127.0.0.1:7421", 0,
+		&worldgen.World{Managers: []worldgen.Manager{{ID: 1001, Status: worldgen.ManagerRetired}}}); err == nil ||
+		!strings.Contains(err.Error(), "no playable managers") {
+		t.Fatal("all-retired world accepted")
 	}
 }
