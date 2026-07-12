@@ -134,7 +134,10 @@ readily, and a contracted player moves only when his club has explicitly
 SELL-listed him — surplus players feed the autonomous market, never an
 explicit `SIGN`. Filter the search before you spend the 12 FP scout:
 `search_players` with `contract_status: "listed"` or `"free_agent"`
-returns only players a `SIGN` can actually land ([11](11-mcp-tools.md)).
+narrows to market-available players ([11](11-mcp-tools.md)) — then still
+sanity-check the fee and wage against your own budgets (and skip your own
+listings) before scouting, because a `SIGN` your board cannot fund fails
+at completion, not at filing.
 
 **Adjust when** safe by six points with five rounds left: swap rank 3 to
 `BUILD_SQUAD_VALUE` and open the door for next season's squad the way the
@@ -165,9 +168,10 @@ Choose a formation whose bands match where your prospects play.
 **Directives**: minutes are the whole point — and today the real minutes
 lever is squad composition, not a selection order. Selection fills the
 plan's formation bands by score ([12 §6](12-match-model.md)), so a prospect
-starts when his band is thin enough for him to win the slot: `SELL` or
-`RELEASE` the aging body blocking him, and lock the prospect down by
-contract.
+starts when his band is thin enough for him to win the slot. Thinning takes
+football time: a `SELL` listing completes only when a window is open and a
+buyer arrives, and `RELEASE` applies at the season-end contract pass — plan
+a window ahead, and lock the prospect down by contract meanwhile.
 
 ```json
 {"verb": "RENEW", "target": {"player": <prospect_id>}, "strength": "INSIST"}
