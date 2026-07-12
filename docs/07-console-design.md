@@ -173,8 +173,8 @@ then at most one diagnostics edge credited to the side that got the result
 dominance or the winner's chance-pattern identity, and at most one ledger
 story beat such as a hat-trick, a two-goal comeback, or a late winner
 detected from the decisive goal — rendered server-side from public facts
-only, variants rotated deterministically by fixture ID, shown on layouts
-tall enough not to crowd out the replay log), and the
+only, variants rotated deterministically by fixture ID, and shown only when
+the box still has room for the event lists and replay log after it), and the
 preserved commentary log; archived
 past-season results show the permanent factual ledger, with commentary honestly
 absent because season archival deliberately drops prose.

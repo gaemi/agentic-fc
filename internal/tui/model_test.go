@@ -2163,7 +2163,22 @@ func TestReplayModalShowsMatchReportProse(t *testing.T) {
 	if compactView := m.replayMatchModal(80, 18); strings.Contains(compactView, "STORY OF THE MATCH") {
 		t.Fatalf("compact replay should keep prioritizing score and events:\n%s", compactView)
 	}
-	if tight := m.replayMatchModal(120, 20); strings.Contains(tight, "STORY OF THE MATCH") {
-		t.Fatalf("short non-compact replay should keep its replay log over the report:\n%s", tight)
+	// A mid-height box crowded with event rows drops the report before it
+	// drops the replay log; the same box with room keeps the report.
+	crowded := m
+	crowded.MatchDetail.Scorers = []MatchEvent{
+		{Minute: 5, Club: "Alpha", Player: "A"}, {Minute: 20, Club: "Alpha", Player: "B"},
+		{Minute: 40, Club: "Alpha", Player: "C"}, {Minute: 60, Club: "Beta", Player: "D"},
+	}
+	crowded.MatchDetail.Cards = []MatchEvent{
+		{Minute: 30, Club: "Beta", Player: "E", Detail: "YELLOW"},
+		{Minute: 70, Club: "Beta", Player: "F", Detail: "RED"},
+	}
+	crowded.MatchDetail.Subs = []MatchSub{{Minute: 46, Club: "Alpha", Off: "A", On: "G"}}
+	if tight := crowded.replayMatchModal(120, 24); strings.Contains(tight, "STORY OF THE MATCH") {
+		t.Fatalf("crowded mid-height replay should keep its replay log over the report:\n%s", tight)
+	}
+	if v := crowded.replayMatchModal(120, 40); !strings.Contains(v, "STORY OF THE MATCH") {
+		t.Fatalf("tall crowded replay still has room for the report:\n%s", v)
 	}
 }

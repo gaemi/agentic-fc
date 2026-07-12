@@ -1460,9 +1460,12 @@ func (m Model) replayMatchModal(width, height int) string {
 	if md.Winner != "" {
 		lines = append(lines, fmt.Sprintf("%s %s", m.ui("ui.match.winner"), md.Winner))
 	}
-	// The report block costs 3-5 rows; below this box height it would push
-	// the replay log — the content the pop-up exists for — off the bottom.
-	if !compact && height >= 24 && len(md.Story) > 0 {
+	// The report block costs 3-5 rows. It only spends them when the rows
+	// the rest of the modal still needs — event lists, ratings, the current
+	// scene, and a minimum replay log — would survive; otherwise the prose
+	// would push the replay content the pop-up exists for off the bottom.
+	if !compact && len(md.Story) > 0 &&
+		height-2-len(lines)-replayEssentialRows(md) >= len(md.Story)+1 {
 		lines = append(lines, "", m.ui("ui.match.report"))
 		lines = append(lines, md.Story...)
 	}
@@ -1679,6 +1682,32 @@ func lineupRow(e LineupEntry) string {
 		s += fmt.Sprintf(" · %d.%d", e.RatingX10/10, e.RatingX10%10)
 	}
 	return s
+}
+
+// replayEssentialRows counts the rows the replay modal's remaining sections
+// will claim after the report block: scorers, cards, subs, ratings (each a
+// blank line + title + rows), the current-scene block, and a minimum three
+// replay-log lines. The action-scene frame self-gates on spare height and is
+// deliberately not part of the budget.
+func replayEssentialRows(md MatchDetail) int {
+	rows := 3 + 2 + 3 // current scene block + replay header + minimum log
+	if len(md.Scorers) > 0 {
+		rows += 2 + len(md.Scorers)
+	}
+	if len(md.Cards) > 0 {
+		rows += 2 + len(md.Cards)
+	}
+	if len(md.Subs) > 0 {
+		rows += 2 + len(md.Subs)
+	}
+	if len(md.Ratings) > 0 {
+		n := len(md.Ratings)
+		if n > 5 {
+			n = 5
+		}
+		rows += 2 + n
+	}
+	return rows
 }
 
 // beatLines returns minute-stamped display strings for commentary, falling
