@@ -706,10 +706,12 @@ func TestKickoffCommentaryKeyRotatesAndExists(t *testing.T) {
 // before its pool is exhausted, and the verdict must stay inside its family.
 func TestCardAndInjuryCommentaryRotateWithoutRNG(t *testing.T) {
 	pools := map[string][]string{
-		"yellow":       yellowCardCommentKeys,
-		"red":          redCardCommentKeys,
-		"secondyellow": secondYellowCommentKeys,
-		"injury":       injuryCommentKeys,
+		"yellow":        yellowCardCommentKeys,
+		"red":           redCardCommentKeys,
+		"secondyellow":  append(append([]string{}, secondYellowCommentKeys...), quickSecondYellowKey),
+		"injury.days":   injuryCommentKeysByBand["DAYS"],
+		"injury.weeks":  injuryCommentKeysByBand["WEEKS"],
+		"injury.months": injuryCommentKeysByBand["MONTH"],
 	}
 	for name, keys := range pools {
 		for _, key := range keys {
@@ -750,6 +752,58 @@ func TestCardVerdictKeysStayInFamily(t *testing.T) {
 	lm.Cards = append(lm.Cards, worldgen.MatchEvent{PlayerID: 42, Detail: "YELLOW"})
 	if detail, key := cardVerdict(lm, 42, false); detail != "RED" || !strings.HasPrefix(key, "comment.card.secondyellow") {
 		t.Fatalf("second booking verdict = %s %s", detail, key)
+	}
+}
+
+// The quick-succession second-yellow voice may only speak when the first
+// booking was recent; a booking an hour apart must never claim it. Every
+// rotation anchor (clock and commentary length combinations) is exercised so
+// the guard holds regardless of where the probe starts.
+func TestSecondYellowQuickSuccessionRespectsGap(t *testing.T) {
+	for clock := 60; clock < 90; clock++ {
+		for pad := 0; pad < 7; pad++ {
+			lm := &worldgen.LiveMatch{Clock: clock, FixtureID: int64(clock * 31)}
+			for i := 0; i < pad; i++ {
+				lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Minute: i, Key: "comment.quiet.1"})
+			}
+			lm.Cards = append(lm.Cards, worldgen.MatchEvent{Minute: 5, PlayerID: 42, Detail: "YELLOW"})
+			if _, key := cardVerdict(lm, 42, false); key == quickSecondYellowKey {
+				t.Fatalf("clock %d pad %d: distant bookings claimed quick succession", clock, pad)
+			}
+		}
+	}
+	// A genuinely quick pair keeps the voice reachable: with the pool's other
+	// lines already spoken, the probe must land on the quick-succession call.
+	lm := &worldgen.LiveMatch{Clock: 20}
+	lm.Cards = append(lm.Cards, worldgen.MatchEvent{Minute: 10, PlayerID: 42, Detail: "YELLOW"})
+	for _, used := range secondYellowCommentKeys {
+		lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Minute: 12, Key: used})
+	}
+	if _, key := cardVerdict(lm, 42, false); key != quickSecondYellowKey {
+		t.Fatalf("quick pair with exhausted pool picked %s, want %s", key, quickSecondYellowKey)
+	}
+}
+
+// Injury narration follows the severity band: a lay-off of days must never be
+// narrated with the stretcher or long-absence voices reserved for serious
+// injuries, and every band key must exist in both catalogs (bands covered by
+// TestCardAndInjuryCommentaryRotateWithoutRNG existence checks too).
+func TestInjuryCommentaryMatchesSeverityBand(t *testing.T) {
+	severe := map[string]bool{"comment.injury.5": true, "comment.injury.8": true}
+	for band, keys := range injuryCommentKeysByBand {
+		if len(keys) < 2 {
+			t.Fatalf("band %s has %d voices, want at least 2", band, len(keys))
+		}
+		for _, key := range keys {
+			if band == "DAYS" && severe[key] {
+				t.Fatalf("DAYS band includes severe voice %s", key)
+			}
+		}
+	}
+	for _, band := range []string{"DAYS", "WEEKS", "MONTH"} {
+		if _, ok := injuryCommentKeysByBand[band]; !ok {
+			t.Fatalf("band %s missing from injury commentary map", band)
+		}
 	}
 }
 

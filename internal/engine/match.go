@@ -512,13 +512,23 @@ var (
 	}
 	secondYellowCommentKeys = []string{
 		"comment.card.secondyellow", "comment.card.secondyellow.2",
-		"comment.card.secondyellow.3",
 	}
-	injuryCommentKeys = []string{
-		"comment.injury", "comment.injury.2", "comment.injury.3",
-		"comment.injury.4", "comment.injury.5", "comment.injury.6",
-	}
+	// The quick-succession call is only true when the two bookings actually
+	// came close together, so it lives outside the always-valid pool.
+	quickSecondYellowKey = "comment.card.secondyellow.3"
 )
+
+// quickSecondYellowMinutes bounds how far apart two bookings can be for the
+// "second yellow in quick succession" line to stay accurate.
+const quickSecondYellowMinutes = 20
+
+// Injury commentary follows the severity band computed from the rolled
+// lay-off, so a knock of days is never narrated as a stretcher case.
+var injuryCommentKeysByBand = map[string][]string{
+	"DAYS":  {"comment.injury", "comment.injury.2", "comment.injury.6"},
+	"WEEKS": {"comment.injury.3", "comment.injury.4", "comment.injury.7"},
+	"MONTH": {"comment.injury.5", "comment.injury.8", "comment.injury.3"},
+}
 
 // rotatedUnusedKey varies commentary that never had an RNG draw: the anchor
 // comes from public match state alone and the probe walks past lines this
@@ -679,14 +689,20 @@ func (e *Engine) bookOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand) 
 // red, straight or second-yellow, sends the player off with no replacement;
 // the side plays short (football rules — the ejected slot cannot be filled).
 // The key rotates inside its family on public state only; the RNG stream is
-// untouched (docs/12: presentation must not perturb play).
+// untouched (docs/12: presentation must not perturb play). The
+// quick-succession voice joins the second-yellow pool only when the first
+// booking really was recent, so the line never contradicts the card ledger.
 func cardVerdict(lm *worldgen.LiveMatch, pid int64, straightRed bool) (detail, key string) {
 	if straightRed {
 		return "RED", rotatedUnusedKey(lm, redCardCommentKeys)
 	}
 	for _, c := range lm.Cards {
 		if c.PlayerID == pid && c.Detail == "YELLOW" {
-			return "RED", rotatedUnusedKey(lm, secondYellowCommentKeys)
+			pool := secondYellowCommentKeys
+			if lm.Clock-c.Minute <= quickSecondYellowMinutes {
+				pool = append(append([]string{}, pool...), quickSecondYellowKey)
+			}
+			return "RED", rotatedUnusedKey(lm, pool)
 		}
 	}
 	return "YELLOW", rotatedUnusedKey(lm, yellowCardCommentKeys)
@@ -727,7 +743,7 @@ func (e *Engine) injureOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand
 		SeasonYear: worldgen.DateOf(at).Season, Band: band,
 	})
 
-	e.comment(lm, at, rotatedUnusedKey(lm, injuryCommentKeys), map[string]any{"player": p.Name, "club": e.clubName(club)})
+	e.comment(lm, at, rotatedUnusedKey(lm, injuryCommentKeysByBand[band]), map[string]any{"player": p.Name, "club": e.clubName(club)})
 	params := map[string]any{"player": p.Name, "club": e.clubName(club)}
 	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "injury", Key: injuryNewsKey(band), Params: params, ClubIDs: []int64{club},
