@@ -872,12 +872,13 @@ func (e *Engine) withdrawInjured(lm *worldgen.LiveMatch, club int64, pid int64, 
 	})
 }
 
-// bestFitOnBench picks the injury replacement role-aware: an injured keeper
-// takes the best unused bench keeper, an injured outfielder the best unused
-// bench outfielder — the reserved backup keeper is not burned as an outfield
-// body. Only when the matching role is exhausted does the other kind come on
-// as an emergency replacement (a full XI beats role purity; the true
-// play-short case is SubEvent.On == 0 when nothing usable remains).
+// bestFitOnBench picks the injury replacement role-aware and in bench
+// order: an injured keeper takes the first unused bench keeper (the seat
+// selectSquad reserved), an injured outfielder the first unused bench
+// outfielder — the backup keeper is not burned as an outfield body. Only
+// when the matching role is exhausted does the other kind come on as an
+// emergency replacement (a full XI beats role purity; the true play-short
+// case is SubEvent.On == 0 when nothing usable remains).
 func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameTime, wantGK bool) int64 {
 	bench := lm.HomeBench
 	if club == lm.AwayID {
@@ -893,31 +894,25 @@ func (e *Engine) bestFitOnBench(lm *worldgen.LiveMatch, club int64, at sim.GameT
 			used[s.On] = true
 		}
 	}
-	var best, emergency *worldgen.Player
-	stronger := func(p, cur *worldgen.Player) bool {
-		return cur == nil || p.AbilityPool > cur.AbilityPool ||
-			(p.AbilityPool == cur.AbilityPool && p.ID < cur.ID)
-	}
+	// The bench already stands in the order selectSquad promised — the
+	// reserved keeper first, then selection score — so the picker honors
+	// that order instead of re-ranking: the first eligible body of the
+	// matching role comes on, and the first eligible body of the other
+	// kind is remembered as the emergency.
+	var emergency int64
 	for _, id := range bench {
 		p := e.players[id]
 		if p == nil || used[id] || p.InjuredUntil > at || p.SuspendedMatches > 0 {
 			continue
 		}
 		if (p.Group == attr.GK) == wantGK {
-			if stronger(p, best) {
-				best = p
-			}
-		} else if stronger(p, emergency) {
-			emergency = p
+			return p.ID
+		}
+		if emergency == 0 {
+			emergency = p.ID
 		}
 	}
-	if best == nil {
-		best = emergency
-	}
-	if best == nil {
-		return 0
-	}
-	return best.ID
+	return emergency
 }
 
 // maybeDiscretionarySubs lets each side make voluntary changes:
