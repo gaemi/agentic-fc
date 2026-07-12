@@ -1667,11 +1667,11 @@ func mentalityLevel(m string) int {
 // mentality (base dial + the in-match shift). Summation is over the XI slice
 // (deterministic order, integer math).
 func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) (attack, defense int) {
-	// Only one keeper guards the goal: the first GK in the XI (selection
-	// puts the real keeper first) earns the keeper-specific bonus, so an
-	// emergency spare keeper fielded as a crisis outfield body defends with
-	// his outfield attributes only, not as a second keeper.
-	keeperCredited := false
+	// Only one keeper guards the goal: the side is credited with its best
+	// available keeper's bonus exactly once, independent of lineup order
+	// (a crisis XI can carry several GK bodies; whoever keeps best is in
+	// goal). The extras defend with their outfield attributes only.
+	bestKeeper := 0
 	for _, pid := range xi {
 		p := e.players[pid]
 		if p == nil {
@@ -1685,13 +1685,17 @@ func (e *Engine) teamStrength(xi []int64, plan mindset.TacticalPlan, shift int) 
 		d := (effective(p, attr.Tackling) + effective(p, attr.Marking) +
 			effective(p, attr.Positioning) + effective(p, attr.Concentration) +
 			bodyStrength(p) + bodyReach(p)/2)
-		if p.Group == attr.GK && !keeperCredited {
-			d += effective(p, attr.Reflexes) + effective(p, attr.Handling) + effective(p, attr.CommandOfArea)
-			keeperCredited = true
+		if p.Group == attr.GK {
+			kb := (effective(p, attr.Reflexes) + effective(p, attr.Handling) +
+				effective(p, attr.CommandOfArea)) * fit / 200
+			if kb > bestKeeper {
+				bestKeeper = kb
+			}
 		}
 		attack += a * fit / 200
 		defense += d * fit / 200
 	}
+	defense += bestKeeper
 	level := clampInt(mentalityLevel(plan.Mentality)+shift, -2, 2)
 	attack += attack * level / 10   // +10% attack per attacking step
 	defense -= defense * level / 10 // −10% defense per attacking step

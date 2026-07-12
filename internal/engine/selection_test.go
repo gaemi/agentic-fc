@@ -191,6 +191,11 @@ func TestTeamStrengthCreditsOneKeeperOnly(t *testing.T) {
 	if aBoth != aFirst+aSecond {
 		t.Fatalf("attack must stay additive: both=%d first=%d second=%d", aBoth, aFirst, aSecond)
 	}
+	// The credit is order-independent: whoever keeps best is in goal.
+	_, dSwapped := e.teamStrength([]int64{gks[1], gks[0]}, plan, 0)
+	if dBoth != dSwapped {
+		t.Fatalf("keeper credit must not depend on lineup order: %d vs %d", dBoth, dSwapped)
+	}
 }
 
 // After a keeper red card the goal stands empty; the next injury window must
