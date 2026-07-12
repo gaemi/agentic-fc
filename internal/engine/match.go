@@ -1470,7 +1470,14 @@ func (e *Engine) resultStoryPayload(results []worldgen.MatchResult) map[string]a
 	for _, r := range results {
 		total := r.HomeGoals + r.AwayGoals
 		goals += total
+		// A cup tie level after ninety carries its shootout winner: it is a
+		// decided match, not a draw, or the story could claim "no winner"
+		// while the results block names who advanced.
 		switch {
+		case r.Winner != 0 && r.Winner == r.HomeID:
+			homeWins++
+		case r.Winner != 0 && r.Winner == r.AwayID:
+			awayWins++
 		case r.HomeGoals == r.AwayGoals:
 			draws++
 			if total == 0 {
@@ -1505,6 +1512,7 @@ func (e *Engine) resultStoryPayload(results []worldgen.MatchResult) map[string]a
 	}
 	if topTotal > 0 {
 		out["top_total"] = topTotal
+		out["top_margin"] = absInt(top.HomeGoals - top.AwayGoals)
 		out["top_home"] = e.clubName(top.HomeID)
 		out["top_away"] = e.clubName(top.AwayID)
 		out["top_home_goals"] = top.HomeGoals

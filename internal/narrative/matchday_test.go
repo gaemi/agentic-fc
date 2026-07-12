@@ -11,7 +11,7 @@ func richStory(overrides map[string]any) map[string]any {
 		"best_margin": 2, "draws": 1, "count": 8, "goals": 18,
 		"home_wins": 4, "away_wins": 3, "scoreless": 0,
 		"best_home": "Alpha", "best_away": "Beta", "home_goals": 3, "away_goals": 1,
-		"top_total": 4, "top_home": "Gamma", "top_away": "Delta",
+		"top_total": 4, "top_margin": 0, "top_home": "Gamma", "top_away": "Delta",
 		"top_home_goals": 2, "top_away_goals": 2,
 	}
 	for k, v := range overrides {
@@ -55,6 +55,11 @@ func TestMatchdayStoryLineLeads(t *testing.T) {
 			map[Locale]string{LocaleEN: "a single goal", LocaleKO: "한 골에 그쳤습니다"}},
 		{"deadlock", map[string]any{"best_margin": 0, "draws": 8},
 			map[Locale]string{LocaleEN: "Not one fixture found a winner", LocaleKO: "승자가 나온 경기가 하나도"}},
+		// A cup round where every tie finished level: no draws recorded (all
+		// carried a shootout winner), so the lead must speak penalties, not
+		// "no winner".
+		{"shootout_round", map[string]any{"best_margin": 0, "draws": 0, "home_wins": 5, "away_wins": 3},
+			map[Locale]string{LocaleEN: "needed penalties", LocaleKO: "승부차기까지"}},
 	}
 	for _, tt := range tests {
 		for loc, want := range tt.wants {
@@ -79,7 +84,10 @@ func TestMatchdayStoryAngleGating(t *testing.T) {
 		{"gridlock", map[string]any{"goals": 6}, "term.matchday.story.angle.gridlock", "term.matchday.story.angle.goalfest"},
 		{"awayday", map[string]any{"away_wins": 5, "home_wins": 2}, "term.matchday.story.angle.awayday", "term.matchday.story.angle.fortress"},
 		{"fortress", map[string]any{"home_wins": 7, "away_wins": 0}, "term.matchday.story.angle.fortress", "term.matchday.story.angle.awayday"},
-		{"thriller", map[string]any{"top_total": 6}, "term.matchday.story.angle.thriller", ""},
+		{"thriller", map[string]any{"top_total": 6, "top_margin": 0}, "term.matchday.story.angle.thriller", ""},
+		{"thriller.close", map[string]any{"top_total": 5, "top_margin": 1}, "term.matchday.story.angle.thriller", ""},
+		// A 5-1 is high-scoring but one-sided: never a thriller.
+		{"thriller.lopsided", map[string]any{"top_total": 6, "top_margin": 4}, "", "term.matchday.story.angle.thriller"},
 		{"stalemates", map[string]any{"draws": 3, "scoreless": 2}, "term.matchday.story.angle.stalemates", "term.matchday.story.angle.level"},
 		{"decisive", map[string]any{"draws": 0}, "term.matchday.story.angle.decisive", "term.matchday.story.angle.stalemates"},
 	}
@@ -87,14 +95,14 @@ func TestMatchdayStoryAngleGating(t *testing.T) {
 		angles := storyAngleKeys(richStory(tt.overrides))
 		found := false
 		for _, a := range angles {
-			if a == tt.want {
+			if tt.want != "" && a == tt.want {
 				found = true
 			}
 			if tt.exclude != "" && a == tt.exclude {
 				t.Errorf("%s: angle list %v contains excluded %s", tt.name, angles, tt.exclude)
 			}
 		}
-		if !found {
+		if tt.want != "" && !found {
 			t.Errorf("%s: angle list %v missing %s", tt.name, angles, tt.want)
 		}
 	}
@@ -121,6 +129,7 @@ func TestMatchdayStoryKeysExistAndRotate(t *testing.T) {
 		"term.matchday.story.lead.rout.home", "term.matchday.story.lead.rout.away",
 		"term.matchday.story.lead.clear.home", "term.matchday.story.lead.clear.away",
 		"term.matchday.story.lead.tight", "term.matchday.story.lead.deadlock",
+		"term.matchday.story.lead.shootout_round",
 		"term.matchday.story.angle.goalfest", "term.matchday.story.angle.gridlock",
 		"term.matchday.story.angle.awayday", "term.matchday.story.angle.fortress",
 		"term.matchday.story.angle.thriller", "term.matchday.story.angle.stalemates",

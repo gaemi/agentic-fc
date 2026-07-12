@@ -71,10 +71,15 @@ func richStoryLine(c Catalogs, loc Locale, story map[string]any, newsID int64) s
 }
 
 // storyLeadKey grades the day's widest win: a rout, a clear win, a
-// single-goal round, or a full deadlock, framed for the side that won it.
+// single-goal round, or — when every score finished level — a deadlock for a
+// league round and a shootout round for a cup one (level cup ties carry a
+// winner, so "no fixture found a winner" would contradict the results block).
 func storyLeadKey(story map[string]any) string {
 	margin, _ := storyInt(story, "best_margin")
 	if margin <= 0 {
+		if draws, ok := storyInt(story, "draws"); ok && draws == 0 {
+			return "term.matchday.story.lead.shootout_round"
+		}
 		return "term.matchday.story.lead.deadlock"
 	}
 	homeGoals, _ := storyInt(story, "home_goals")
@@ -128,7 +133,11 @@ func storyAngleKeys(story map[string]any) []string {
 	if homeWins >= fortressStoryMinimum && awayWins == 0 {
 		angles = append(angles, "term.matchday.story.angle.fortress")
 	}
-	if topTotal >= thrillerStoryTotal && !storyTopIsLead(story) {
+	// A thriller needs goals AND a close finish: a 5-1 is high-scoring but
+	// never "refused to settle". The margin gate requires the fact to be
+	// present, so payloads without it never claim drama.
+	if topMargin, ok := storyInt(story, "top_margin"); ok && topMargin <= 1 &&
+		topTotal >= thrillerStoryTotal && !storyTopIsLead(story) {
 		angles = append(angles, "term.matchday.story.angle.thriller")
 	}
 	if scoreless >= 1 && draws >= stalemateStoryDraws {
