@@ -6,7 +6,13 @@ section below.
 
 ## Unreleased
 
-- Nothing yet.
+- Match commentary for bookings, injuries, and the kickoff whistle no longer
+  repeats a single line: yellow cards rotate six localized voices, straight
+  reds four, second yellows up to three, and the opening whistle six — all
+  chosen from public match state with no extra RNG, so existing seeds replay
+  identical football. Injury calls pick their voice from the severity band
+  (mild knocks never arrive on a stretcher), and the "quick succession"
+  second yellow only speaks when the bookings really were close together.
 
 ## 0.2.0 - 2026-07-12
 

@@ -687,7 +687,7 @@ func TestGoalContextCommentaryKey(t *testing.T) {
 
 func TestKickoffCommentaryKeyRotatesAndExists(t *testing.T) {
 	seen := map[string]bool{}
-	for id := int64(100001); id < 100007; id++ {
+	for id := int64(100001); id < 100013; id++ {
 		key := kickoffCommentaryKey(id)
 		seen[key] = true
 		for _, loc := range narrative.Supported {
@@ -696,8 +696,114 @@ func TestKickoffCommentaryKeyRotatesAndExists(t *testing.T) {
 			}
 		}
 	}
-	if len(seen) != 3 {
-		t.Fatalf("kickoff keys used = %v, want all 3 variants across fixtures", seen)
+	if len(seen) != 6 {
+		t.Fatalf("kickoff keys used = %v, want all 6 variants across fixtures", seen)
+	}
+}
+
+// Booking and injury calls rotate through their pools without any RNG draw:
+// every key must exist in both catalogs, a match must not repeat a line
+// before its pool is exhausted, and the verdict must stay inside its family.
+func TestCardAndInjuryCommentaryRotateWithoutRNG(t *testing.T) {
+	pools := map[string][]string{
+		"yellow":        yellowCardCommentKeys,
+		"red":           redCardCommentKeys,
+		"secondyellow":  append(append([]string{}, secondYellowCommentKeys...), quickSecondYellowKey),
+		"injury.days":   injuryCommentKeysByBand["DAYS"],
+		"injury.weeks":  injuryCommentKeysByBand["WEEKS"],
+		"injury.months": injuryCommentKeysByBand["MONTH"],
+	}
+	for name, keys := range pools {
+		for _, key := range keys {
+			for _, loc := range narrative.Supported {
+				if _, ok := narrative.Default[loc][key]; !ok {
+					t.Fatalf("%s key %q missing from %s catalog", name, key, loc)
+				}
+			}
+		}
+		lm := &worldgen.LiveMatch{Clock: 17}
+		seen := map[string]bool{}
+		for i := 0; i < len(keys); i++ {
+			key := rotatedUnusedKey(lm, keys)
+			if seen[key] {
+				t.Fatalf("%s pool repeated %q before exhaustion", name, key)
+			}
+			seen[key] = true
+			lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Minute: lm.Clock, Key: key})
+			lm.Clock += 7
+		}
+		// The exhausted pool still yields a deterministic line.
+		if key := rotatedUnusedKey(lm, keys); !seen[key] {
+			t.Fatalf("%s exhausted pick %q left the pool", name, key)
+		}
+	}
+}
+
+// cardVerdict keeps each verdict inside its commentary family so the ledger
+// detail and the spoken line can never disagree.
+func TestCardVerdictKeysStayInFamily(t *testing.T) {
+	lm := &worldgen.LiveMatch{Clock: 30}
+	if detail, key := cardVerdict(lm, 42, true); detail != "RED" || !strings.HasPrefix(key, "comment.card.red") {
+		t.Fatalf("straight red verdict = %s %s", detail, key)
+	}
+	if detail, key := cardVerdict(lm, 42, false); detail != "YELLOW" || !strings.HasPrefix(key, "comment.card.yellow") {
+		t.Fatalf("first booking verdict = %s %s", detail, key)
+	}
+	lm.Cards = append(lm.Cards, worldgen.MatchEvent{PlayerID: 42, Detail: "YELLOW"})
+	if detail, key := cardVerdict(lm, 42, false); detail != "RED" || !strings.HasPrefix(key, "comment.card.secondyellow") {
+		t.Fatalf("second booking verdict = %s %s", detail, key)
+	}
+}
+
+// The quick-succession second-yellow voice may only speak when the first
+// booking was recent; a booking an hour apart must never claim it. Every
+// rotation anchor (clock and commentary length combinations) is exercised so
+// the guard holds regardless of where the probe starts.
+func TestSecondYellowQuickSuccessionRespectsGap(t *testing.T) {
+	for clock := 60; clock < 90; clock++ {
+		for pad := 0; pad < 7; pad++ {
+			lm := &worldgen.LiveMatch{Clock: clock, FixtureID: int64(clock * 31)}
+			for i := 0; i < pad; i++ {
+				lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Minute: i, Key: "comment.quiet.1"})
+			}
+			lm.Cards = append(lm.Cards, worldgen.MatchEvent{Minute: 5, PlayerID: 42, Detail: "YELLOW"})
+			if _, key := cardVerdict(lm, 42, false); key == quickSecondYellowKey {
+				t.Fatalf("clock %d pad %d: distant bookings claimed quick succession", clock, pad)
+			}
+		}
+	}
+	// A genuinely quick pair keeps the voice reachable: with the pool's other
+	// lines already spoken, the probe must land on the quick-succession call.
+	lm := &worldgen.LiveMatch{Clock: 20}
+	lm.Cards = append(lm.Cards, worldgen.MatchEvent{Minute: 10, PlayerID: 42, Detail: "YELLOW"})
+	for _, used := range secondYellowCommentKeys {
+		lm.Commentary = append(lm.Commentary, worldgen.CommentaryLine{Minute: 12, Key: used})
+	}
+	if _, key := cardVerdict(lm, 42, false); key != quickSecondYellowKey {
+		t.Fatalf("quick pair with exhausted pool picked %s, want %s", key, quickSecondYellowKey)
+	}
+}
+
+// Injury narration follows the severity band: a lay-off of days must never be
+// narrated with the stretcher or long-absence voices reserved for serious
+// injuries, and every band key must exist in both catalogs (bands covered by
+// TestCardAndInjuryCommentaryRotateWithoutRNG existence checks too).
+func TestInjuryCommentaryMatchesSeverityBand(t *testing.T) {
+	severe := map[string]bool{"comment.injury.5": true, "comment.injury.8": true}
+	for band, keys := range injuryCommentKeysByBand {
+		if len(keys) < 2 {
+			t.Fatalf("band %s has %d voices, want at least 2", band, len(keys))
+		}
+		for _, key := range keys {
+			if band == "DAYS" && severe[key] {
+				t.Fatalf("DAYS band includes severe voice %s", key)
+			}
+		}
+	}
+	for _, band := range []string{"DAYS", "WEEKS", "MONTH"} {
+		if _, ok := injuryCommentKeysByBand[band]; !ok {
+			t.Fatalf("band %s missing from injury commentary map", band)
+		}
 	}
 }
 

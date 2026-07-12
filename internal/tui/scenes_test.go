@@ -258,6 +258,38 @@ func TestDumpScenes(t *testing.T) {
 	}
 }
 
+// Booking and injury prose must land on the referee's-book and stoppage
+// scenes in both locales — a variant line that misses its signal words would
+// silently demote a red card to the build-up frame.
+func TestCardAndInjuryCommentaryPlayTheirScenes(t *testing.T) {
+	params := map[string]any{"player": "Kim Min-jae", "club": "Alpha"}
+	families := []struct {
+		re   *regexp.Regexp
+		want string
+	}{
+		{regexp.MustCompile(`^comment\.card\.`), "card"},
+		{regexp.MustCompile(`^comment\.injury`), "injury"},
+	}
+	for _, loc := range narrative.Supported {
+		for _, fam := range families {
+			checked := 0
+			for key := range narrative.Default[loc] {
+				if !fam.re.MatchString(key) {
+					continue
+				}
+				checked++
+				line := narrative.Default.Render(loc, key, params)
+				if got := matchSceneFromLine(line, nil).kind; got != fam.want {
+					t.Errorf("%s %s: scene %q, want %q for line %q", loc, key, got, fam.want, line)
+				}
+			}
+			if checked == 0 {
+				t.Fatalf("no %s keys found for locale %s", fam.re, loc)
+			}
+		}
+	}
+}
+
 // Ceremony prose (whistles and shootouts) must play its ceremony scene, not
 // the quiet build-up frame, in both locales.
 func TestCeremonyCommentaryPlaysCeremonyScenes(t *testing.T) {

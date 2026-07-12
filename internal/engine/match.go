@@ -488,12 +488,66 @@ func pickWidenedKey(r *rand.Rand, lm *worldgen.LiveMatch, legacyCount int, keys 
 // kickoffCommentaryKey rotates the opening whistle line per fixture without
 // touching the match RNG stream.
 func kickoffCommentaryKey(fixtureID int64) string {
-	keys := []string{"comment.kickoff", "comment.kickoff.2", "comment.kickoff.3"}
+	keys := []string{
+		"comment.kickoff", "comment.kickoff.2", "comment.kickoff.3",
+		"comment.kickoff.4", "comment.kickoff.5", "comment.kickoff.6",
+	}
 	idx := int(fixtureID % int64(len(keys)))
 	if idx < 0 {
 		idx += len(keys)
 	}
 	return keys[idx]
+}
+
+// Booking and injury calls carry no RNG draw of their own (the outcome rolls
+// already happened), so their pools rotate purely on public match state.
+var (
+	yellowCardCommentKeys = []string{
+		"comment.card.yellow", "comment.card.yellow.2", "comment.card.yellow.3",
+		"comment.card.yellow.4", "comment.card.yellow.5", "comment.card.yellow.6",
+	}
+	redCardCommentKeys = []string{
+		"comment.card.red", "comment.card.red.2", "comment.card.red.3",
+		"comment.card.red.4",
+	}
+	secondYellowCommentKeys = []string{
+		"comment.card.secondyellow", "comment.card.secondyellow.2",
+	}
+	// The quick-succession call is only true when the two bookings actually
+	// came close together, so it lives outside the always-valid pool.
+	quickSecondYellowKey = "comment.card.secondyellow.3"
+)
+
+// quickSecondYellowMinutes bounds how far apart two bookings can be for the
+// "second yellow in quick succession" line to stay accurate.
+const quickSecondYellowMinutes = 20
+
+// Injury commentary follows the severity band computed from the rolled
+// lay-off, so a knock of days is never narrated as a stretcher case.
+var injuryCommentKeysByBand = map[string][]string{
+	"DAYS":  {"comment.injury", "comment.injury.2", "comment.injury.6"},
+	"WEEKS": {"comment.injury.3", "comment.injury.4", "comment.injury.7"},
+	"MONTH": {"comment.injury.5", "comment.injury.8", "comment.injury.3"},
+}
+
+// rotatedUnusedKey varies commentary that never had an RNG draw: the anchor
+// comes from public match state alone and the probe walks past lines this
+// match has already spoken. The fixture ID salts the anchor so simultaneous
+// matches — which share the sampled moment grid — do not all pick the same
+// voice at the same minute. Exhausted pools fall back to the same rotation,
+// so the choice stays deterministic for replays either way.
+func rotatedUnusedKey(lm *worldgen.LiveMatch, keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	salt := int(lm.FixtureID % int64(len(keys)))
+	if salt < 0 {
+		salt += len(keys)
+	}
+	if key := probeUnusedKey(salt, lm, keys, usedCommentaryKeys(lm)); key != "" {
+		return key
+	}
+	return keys[(salt+lm.Clock+len(lm.Commentary)*3)%len(keys)]
 }
 
 // goalContextCommentaryKey swaps a patterned goal call for one that speaks to
@@ -631,19 +685,27 @@ func (e *Engine) bookOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand) 
 
 // cardVerdict settles what a booking becomes: a straight red, or — when the
 // player already sits on a yellow — a second yellow that upgrades to a RED in
-// the ledger (so OnPitch ejects on it) under its own commentary key. A red,
-// straight or second-yellow, sends the player off with no replacement; the
-// side plays short (football rules — the ejected slot cannot be filled).
+// the ledger (so OnPitch ejects on it) under its own commentary key family. A
+// red, straight or second-yellow, sends the player off with no replacement;
+// the side plays short (football rules — the ejected slot cannot be filled).
+// The key rotates inside its family on public state only; the RNG stream is
+// untouched (docs/12: presentation must not perturb play). The
+// quick-succession voice joins the second-yellow pool only when the first
+// booking really was recent, so the line never contradicts the card ledger.
 func cardVerdict(lm *worldgen.LiveMatch, pid int64, straightRed bool) (detail, key string) {
 	if straightRed {
-		return "RED", "comment.card.red"
+		return "RED", rotatedUnusedKey(lm, redCardCommentKeys)
 	}
 	for _, c := range lm.Cards {
 		if c.PlayerID == pid && c.Detail == "YELLOW" {
-			return "RED", "comment.card.secondyellow"
+			pool := secondYellowCommentKeys
+			if lm.Clock-c.Minute <= quickSecondYellowMinutes {
+				pool = append(append([]string{}, pool...), quickSecondYellowKey)
+			}
+			return "RED", rotatedUnusedKey(lm, pool)
 		}
 	}
-	return "YELLOW", "comment.card.yellow"
+	return "YELLOW", rotatedUnusedKey(lm, yellowCardCommentKeys)
 }
 
 // injureOne turns a moment's injury roll into a real injury: the
@@ -681,7 +743,7 @@ func (e *Engine) injureOne(lm *worldgen.LiveMatch, at sim.GameTime, r *rand.Rand
 		SeasonYear: worldgen.DateOf(at).Season, Band: band,
 	})
 
-	e.comment(lm, at, "comment.injury", map[string]any{"player": p.Name, "club": e.clubName(club)})
+	e.comment(lm, at, rotatedUnusedKey(lm, injuryCommentKeysByBand[band]), map[string]any{"player": p.Name, "club": e.clubName(club)})
 	params := map[string]any{"player": p.Name, "club": e.clubName(club)}
 	e.addNews(worldgen.NewsItem{
 		GameTime: at, Category: "injury", Key: injuryNewsKey(band), Params: params, ClubIDs: []int64{club},
