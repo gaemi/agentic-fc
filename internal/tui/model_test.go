@@ -2242,24 +2242,22 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	m.UI["ui.honours.runner_up"] = "Runners-up"
 	m.UI["ui.honours.cup"] = "Cup"
 	m.UI["ui.honours.empty"] = "No completed seasons yet."
-	m.History = []HonoursSeason{{
-		SeasonYear: 1,
-		Divisions: []HonoursRow{
-			{Tier: 1, Champion: "Alpha", RunnerUp: "Beta"},
-			{Tier: 2, Champion: "Gamma", RunnerUp: "Delta"},
-		},
-		CupWinner: "Alpha",
-	}}
-
 	m = update(m, key("h"))
 	if !m.HonoursView {
 		t.Fatal("h on the table tab should open the honours board")
 	}
 	m.UI["ui.honours.loading"] = "FETCHING"
 	if v := m.viewTable(100, 24); !strings.Contains(v, "FETCHING") {
-		t.Fatalf("board should show a loading state before data lands:\n%s", v)
+		t.Fatalf("a cold open should show a loading state before data lands:\n%s", v)
 	}
-	m.HistoryLoaded = true
+	m = update(m, HistoryMsg{Seq: m.historySeq, Seasons: []HonoursSeason{{
+		SeasonYear: 1,
+		Divisions: []HonoursRow{
+			{Tier: 1, Champion: "Alpha", RunnerUp: "Beta"},
+			{Tier: 2, Champion: "Gamma", RunnerUp: "Delta"},
+		},
+		CupWinner: "Alpha",
+	}}})
 	v := m.viewTable(100, 24)
 	for _, want := range []string{"HONOURS", "Alpha", "Beta", "Gamma", "Delta"} {
 		if !strings.Contains(v, want) {
@@ -2292,7 +2290,7 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	m.HonoursView = true
 	m.HistoryLoaded = false
 	m.UI["ui.honours.unavailable"] = "ARCHIVE UNAVAILABLE"
-	m = update(m, HistoryErrMsg{errors.New("404")})
+	m = update(m, HistoryErrMsg{Seq: m.historySeq, Err: errors.New("404")})
 	if m.HonoursView {
 		t.Fatal("a first-open failure should close the board")
 	}
@@ -2303,9 +2301,21 @@ func TestHonoursBoardToggleOnTableTab(t *testing.T) {
 	// A failed refresh with data already loaded keeps the archive open.
 	m.HonoursView = true
 	m.HistoryLoaded = true
-	m = update(m, HistoryErrMsg{errors.New("500")})
+	m = update(m, HistoryErrMsg{Seq: m.historySeq, Err: errors.New("500")})
 	if !m.HonoursView {
 		t.Fatal("a transient refresh failure must not close a loaded board")
+	}
+
+	// A stale in-flight response never overwrites a newer one.
+	m.historySeq = 5
+	m.History = []HonoursSeason{{SeasonYear: 2}}
+	m = update(m, HistoryMsg{Seq: 4, Seasons: []HonoursSeason{{SeasonYear: 1}}})
+	if len(m.History) != 1 || m.History[0].SeasonYear != 2 {
+		t.Fatalf("stale archive response overwrote the newer one: %+v", m.History)
+	}
+	m = update(m, HistoryMsg{Seq: 5, Seasons: []HonoursSeason{{SeasonYear: 3}}})
+	if m.History[0].SeasonYear != 3 {
+		t.Fatalf("the newest response should land: %+v", m.History)
 	}
 
 	// The archive refreshes exactly at season rollover, not on every poll.

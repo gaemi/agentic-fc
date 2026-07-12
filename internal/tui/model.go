@@ -121,6 +121,9 @@ type Model struct {
 	// the empty state must never render as authoritative before data lands.
 	HistoryLoaded bool
 	History       []HonoursSeason
+	// historySeq orders in-flight archive fetches: only the newest
+	// request's response may land (an open-then-rollover pair can race).
+	historySeq    int
 	Notice        string
 	NoticeTTL     int
 	LatestNewsID  int64
@@ -146,18 +149,24 @@ func NewModel(c *Client) Model {
 
 // Messages.
 type (
-	WorldMsg      WorldInfo
-	UIMsg         map[string]string
-	NewsMsg       []NewsArticle
-	TableMsg      Table
-	ClubsMsg      []ClubSummary
-	ClubMsg       ClubDetail
-	FixturesMsg   []Fixture
-	MatchMsg      MatchDetail
-	MatchesMsg    []LiveMatchView
-	HistoryMsg    []HonoursSeason
-	HistoryErrMsg struct{ Err error }
-	SettingsMsg   struct {
+	WorldMsg    WorldInfo
+	UIMsg       map[string]string
+	NewsMsg     []NewsArticle
+	TableMsg    Table
+	ClubsMsg    []ClubSummary
+	ClubMsg     ClubDetail
+	FixturesMsg []Fixture
+	MatchMsg    MatchDetail
+	MatchesMsg  []LiveMatchView
+	HistoryMsg  struct {
+		Seq     int
+		Seasons []HonoursSeason
+	}
+	HistoryErrMsg struct {
+		Seq int
+		Err error
+	}
+	SettingsMsg struct {
 		Settings AdminSettings
 		Updated  bool
 	}
@@ -276,7 +285,7 @@ func (m Model) fetchClub() tea.Cmd {
 	}
 }
 
-func (m Model) fetchHistory() tea.Cmd {
+func (m Model) fetchHistory(seq int) tea.Cmd {
 	if m.Client == nil {
 		return nil
 	}
@@ -284,9 +293,9 @@ func (m Model) fetchHistory() tea.Cmd {
 	return func() tea.Msg {
 		seasons, err := c.History()
 		if err != nil {
-			return HistoryErrMsg{err}
+			return HistoryErrMsg{Seq: seq, Err: err}
 		}
-		return HistoryMsg(seasons)
+		return HistoryMsg{Seq: seq, Seasons: seasons}
 	}
 }
 
@@ -486,8 +495,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.HonoursView = !m.HonoursView
 				m.HonoursOffset = 0
 				if m.HonoursView {
-					m.HistoryLoaded = false
-					return m, m.fetchHistory()
+					// A cached archive keeps showing while the reopen
+					// refresh runs; only a cold open shows the loader.
+					m.HistoryLoaded = len(m.History) > 0
+					m.historySeq++
+					return m, m.fetchHistory(m.historySeq)
 				}
 			}
 		case "tab":
@@ -596,7 +608,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The archive only changes at rollover: refresh the open honours
 		// board exactly then, never on the regular poll.
 		if m.HonoursView && prevSeason != 0 && m.World.Date.Season != prevSeason {
-			return m, m.fetchHistory()
+			m.historySeq++
+			return m, m.fetchHistory(m.historySeq)
 		}
 	case UIMsg:
 		m.UI = msg
@@ -634,13 +647,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.fetchClub()
 		}
 	case HistoryMsg:
-		m.History = msg
-		m.HistoryLoaded = true
+		if msg.Seq == m.historySeq {
+			m.History = msg.Seasons
+			m.HistoryLoaded = true
+		}
 	case HistoryErrMsg:
-		// Only a first-open failure (nothing loaded yet — likely an older
-		// daemon without /v1/history) bounces back with a notice. A failed
-		// rollover refresh keeps the last successful archive on screen.
-		if m.HonoursView && !m.HistoryLoaded {
+		// Only the newest request's failure counts, and only a cold open
+		// (nothing cached — likely an older daemon without /v1/history)
+		// bounces back with a notice. A failed refresh keeps the last
+		// successful archive on screen.
+		if msg.Seq == m.historySeq && m.HonoursView && !m.HistoryLoaded {
 			m.HonoursView = false
 			m.setNotice(m.ui("ui.honours.unavailable"))
 		}
